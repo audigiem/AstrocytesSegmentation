@@ -1,0 +1,7 @@
+*.html
+*.pdf
+*.docx
+*.tif
+__pycache__/
+__init__.py
+*.pyc

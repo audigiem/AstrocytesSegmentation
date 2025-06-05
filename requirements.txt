@@ -1,0 +1,6 @@
+numpy
+tifffile
+napari[all]
+scikit-image
+joblib
+numba
