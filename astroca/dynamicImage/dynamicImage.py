@@ -4,19 +4,17 @@
 @detail Applies a moving mean or median filter to estimate the fluorescence baseline (F0) and supports min or percentile aggregation.
 """
 
-import numpy as np
-from astroca.init.scene import ImageSequence3DPlusTime
+from astroca.tools.scene import ImageSequence3DPlusTime
 
-
-from joblib import Parallel, delayed
-import time
+# from joblib import Parallel, delayed
 
 from numba import njit, prange
+
 import numpy as np
+import time
 from numpy.lib.stride_tricks import sliding_window_view
 
-
-def background_estimation_numpy(image_sequence: ImageSequence3DPlusTime,
+def background_estimation_numpy(image_sequence: 'ImageSequence3DPlusTime',
                                  index_xmin: np.ndarray,
                                  index_xmax: np.ndarray,
                                  moving_window: int,
@@ -31,53 +29,272 @@ def background_estimation_numpy(image_sequence: ImageSequence3DPlusTime,
     @param index_xmax: Array of cropping bounds (right) for each Z
     @param moving_window: Size of the moving window for aggregation
     @param time_window: Duration of each background block in time
-    @param method: Aggregation method, either 'min' or 'percentile'
-    @param method2: Secondary aggregation method, either 'Mean' or 'Med'
+    @param method: Aggregation method ('min' or 'percentile')
+    @param method2: Secondary aggregation method ('Mean' or 'Med')
     @param percentile: Percentile value for 'percentile' method (default 10.0)
     @return: Background array of shape (nbF0, Z, Y, X)
     """
     start_time = time.time()
     print("Estimating background F0...")
+
+    # Parameters validation
+    if method not in ["min", "percentile"]:
+        raise ValueError("method must be 'min' or 'percentile'")
+    if method2 not in ["Mean", "Med"]:
+        raise ValueError("method2 must be 'Mean' or 'Med'")
+    if not 0 <= percentile <= 100:
+        raise ValueError("percentile must be between 0 and 100")
+
     data = image_sequence.get_data()  # (T, Z, Y, X)
     T, Z, Y, X = data.shape
+
+    # Dimension validation
+    if len(index_xmin) != Z or len(index_xmax) != Z:
+        raise ValueError("index_xmin and index_xmax must have length Z")
+
     nbF0 = max(T // time_window, 1)
     F0 = np.zeros((nbF0, Z, Y, X), dtype=np.float32)
 
+    # Precompute valid z indices and crop bounds to avoid repeated checks
+    valid_z_indices = []
+    crop_bounds = []
+    for z in range(Z):
+        x_min, x_max = int(index_xmin[z]), int(index_xmax[z]) + 1
+        if x_min < x_max and x_min >= 0 and x_max <= X:
+            valid_z_indices.append(z)
+            crop_bounds.append((x_min, x_max))
+
+    print(f"Processing {nbF0} temporal blocks of size {time_window} with moving window {moving_window}")
+
+    # Process temporal blocks
     for it in range(nbF0):
         t_start = it * time_window
-        block = data[t_start:t_start + time_window]  # shape (time_window, Z, Y, X)
+        t_end = min(t_start + time_window, T)  # Handle the last block
+        block = data[t_start:t_end]  # shape (actual_time_window, Z, Y, X)
 
-        for z in range(Z):
-            x_min, x_max = index_xmin[z], index_xmax[z] + 1
-            if x_min >= x_max:
-                continue
+        print(f"Processing block {it + 1}/{nbF0}, time range [{t_start}:{t_end}], block shape: {block.shape}")
 
+        # Special case: if block is too small for sliding window
+        if block.shape[0] < moving_window:
+            print(f"Warning: Block {it} has only {block.shape[0]} frames, "
+                  f"less than moving_window={moving_window}")
+            # Use all available frames in the block
+            for idx, z in enumerate(valid_z_indices):
+                x_min, x_max = crop_bounds[idx]
+                sub = block[:, z, :, x_min:x_max]
+
+                if method2 == "Mean":
+                    F0[it, z, :, x_min:x_max] = np.mean(sub, axis=0)
+                else:  # method2 == "Med"
+                    F0[it, z, :, x_min:x_max] = np.median(sub, axis=0)
+            continue
+
+        # Normal processing with sliding window
+        for idx, z in enumerate(valid_z_indices):
+            x_min, x_max = crop_bounds[idx]
             sub = block[:, z, :, x_min:x_max]  # shape (tw, Y, X')
 
-            # sliding windows on time axis
-            sw = sliding_window_view(sub, window_shape=(moving_window,), axis=0)  # shape (n_iter, moving_window, Y, X')
+            # Sliding window on temporal axis (axis=0)
+            sw = sliding_window_view(sub, window_shape=(moving_window,), axis=0)
+            # sw.shape: (n_windows, Y, X', moving_window)
 
+            # Temporal aggregation within each window (on last axis)
             if method2 == "Mean":
-                values = sw.mean(axis=1)  # shape (n_iter, Y, X')
-            elif method2 == "Med":
-                values = np.median(sw, axis=1)
-            else:
-                raise ValueError("method2 must be 'Mean' or 'Med'")
+                values = np.mean(sw, axis=-1)  # shape (n_windows, Y, X')
+            else:  # method2 == "Med"
+                values = np.median(sw, axis=-1)  # shape (n_windows, Y, X')
 
-            # Assure alignement Y, X'
+            # Final aggregation over windows (axis=0)
             if method == "min":
-                F0[it, z, :, x_min:x_max] = np.min(values, axis=0)
-            elif method == "percentile":
-                k = int(np.ceil(percentile / 100.0 * values.shape[0])) - 1
-                F0[it, z, :, x_min:x_max] = np.partition(values, k, axis=0)[k]
-            else:
-                raise ValueError("method must be 'min' or 'percentile'")
-            
-    
-    print(f"Background F0 estimated in {time.time() - start_time:.2f} seconds.")
+                result = np.min(values, axis=0)  # shape (Y, X')
+            else:  # method == "percentile"
+                result = np.percentile(values, percentile, axis=0)  # shape (Y, X')
+
+            # Dimension check before assignment
+            expected_shape = (Y, x_max - x_min)
+            if result.shape != expected_shape:
+                print(f"Warning: result shape {result.shape} != expected {expected_shape}")
+                print(f"sub.shape: {sub.shape}, sw.shape: {sw.shape}, values.shape: {values.shape}")
+                continue
+
+            F0[it, z, :, x_min:x_max] = result
+
+    elapsed_time = time.time() - start_time
+    print(f"Background F0 estimated in {elapsed_time:.2f} seconds.")
+    print()
     return F0
 
 
+def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime',
+                                       index_xmin: np.ndarray,
+                                       index_xmax: np.ndarray,
+                                       moving_window: int,
+                                       method: str = "percentile",
+                                       method2: str = "Mean",
+                                       percentile: float = 10.0) -> np.ndarray:
+    """
+    @brief Estimate the background F0 using entire time sequence as single block.
+    Version optimisée NumPy avec le même comportement que Java.
+    @param image_sequence: 4D image sequence (T, Z, Y, X)
+    @param index_xmin: Array of cropping bounds (left) for each Z
+    @param index_xmax: Array of cropping bounds (right) for each Z
+    @param moving_window: Size of the moving window for aggregation
+    @param method: Aggregation method ('min' or 'percentile')
+    @param method2: Secondary aggregation method ('Mean' or 'Med')
+    @param percentile: Percentile value for 'percentile' method (default 10.0)
+    @return: Background array of shape (1, Z, Y, X)
+    """
+    start_time = time.time()
+    print("Estimating background F0 (single block mode, optimized)...")
+
+    # Parameters validation
+    if method not in ["min", "percentile"]:
+        raise ValueError("method must be 'min' or 'percentile'")
+    if method2 not in ["Mean", "Med"]:
+        raise ValueError("method2 must be 'Mean' or 'Med'")
+    if not 0 <= percentile <= 100:
+        raise ValueError("percentile must be between 0 and 100")
+
+    data = image_sequence.get_data()  # (T, Z, Y, X)
+    T, Z, Y, X = data.shape
+
+    # Dimension validation
+    if len(index_xmin) != Z or len(index_xmax) != Z:
+        raise ValueError("index_xmin and index_xmax must have length Z")
+
+    if T < moving_window:
+        raise ValueError(f"Time sequence length {T} is less than moving_window {moving_window}")
+
+    F0 = np.zeros((1, Z, Y, X), dtype=np.float32)
+
+    # Calcul du nombre d'itérations comme en Java
+    time_window = T
+    num_iter = time_window - moving_window + 1
+
+    print(f"Processing entire sequence of {T} frames with moving window {moving_window}")
+    print(f"Number of iterations: {num_iter}")
+
+    # Traitement optimisé par slice Z
+    for z in range(Z):
+        x_min = int(index_xmin[z])
+        x_max = int(index_xmax[z])
+
+        # Vérification des bornes comme en Java
+        if x_min >= x_max or x_min < 0 or x_max >= X:
+            continue
+
+        # Extraire la région d'intérêt pour ce Z
+        # Inclure x_max comme en Java (+1)
+        roi_data = data[:, z, :, x_min:x_max + 1]  # Shape: (T, Y, X_roi)
+
+        # Créer une vue de fenêtre glissante sur l'axe temporel
+        # roi_data.shape = (T, Y, X_roi)
+        # On veut une fenêtre glissante sur l'axe 0 (temps)
+        windowed_data = np.lib.stride_tricks.sliding_window_view(
+            roi_data, window_shape=moving_window, axis=0
+        )  # Shape: (num_iter, Y, X_roi, moving_window)
+
+        # Calcul de la moyenne ou médiane mobile
+        if method2 == "Mean":
+            # Moyenne sur la dernière dimension (fenêtre temporelle)
+            moving_values = np.mean(windowed_data, axis=-1)  # Shape: (num_iter, Y, X_roi)
+        else:  # method2 == "Med"
+            # Médiane sur la dernière dimension (fenêtre temporelle)
+            moving_values = np.median(windowed_data, axis=-1)  # Shape: (num_iter, Y, X_roi)
+
+        # Agrégation finale selon la méthode
+        if method == "min":
+            # Minimum sur l'axe des itérations
+            result = np.min(moving_values, axis=0)  # Shape: (Y, X_roi)
+        else:  # method == "percentile"
+            # Tri sur l'axe des itérations pour chaque pixel
+            sorted_values = np.sort(moving_values, axis=0)  # Shape: (num_iter, Y, X_roi)
+
+            # Calcul de l'index du percentile comme en Java avec Math.ceil
+            index_percentile = int(np.ceil(percentile / 100.0 * num_iter))
+            # Assurer que l'index est au moins 1 (comme le ceil en Java)
+            index_percentile = max(1, index_percentile)
+
+            # Sélectionner le percentile (indexation 0-based donc -1)
+            result = sorted_values[index_percentile - 1]  # Shape: (Y, X_roi)
+
+        # Assigner le résultat à la région correspondante
+        F0[0, z, :, x_min:x_max + 1] = result
+
+    elapsed_time = time.time() - start_time
+    print(f"Background F0 estimated in {elapsed_time:.2f} seconds.")
+    print()
+    return F0
+
+
+def background_estimation_single_block_ultra_optimized(image_sequence: 'ImageSequence3DPlusTime',
+                                                       index_xmin: np.ndarray,
+                                                       index_xmax: np.ndarray,
+                                                       moving_window: int,
+                                                       method: str = "percentile",
+                                                       method2: str = "Mean",
+                                                       percentile: float = 10.0) -> np.ndarray:
+    """
+    Version ultra-optimisée qui traite tous les Z valides en une seule opération vectorisée.
+    """
+    start_time = time.time()
+    print("Estimating background F0 (ultra-optimized mode)...")
+
+    # Parameters validation
+    if method not in ["min", "percentile"]:
+        raise ValueError("method must be 'min' or 'percentile'")
+    if method2 not in ["Mean", "Med"]:
+        raise ValueError("method2 must be 'Mean' or 'Med'")
+    if not 0 <= percentile <= 100:
+        raise ValueError("percentile must be between 0 and 100")
+
+    data = image_sequence.get_data()  # (T, Z, Y, X)
+    T, Z, Y, X = data.shape
+
+    if T < moving_window:
+        raise ValueError(f"Time sequence length {T} is less than moving_window {moving_window}")
+
+    F0 = np.zeros((1, Z, Y, X), dtype=np.float32)
+    num_iter = T - moving_window + 1
+
+    print(f"Processing entire sequence of {T} frames with moving window {moving_window}")
+
+    # Créer un masque pour les régions valides
+    mask = np.zeros((Z, Y, X), dtype=bool)
+    for z in range(Z):
+        x_min = int(index_xmin[z])
+        x_max = int(index_xmax[z])
+        if x_min < x_max and x_min >= 0 and x_max < X:
+            mask[z, :, x_min:x_max + 1] = True
+
+    # Appliquer le masque aux données
+    if np.any(mask):
+        # Fenêtre glissante sur toutes les données d'un coup
+        windowed_data = np.lib.stride_tricks.sliding_window_view(
+            data, window_shape=moving_window, axis=0
+        )  # Shape: (num_iter, Z, Y, X, moving_window)
+
+        # Calcul vectorisé de la moyenne/médiane mobile
+        if method2 == "Mean":
+            moving_values = np.mean(windowed_data, axis=-1)  # Shape: (num_iter, Z, Y, X)
+        else:  # method2 == "Med"
+            moving_values = np.median(windowed_data, axis=-1)  # Shape: (num_iter, Z, Y, X)
+
+        # Agrégation finale
+        if method == "min":
+            result = np.min(moving_values, axis=0)  # Shape: (Z, Y, X)
+        else:  # method == "percentile"
+            sorted_values = np.sort(moving_values, axis=0)  # Shape: (num_iter, Z, Y, X)
+            index_percentile = max(1, int(np.ceil(percentile / 100.0 * num_iter)))
+            result = sorted_values[index_percentile - 1]  # Shape: (Z, Y, X)
+
+        # Appliquer le masque au résultat
+        F0[0] = np.where(mask, result, 0)
+
+    elapsed_time = time.time() - start_time
+    print(f"Background F0 estimated in {elapsed_time:.2f} seconds.")
+    print()
+    return F0
 
 
 @njit(parallel=True)

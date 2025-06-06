@@ -3,7 +3,7 @@
 @brief This module provides functionality to crop boundaries of 3D image sequences with time dimension (if needed).
 """
 
-from astroca.init.scene import ImageSequence3DPlusTime
+from astroca.tools.scene import ImageSequence3DPlusTime
 
 def crop_boundaries(image_sequence: ImageSequence3DPlusTime, coordinate_range_per_dimension: list):
     """

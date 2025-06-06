@@ -6,7 +6,7 @@ The transform is applied only within the meaningful X-boundaries [index_xmin[z],
 """
 
 import numpy as np
-from astroca.init.scene import ImageSequence3DPlusTime
+from astroca.tools.scene import ImageSequence3DPlusTime
 
 def compute_variance_stabilization(image_sequence: ImageSequence3DPlusTime,
                                     index_xmin: np.ndarray,

@@ -6,48 +6,11 @@
 
 import numpy as np
 import time
-from astroca.init.scene import ImageSequence3DPlusTime
+
+from astroca.tools.scene import ImageSequence3DPlusTime
 
 
 # import tifffile or np.save for optional saving
-
-def estimate_std(image_sequence: ImageSequence3DPlusTime,
-                 name: str,
-                 index_xmin: np.ndarray,
-                 index_xmax: np.ndarray,
-                 save: bool = False,
-                 save_path: str = None) -> float:
-    """
-    @brief Estimate the standard deviation of Gaussian noise in a 3D+time image sequence.
-
-    @param image_sequence: 4D image of shape (T, Z, Y, X)
-    @param name: Name to display with the result (e.g., 'stdNoise')
-    @param index_xmin: Array of cropping bounds (left) for each Z
-    @param index_xmax: Array of cropping bounds (right) for each Z
-    @param save: If True, saves the noise map
-    @param save_path: Path for saving the 3D noise map
-    @return: Estimated noise standard deviation
-    """
-    start = time.time()
-    data = image_sequence.get_data()  # shape (T, Z, Y, X)
-    T, Z, Y, X = data.shape
-
-    # Step 1: compute std over time for each voxel
-    std_map = estimate_std_over_time(data, index_xmin, index_xmax)  # expected shape: (Z, Y, X)
-
-    # Step 2: keep only valid (non-zero) values for median
-    valid_voxels = std_map[std_map > 0.0]
-    std_noise = float(np.median(valid_voxels)) if valid_voxels.size > 0 else 0.0
-
-    print(f"{name} = {std_noise:.6f}")
-
-    if save and save_path is not None:
-        np.savez_compressed(save_path, std_map=std_map)
-
-    duration = (time.time() - start) / 60
-    print(f"Duration estimateSTD() = {duration:.6f} min")
-
-    return std_noise
 
 
 def estimate_std_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray) -> float:

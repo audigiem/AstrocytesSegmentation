@@ -8,7 +8,7 @@ the first and last non-empty band in each z-slice.
 """
 
 import numpy as np
-from astroca.init.scene import ImageSequence3DPlusTime
+from astroca.tools.scene import ImageSequence3DPlusTime
 
 def compute_boundaries(image_sequence: ImageSequence3DPlusTime, pixel_cropped: int = 2) -> tuple:
     """
