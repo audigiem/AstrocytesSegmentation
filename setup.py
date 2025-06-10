@@ -11,6 +11,7 @@ setup(
         "napari[all]",
         "joblib",
         "numba",
+        "scipy",
     ],
     author='Audigier matteo',
     description='Segmentation et analyse d\'astrocytes en 3D+temps',

@@ -7,9 +7,9 @@
 from astroca.tools.scene import ImageSequence3DPlusTime
 
 # from joblib import Parallel, delayed
-
+from astroca.tools.exportData import export_data
 from numba import njit, prange
-
+import os
 import numpy as np
 import time
 from numpy.lib.stride_tricks import sliding_window_view
@@ -131,7 +131,9 @@ def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime'
                                        moving_window: int,
                                        method: str = "percentile",
                                        method2: str = "Mean",
-                                       percentile: float = 10.0) -> np.ndarray:
+                                       percentile: float = 10.0,
+                                       save_results: bool = False,
+                                       output_directory: str = None) -> np.ndarray:
     """
     @brief Estimate the background F0 using entire time sequence as single block.
     Version optimisée NumPy avec le même comportement que Java.
@@ -142,6 +144,8 @@ def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime'
     @param method: Aggregation method ('min' or 'percentile')
     @param method2: Secondary aggregation method ('Mean' or 'Med')
     @param percentile: Percentile value for 'percentile' method (default 10.0)
+    @param save_results: If True, saves the result to the specified output directory
+    @param output_directory: Directory to save the result if save_results is True
     @return: Background array of shape (1, Z, Y, X)
     """
     start_time = time.time()
@@ -224,6 +228,15 @@ def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime'
     elapsed_time = time.time() - start_time
     print(f"Background F0 estimated in {elapsed_time:.2f} seconds.")
     print()
+
+    if save_results:
+        if output_directory is None:
+            raise ValueError("Output directory must be specified when save_results is True.")
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        # Save the result as a .tif file
+        export_data(F0, output_directory, export_as_single_tif=True, file_name="F0_estimated")
+
     return F0
 
 
@@ -375,7 +388,9 @@ def compute_dynamic_image(image_sequence: ImageSequence3DPlusTime,
                           F0: np.ndarray,
                           index_xmin: np.ndarray,
                           index_xmax: np.ndarray,
-                          time_window: int) -> tuple[np.ndarray, float]:
+                          time_window: int,
+                          save_results: bool = False,
+                          output_directory: str = None) -> tuple[np.ndarray, float]:
     """
     @brief Compute ΔF = F - F0 and estimate the noise level as the median of ΔF.
 
@@ -384,6 +399,8 @@ def compute_dynamic_image(image_sequence: ImageSequence3DPlusTime,
     @param index_xmin: cropping bounds in X for each Z
     @param index_xmax: cropping bounds in X for each Z
     @param time_window: the duration of each background block
+    @param save_results: If True, saves the result to the specified output directory
+    @param output_directory: Directory to save the result if save_results is True
     @return: (dF: array of shape (T, Z, Y, X), mean_noise: float)
     """
     print("Computing dynamic image (dF = F - F0) and estimating noise...")
@@ -415,6 +432,15 @@ def compute_dynamic_image(image_sequence: ImageSequence3DPlusTime,
     print(f"mean_Noise = {mean_noise}")
     print(f"Dynamic image computed.")
     print()
+
+    if save_results:
+        if output_directory is None:
+            raise ValueError("Output directory must be specified when save_results is True.")
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        # Save the dF as a .tif file
+        export_data(dF, output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
+        print(f"Dynamic image saved to {output_directory}")
 
     return dF, mean_noise
 

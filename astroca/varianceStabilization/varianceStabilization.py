@@ -7,15 +7,22 @@ The transform is applied only within the meaningful X-boundaries [index_xmin[z],
 
 import numpy as np
 from astroca.tools.scene import ImageSequence3DPlusTime
+import os
+from astroca.tools.exportData import export_data
 
 def compute_variance_stabilization(image_sequence: ImageSequence3DPlusTime,
                                     index_xmin: np.ndarray,
-                                    index_xmax: np.ndarray):
+                                    index_xmax: np.ndarray,
+                                    save_results: bool = False,
+                                    output_directory: str = None
+                                   ):
     """
     @brief Applies the Anscombe variance stabilization transform in-place to the image sequence.
     @param image_sequence: ImageSequence3DPlusTime instance
     @param index_xmin: 1D array of shape (depth,) with left cropping bounds per z
     @param index_xmax: 1D array of shape (depth,) with right cropping bounds per z
+    @param save_results: If True, saves the transformed data to the specified output directory
+    @param output_directory: Directory to save the transformed data if save_results is True
     """
     print("Applying variance stabilization using Anscombe transform...")
     data = image_sequence.get_data()  # shape (T, Z, Y, X)
@@ -39,6 +46,14 @@ def compute_variance_stabilization(image_sequence: ImageSequence3DPlusTime,
     image_sequence.set_data(data)  # Update the data in place
     print("Variance stabilization completed.")
     print()
+
+    if save_results:
+        if output_directory is None:
+            raise ValueError("Output directory must be specified when save_results is True.")
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        export_data(data, output_directory, export_as_single_tif=True, file_name="variance_stabilized_sequence")
+        print(f"Transformed data saved to {output_directory}")
 
 def check_variance(image_sequence: ImageSequence3DPlusTime,
                    index_xmin: np.ndarray,

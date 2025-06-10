@@ -4,3 +4,4 @@ napari[all]
 scikit-image
 joblib
 numba
+scipy

@@ -23,18 +23,16 @@ def estimate_std_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray)
     @return: float median of the standard deviation map across all valid voxels.
     """
     print("Estimating standard deviation over time...")
-    T, Z, Y, X = data.shape
-    std_map = np.zeros((Z, Y, X), dtype=np.float32)
 
-    for z in range(Z):
-        x_min, x_max = xmin[z], xmax[z] + 1
-        if x_min >= x_max:
-            continue
-        for y in range(Y):
-            std_map[z, y, x_min:x_max] = np.std(data[:, z, y, x_min:x_max], axis=0)
+    # for z in range(Z):
+    #     x_min, x_max = xmin[z], xmax[z] + 1
+    #     if x_min >= x_max:
+    #         continue
+    #     for y in range(Y):
+    #         std_map[z, y, x_min:x_max] = np.std(data[:, z, y, x_min:x_max], axis=0)
 
     # find the median of non-zero voxels
-    valid_voxels = std_map[std_map > 0.0]
+    valid_voxels = data[data > 0.0]
     std_noise = float(np.median(valid_voxels)) if valid_voxels.size > 0 else 0.0
     print(f"Estimated std over time: {std_noise:.6f}")
     return std_noise

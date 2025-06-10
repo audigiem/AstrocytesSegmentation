@@ -5,7 +5,7 @@ FILE_PATTERNS          = *.py
 EXTENSION_MAPPING      = py=Python
 
 # N'inclure que les entités documentées
-EXTRACT_ALL            = NO
+EXTRACT_ALL            = YES
 EXTRACT_PRIVATE        = NO
 HIDE_UNDOC_MEMBERS     = YES
 HIDE_UNDOC_CLASSES     = YES
