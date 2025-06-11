@@ -5,3 +5,4 @@ scikit-image
 joblib
 numba
 scipy
+matplotlib

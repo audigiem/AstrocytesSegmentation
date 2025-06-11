@@ -9,7 +9,7 @@ from astroca.activeVoxels.spaceMorphology import fill_space_morphology, apply_me
 import os
 from astroca.tools.exportData import export_data
 
-def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, threshold: float, radius: int = 1, size_median_filter: int = 2, save_results: bool = False, output_directory: str = None) -> np.ndarray:
+def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, threshold: float, index_xmin: list, index_xmax: list, radius: int = 1, size_median_filter: int = 2, save_results: bool = False, output_directory: str = None) -> np.ndarray:
     """
     @brief Find active voxels in a 3D+time image sequence based on z-score thresholding.
 
@@ -17,6 +17,8 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     @param std_noise: Standard deviation of the noise level to normalize the z-score.
     @param gaussian_noise_mean: Mean (or median) of the Gaussian noise, used to center the z-score calculation.
     @param threshold: Threshold value to determine significant deviations in the z-score.
+    @param index_xmin: 1D array of cropping bounds (left) for each Z slice.
+    @param index_xmax: 1D array of cropping bounds (right) for each Z slice.
     @param radius: Radius of the ball-like morphology to use for filling.
     @param size_median_filter: Size of the median filter to apply for smoothing the data.
     @param save_results: Boolean flag to indicate whether to save the results.
@@ -27,7 +29,7 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     if dF.ndim != 4:
         raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
 
-    data = compute_z_score(dF, std_noise, gaussian_noise_mean, threshold)
+    data = compute_z_score(dF, std_noise, gaussian_noise_mean, threshold, index_xmin, index_xmax)
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_results is True.")

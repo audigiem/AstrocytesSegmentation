@@ -118,8 +118,12 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
             total_voxels = expected_frame.size
             percentage_differences = (significant_differences / total_voxels) * 100
             print(f"Frame {t}: Percentage of voxels differing by more than {percentage_accuracy * 100:.6f}%: {percentage_differences:.6f}%")
-            print(f"Frame {t}: Max difference: {max_diff:.6f}")
-            print(f"Frame {t}: Mean difference: {mean_diff:.6f}")
+            print(f"         : Max difference: {max_diff:.6f}")
+            print(f"         : Mean difference: {mean_diff:.6f}")
+
+            # show info on max difference
+            print(f"         : Max difference voxel coordinates: {np.unravel_index(np.argmax(frame_differences), frame_differences.shape)}")
+            print(f"         : Max difference voxel value: {expected_frame[np.unravel_index(np.argmax(frame_differences), frame_differences.shape)]}")
     if save_diff and differences_exist:
         # Save the differences to a new file
         diff_file_name = os.path.basename(output_sequence_path).replace('.tif', '_diff.tif')
@@ -151,7 +155,7 @@ if __name__ == "__main__":
     expected_dF_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/dF.tif"
     output_dF_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/dF.tif"
 
-    expected_Zscore_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/Zscore_im.tif"
+    expected_Zscore_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/Zscore.tif"
     output_Zscore_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/zScore.tif"
 
     expected_closing_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/Closing_in_space.tif"
@@ -178,17 +182,17 @@ if __name__ == "__main__":
     # compare_files(expected_f0_path, output_f0_path, save_diff=False, percentage_accuracy=1e-6)
     # print()
     
-    print("Step 4: Comparing files after dF computation...")
-    compare_files(expected_dF_path, output_dF_path, save_diff=False, percentage_accuracy=1e-6)
-    print()
+    # print("Step 4: Comparing files after dF computation...")
+    # compare_sequence(expected_dF_path, output_dF_path, save_diff=False, percentage_accuracy=1e-6)
+    # print()
 
     print("Step 5: Comparing files after Z-score computation...")
-    compare_files(expected_Zscore_path, output_Zscore_path, save_diff=False, percentage_accuracy=1e-6)
+    compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=False, percentage_accuracy=1e-6)
     print()
 
-    print("Step 6: Comparing files after closing in space...")
-    compare_files(expected_closing_path, output_closing_path, save_diff=False, percentage_accuracy=1e-6)
-    print()
+    # print("Step 6: Comparing files after closing in space...")
+    # compare_files(expected_closing_path, output_closing_path, save_diff=False, percentage_accuracy=1e-6)
+    # print()
 
     # print("Step 7: Comparing files after median filtering...")
     # compare_files(expected_median_path, output_median_path, save_diff=False, percentage_accuracy=1e-6)
