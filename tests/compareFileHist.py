@@ -71,11 +71,11 @@ def plot_slice_comparison(vol1, vol2, diff, frame=0, z_slice=0):
 
 if __name__ == "__main__":
     # Remplace par tes fichiers .tif
-    expected_Zscore_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/Zscore.tif"
-    output_Zscore_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/zScore.tif"
+    expected_closing_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/Closing_in_space.tif"
+    output_closing_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/filledSpaceMorphology.tif"
 
-    vol1 = load_data(expected_Zscore_path)
-    vol2 = load_data(output_Zscore_path)
+    vol1 = load_data(expected_closing_path)
+    vol2 = load_data(output_closing_path)
 
     diff, percent_diff = compare_volumes(vol1, vol2, threshold=1e-4)
     plot_histograms(vol1, vol2, diff)

@@ -69,7 +69,7 @@ def main():
     std_noise = 1.1649132
     print(f"Computation of dF and noise estimation completed. dF shape: {dF.shape}, std_noise: {std_noise:.6f}")
 
-    active_voxels = find_active_voxels(dF, std_noise, mean_noise, threshold_Zscore, index_xmin, index_xmax, save_results=True, output_directory=output_dir)
+    active_voxels = find_active_voxels(dF, std_noise, mean_noise, threshold_Zscore, index_xmin, index_xmax, radius = (1,1,1), save_results=True, output_directory=output_dir)
 
 
 

@@ -9,6 +9,25 @@ import numpy as np
 from astroca.tools.loadData import load_data
 from tifffile import imwrite
 
+
+def compute_frame_accuracy(expected_frame: np.ndarray, differences: np.ndarray, percentage_accuracy: float) -> float:
+    """
+    Compute the accuracy of the output frame compared to the expected frame.
+
+    @param expected_frame: The expected frame data.
+    @param differences: The differences between the expected frame and the output frame.
+    @param percentage_accuracy: The acceptable percentage difference for the comparison.
+    @return: The accuracy of the output frame as a percentage.
+    """
+    mask = np.abs(expected_frame) > 0
+    if np.any(mask):
+        relative_diff = differences[mask] / np.abs(expected_frame[mask])
+        correct = relative_diff <= percentage_accuracy
+        frame_accuracy = np.mean(correct) * 100
+    else:
+        frame_accuracy = 0.0
+    return frame_accuracy
+
 def compare_files(expected_file_path: str, output_file_path: str, percentage_accuracy: float = 0.01, save_diff: bool = False):
     """
     Compare two files and print statistics about their differences.
@@ -91,6 +110,9 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
     # for each time frame, compare the expected and output data
     differences = np.zeros_like(expected_data, dtype=np.float32)
     differences_exist = False
+    list_max_diff = []
+    list_mean_diff = []
+    list_accuracy = []
     for t in range(T):
         expected_frame = expected_data[t]
         output_frame = output_data[t]
@@ -108,28 +130,44 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
             print(f"Frame {t}: Files are similar within a very small margin (less than 1e-5).")
         else:
             differences_exist = True
-            print(f"Frame {t}: Files differ.")
+            # print(f"Frame {t}: Files differ.")
             max_diff = np.max(frame_differences)
             mean_diff = np.mean(frame_differences)
+            list_max_diff.append(max_diff)
+            list_mean_diff.append(mean_diff)
+            list_accuracy.append(compute_frame_accuracy(expected_frame, frame_differences, percentage_accuracy))
 
             # compute the number of voxels that differ by more than the acceptable percentage
-            threshold = percentage_accuracy * np.abs(expected_frame)
-            significant_differences = np.sum(frame_differences > threshold)
-            total_voxels = expected_frame.size
-            percentage_differences = (significant_differences / total_voxels) * 100
-            print(f"Frame {t}: Percentage of voxels differing by more than {percentage_accuracy * 100:.6f}%: {percentage_differences:.6f}%")
-            print(f"         : Max difference: {max_diff:.6f}")
-            print(f"         : Mean difference: {mean_diff:.6f}")
+            # threshold = percentage_accuracy * np.abs(expected_frame)
+            # significant_differences = np.sum(frame_differences > threshold)
+            # total_voxels = expected_frame.size
+            # percentage_differences = (significant_differences / total_voxels) * 100
+            # print(f"Frame {t}: Percentage of voxels differing by more than {percentage_accuracy * 100:.6f}%: {percentage_differences:.6f}%")
+            # print(f"         : Max difference: {max_diff:.6f}")
+            # print(f"         : Mean difference: {mean_diff:.6f}")
+            #
+            # # show info on max difference
+            # print(f"         : Max difference voxel coordinates: {np.unravel_index(np.argmax(frame_differences), frame_differences.shape)}")
+            # print(f"         : Max difference voxel value: {expected_frame[np.unravel_index(np.argmax(frame_differences), frame_differences.shape)]}")
+    if differences_exist:
+        # display global statistics for the differences
+        print("\nGlobal statistics for differences across all frames:")
+        max_diff = np.max(list_max_diff)
+        mean_max_diff = np.mean(list_max_diff)
+        mean_mean_diff = np.mean(list_mean_diff)
+        mean_percentage_accuracy = np.mean(list_accuracy)
+        print(f"Max difference across all frames: {max_diff:.6f}")
+        print(f"Mean max difference across all frames: {mean_max_diff:.6f}")
+        print(f"Mean mean difference across all frames: {mean_mean_diff:.6f}")
+        print(f"Mean percentage accuracy across all frames: {mean_percentage_accuracy:.6f}%")
+        print(f"Total frames compared: {T}")
 
-            # show info on max difference
-            print(f"         : Max difference voxel coordinates: {np.unravel_index(np.argmax(frame_differences), frame_differences.shape)}")
-            print(f"         : Max difference voxel value: {expected_frame[np.unravel_index(np.argmax(frame_differences), frame_differences.shape)]}")
-    if save_diff and differences_exist:
-        # Save the differences to a new file
-        diff_file_name = os.path.basename(output_sequence_path).replace('.tif', '_diff.tif')
-        diff_file_path = os.path.join(os.path.dirname(output_sequence_path), diff_file_name)
-        imwrite(diff_file_path, differences.astype(np.float32))
-        print(f"Differences saved to {diff_file_path}")
+        if save_diff:
+            # Save the differences to a new file
+            diff_file_name = os.path.basename(output_sequence_path).replace('.tif', '_diff.tif')
+            diff_file_path = os.path.join(os.path.dirname(output_sequence_path), diff_file_name)
+            imwrite(diff_file_path, differences.astype(np.float32))
+            print(f"Differences saved to {diff_file_path}")
     elif not differences_exist:
         print("No differences found in any frame.")
 
@@ -186,20 +224,20 @@ if __name__ == "__main__":
     # compare_sequence(expected_dF_path, output_dF_path, save_diff=False, percentage_accuracy=1e-6)
     # print()
 
-    print("Step 5: Comparing files after Z-score computation...")
-    compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=False, percentage_accuracy=1e-6)
+    # print("Step 5: Comparing files after Z-score computation...")
+    # compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=False, percentage_accuracy=1e-6)
+    # print()
+
+    print("Step 6: Comparing files after closing in space...")
+    compare_sequence(expected_closing_path, output_closing_path, save_diff=False, percentage_accuracy=1e-6)
     print()
 
-    # print("Step 6: Comparing files after closing in space...")
-    # compare_files(expected_closing_path, output_closing_path, save_diff=False, percentage_accuracy=1e-6)
-    # print()
+    print("Step 7: Comparing files after median filtering...")
+    compare_sequence(expected_median_path, output_median_path, save_diff=False, percentage_accuracy=1e-6)
+    print()
 
-    # print("Step 7: Comparing files after median filtering...")
-    # compare_files(expected_median_path, output_median_path, save_diff=False, percentage_accuracy=1e-6)
-    # print()
-    #
-    # print("Step 8: Comparing files after active voxels detection...")
-    # compare_files(expected_active_voxels_path, output_active_voxels_path, save_diff=False, percentage_accuracy=1e-6)
-    # print()
-    #
+    print("Step 8: Comparing files after active voxels detection...")
+    compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=True, percentage_accuracy=1e-6)
+    print()
+
     print("All comparisons completed.")

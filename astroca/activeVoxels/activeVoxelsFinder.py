@@ -9,7 +9,7 @@ from astroca.activeVoxels.spaceMorphology import fill_space_morphology, apply_me
 import os
 from astroca.tools.exportData import export_data
 
-def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, threshold: float, index_xmin: list, index_xmax: list, radius: int = 1, size_median_filter: int = 2, save_results: bool = False, output_directory: str = None) -> np.ndarray:
+def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, threshold: float, index_xmin: list, index_xmax: list, radius: tuple, size_median_filter: int = 2, save_results: bool = False, output_directory: str = None) -> np.ndarray:
     """
     @brief Find active voxels in a 3D+time image sequence based on z-score thresholding.
 
@@ -19,7 +19,7 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     @param threshold: Threshold value to determine significant deviations in the z-score.
     @param index_xmin: 1D array of cropping bounds (left) for each Z slice.
     @param index_xmax: 1D array of cropping bounds (right) for each Z slice.
-    @param radius: Radius of the ball-like morphology to use for filling.
+    @param radius: Tuple specifying the radius for morphological operations (e.g., (1, 1, 1) for 3D).
     @param size_median_filter: Size of the median filter to apply for smoothing the data.
     @param save_results: Boolean flag to indicate whether to save the results.
     @param output_directory: Directory to save the results if save_results is True.

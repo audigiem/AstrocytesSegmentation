@@ -4,33 +4,57 @@
 """
 
 import numpy as np
-from scipy.ndimage import median_filter, binary_dilation
+from scipy.ndimage import median_filter, binary_closing, binary_dilation, binary_erosion
 from skimage.morphology import ball
 
 
-
-
-def fill_space_morphology(data: np.ndarray, radius: int = 1) -> np.ndarray:
+def create_ball_structuring_element(radius_z, radius_y, radius_x):
     """
-    @brief Fill/connect the structure in space with a ball-like morphology of radius 1.
-
-    @param data: 4D numpy array of shape (T, Z, Y, X) representing the image sequence.
-    @param radius: Radius of the ball-like morphology to use for filling.
-    @return: 4D numpy array with the filled structure.
-    @raises ValueError: If the radius is less than 1 or if the input data is not a 4D numpy array.
+    Simulate Strel3D.Shape.BALL.fromRadiusList in Java using a Manhattan ellipsoid.
     """
-    if radius < 1:
-        raise ValueError("Radius must be at least 1.")
+    zz, yy, xx = np.ogrid[
+        -radius_z:radius_z + 1,
+        -radius_y:radius_y + 1,
+        -radius_x:radius_x + 1
+    ]
+    mask = (np.abs(zz) / radius_z + np.abs(yy) / radius_y + np.abs(xx) / radius_x) <= 1
+    return mask
+
+def fill_space_morphology(data: np.ndarray, radius: tuple) -> np.ndarray:
+    """
+    Apply 3D closing morphology with a discrete ball (octahedron-like) shape on each time frame,
+    mimicking ImageJ behavior more closely at Z-boundaries using edge-padding.
+    @param data: 4D numpy array of shape (T, Z, Y, X) representing the image sequence (binary mask).
+    @param radius: Tuple specifying the radius for the ball structuring element (radius_z, radius_y, radius_x).
+    @return : 4D numpy array with the same shape as input data, where the structure is filled.
+    """
     if data.ndim != 4:
-        raise ValueError("Input must be 4D (T, Z, Y, X).")
+        raise ValueError("Expected 4D input array (T, Z, Y, X)")
 
-    # for each voxel, if it is non-zero, apply binary dilation with a ball-like structure
-    data_binary = (data == 255)  # Assuming active voxels are marked with 255
-    struct = ball(radius)
-    filled_data = np.array([binary_dilation(frame, structure=struct) for frame in data_binary])
-    filled_data = filled_data.astype(data.dtype) * 255  # Return in original data type
-    print(f"Filled space morphology with radius: {radius}, resulting shape: {filled_data.shape}")
-    return filled_data
+    radius_x, radius_y, radius_z = radius
+    struct_elem = create_ball_structuring_element(radius_z, radius_y, radius_x)
+
+    pad_width = ((radius_z, radius_z), (radius_y, radius_y), (radius_x, radius_x))
+
+    result = np.zeros_like(data, dtype=np.uint8)
+    binary_input = (data == 255)
+
+    for t in range(data.shape[0]):
+        frame = binary_input[t]
+
+        # Pad Z, Y, X with 'edge' to replicate border values
+        padded = np.pad(frame, pad_width, mode='edge')
+
+        # Morphological closing (dilation followed by erosion)
+        closed = binary_erosion(binary_dilation(padded, structure=struct_elem), structure=struct_elem)
+
+        # Crop to original shape
+        closed = closed[radius_z:-radius_z, radius_y:-radius_y, radius_x:-radius_x]
+
+        result[t] = closed.astype(np.uint8) * 255
+
+    print(f"Applied manual closing with (X,Y,Z)=({radius_x},{radius_y},{radius_z}) + 'edge' padding on all axes")
+    return result
 
 def apply_median_filter(data: np.ndarray, size: int = 2) -> np.ndarray:
     """
@@ -65,7 +89,7 @@ def main():
     print("Original Data Shape:", data.shape)
     for i in range(data.shape[0]):
         print(f"Frame {i}:\n{data[i]}")
-    filled_data = fill_space_morphology(data, radius=1)
+    filled_data = fill_space_morphology(data, radius=(1,1,1))
 
     print("Filled Data Shape:", filled_data.shape)
     # show each frame

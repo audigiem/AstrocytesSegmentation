@@ -25,3 +25,34 @@ Exécute le script principal :
 
 ```bash
 python tests/main.py
+```
+
+## Générer la documentation
+
+### Vérifier que doxygen est installé
+
+```bash
+doxygen --version
+```
+Si ce n'est pas le cas, installez-le :
+
+```bash
+sudo apt install doxygen
+```
+
+### Génération de la documentation
+
+```bash
+doxygen Doxyfile
+```
+
+### Visualiser la documentation
+Ouvrez le fichier `docs/html/index.html` dans votre navigateur.
+Une documentation LaTeX est également disponible dans `docs/latex/`.
+Pour compiler la documentation LaTeX, utilisez :
+
+```bash
+cd docs/latex
+make all
+```
+
