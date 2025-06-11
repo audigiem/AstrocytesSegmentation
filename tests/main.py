@@ -39,28 +39,28 @@ def main():
     # T, Z, Y, X = data.shape
     # print(f"Loaded data of shape: {data.shape}")
     #
-    # # === Initialization ===
-    # image_seq = ImageSequence3DPlusTime(data, time_length=T, width=X, height=Y, depth=Z)
-    #
-    # # === Crop + boundaries ===
-    # crop_boundaries(image_seq, [(0, Z), (pixel_cropped, Y), (x_min, x_max+1)])
-    # index_xmin, index_xmax, _, = compute_boundaries(image_seq, pixel_cropped=pixel_cropped)
-    #
-    # # === Variance Stabilization ===
-    # compute_variance_stabilization(image_seq, index_xmin, index_xmax)
-    #
-    # # === F0 estimation ===
-    # # F0_time_window = background_estimation_numpy(image_seq, index_xmin, index_xmax, moving_window, time_window, method, method2, percentile)
-    # F0 = background_estimation_single_block(image_seq, index_xmin, index_xmax, moving_window, method, method2, percentile)
-    # # F0_optimized = background_estimation_single_block_ultra_optimized(image_seq, index_xmin, index_xmax, moving_window, method, method2, percentile)
-    # # F0_numba = background_estimation_numba(image_seq, index_xmin, index_xmax, moving_window, T, method, method2, percentile)
-    #
-    # print(f"F0 shape: {F0.shape}")
-    #
-    # # === Compute dF and background noise estimation ===
-    # # dF_time_window, mean_noise_time_window = compute_dynamic_image(image_seq, F0_time_window, index_xmin, index_xmax, time_window)
-    # dF, mean_noise = compute_dynamic_image(image_seq, F0, index_xmin, index_xmax, T)
-    # std_noise = estimate_std_over_time(dF, index_xmin, index_xmax)
+    # === Initialization ===
+    image_seq = ImageSequence3DPlusTime(data, time_length=T, width=X, height=Y, depth=Z)
+
+    # === Crop + boundaries ===
+    crop_boundaries(image_seq, [(0, Z), (pixel_cropped, Y), (x_min, x_max+1)])
+    index_xmin, index_xmax, _, = compute_boundaries(image_seq, pixel_cropped=pixel_cropped)
+
+    # === Variance Stabilization ===
+    compute_variance_stabilization(image_seq, index_xmin, index_xmax)
+
+    # === F0 estimation ===
+    # F0_time_window = background_estimation_numpy(image_seq, index_xmin, index_xmax, moving_window, time_window, method, method2, percentile)
+    F0 = background_estimation_single_block(image_seq, index_xmin, index_xmax, moving_window, method, method2, percentile)
+    # F0_optimized = background_estimation_single_block_ultra_optimized(image_seq, index_xmin, index_xmax, moving_window, method, method2, percentile)
+    # F0_numba = background_estimation_numba(image_seq, index_xmin, index_xmax, moving_window, T, method, method2, percentile)
+
+    print(f"F0 shape: {F0.shape}")
+
+    # === Compute dF and background noise estimation ===
+    # dF_time_window, mean_noise_time_window = compute_dynamic_image(image_seq, F0_time_window, index_xmin, index_xmax, time_window)
+    dF, mean_noise = compute_dynamic_image(image_seq, F0, index_xmin, index_xmax, T)
+    std_noise = estimate_std_over_time(dF, index_xmin, index_xmax)
 
     dF = load_data("/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/dF.tif")
     mean_noise = 0.8388328552246094
