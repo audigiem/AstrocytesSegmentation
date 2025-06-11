@@ -5,7 +5,7 @@
 
 import numpy as np
 from astroca.activeVoxels.zScore import compute_z_score
-from astroca.activeVoxels.spaceMorphology import fill_space_morphology, apply_median_filter
+from astroca.activeVoxels.spaceMorphology import fill_space_morphology, apply_median_filter_3d_per_time, apply_median_filter_spherical, apply_median_filter_spherical_fast, apply_median_filter_spherical_numba
 import os
 from astroca.tools.exportData import export_data
 
@@ -42,12 +42,52 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     data = fill_space_morphology(data, radius)
     if save_results:
         export_data(data, output_directory, export_as_single_tif=True, file_name="filledSpaceMorphology")
-    data = apply_median_filter(data, size=size_median_filter)
+    # data = apply_median_filter_3d_per_time(data, size=size_median_filter)
+    # data = apply_median_filter_spherical(data)
+    # data = apply_median_filter_spherical_fast(data)
+    data = apply_median_filter_spherical_numba(data)
     if save_results:
         export_data(data, output_directory, export_as_single_tif=True, file_name="medianFiltered_2")
-    active_voxels = np.where(data > 0, dF, 0)  # Keep original dF values for active voxels, set inactive to 0
+    # vox(x,t) > 0 -> active_vox(x,t) = dF(x,t)
+    # vox(x,t) = 0 -> active_vox(x,t) = 0
+    # vox(x,t) < 0 -> active_vox(x,t) = std_noise
+    active_voxels = voxels_finder(data, dF, std_noise, index_xmin, index_xmax)
     if save_results:
         export_data(active_voxels, output_directory, export_as_single_tif=True, file_name="activeVoxels")
 
 
+    return active_voxels
+
+
+def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, index_xmin: list, index_xmax: list) -> np.ndarray:
+    """
+    @brief Determine active voxels based on the value of the filtered data. If data(x,t) > 0, then active_voxels(x,t) = dF(x,t); if data(x,t) < 0, then active_voxels(x,t) = std_noise; otherwise, active_voxels(x,t) = 0.
+    @param filtered_data: 4D numpy array of shape (T, Z, Y, X) representing the filtered data.
+    @param dF: 4D numpy array of shape (T, Z, Y, X) representing the dynamic image.
+    @param std_noise: Standard deviation of the noise level.
+    @param index_xmin: 1D array of cropping bounds (left) for each Z slice.
+    @param index_xmax: 1D array of cropping bounds (right) for each Z slice.
+    @return: 4D numpy array of active voxels with the same shape as input data, where active voxels are marked as dF value and inactive as 0.
+    """
+    if filtered_data.ndim != 4 or dF.ndim != 4:
+        raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
+
+    active_voxels = np.zeros_like(dF)
+
+    T, Z, Y, X = filtered_data.shape
+
+    for z in range(Z):
+        x_min = index_xmin[z]
+        x_max = index_xmax[z] + 1
+
+        filtered_slice = filtered_data[:, z, :, x_min:x_max]  # shape (T, Y, x_max-x_min)
+        dF_slice = dF[:, z, :, x_min:x_max]
+        active_slice = active_voxels[:, z, :, x_min:x_max]
+
+        mask_nonzero = filtered_slice != 0  # condition processedAV[i][index] != 0
+        mask_pos = (filtered_slice > 0) & mask_nonzero
+        mask_neg = (filtered_slice < 0) & mask_nonzero
+
+        active_slice[mask_pos] = dF_slice[mask_pos]
+        active_slice[mask_neg] = std_noise
     return active_voxels

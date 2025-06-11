@@ -1,3 +1,4 @@
+#! /usr/bin/env python3
 """
 @file compareFiles.py
 @brief This script compares my output files with the expected output files.
@@ -179,19 +180,19 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
 if __name__ == "__main__":
     # Define paths to expected and output files
     expected_f0_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/F0.tif"
-    output_f0_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/F0_single_block.tif"
+    output_f0_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/F0_estimated.tif"
 
     expected_cropped_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/data_cropped.tif"
     output_cropped_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/cropped_image_sequence.tif"
 
     expected_boundaries_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/data_boundaries.tif"
-    output_boundaries_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/cropped_image_sequence_with_boundaries.tif"
+    output_boundaries_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/bounded_image_sequence.tif"
 
     expected_anscombe_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/anscombeTransform.tif"
-    output_anscombe_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/anscombe_transform.tif"
+    output_anscombe_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/variance_stabilized_sequence.tif"
     
     expected_dF_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/dF.tif"
-    output_dF_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/dF.tif"
+    output_dF_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/dynamic_image_dF.tif"
 
     expected_Zscore_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/Zscore.tif"
     output_Zscore_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/zScore.tif"
@@ -206,34 +207,34 @@ if __name__ == "__main__":
     output_active_voxels_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/activeVoxels.tif"
 
     print("Comparing files after each step...")
-    # print("Step 1: Comparing files after crop and boundaries computations...")
-    #
-    # compare_sequence(expected_cropped_path, output_cropped_path, save_diff=False, percentage_accuracy=1e-6)
-    # compare_sequence(expected_boundaries_path, output_boundaries_path, save_diff=False, percentage_accuracy=1e-6)
-    # print()
-    #
-    # print("Step 2: Comparing files after Anscomb transform...")
-    # compare_sequence(expected_anscombe_path, output_anscombe_path, save_diff=False, percentage_accuracy=1e-6)
-    # print()
-    #
-    # print("Step 3: Comparing files after F0 estimation...")
-    # compare_files(expected_f0_path, output_f0_path, save_diff=False, percentage_accuracy=1e-6)
-    # print()
-    
-    # print("Step 4: Comparing files after dF computation...")
-    # compare_sequence(expected_dF_path, output_dF_path, save_diff=False, percentage_accuracy=1e-6)
-    # print()
+    print("Step 1: Comparing files after crop and boundaries computations...")
 
-    # print("Step 5: Comparing files after Z-score computation...")
-    # compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=False, percentage_accuracy=1e-6)
-    # print()
+    compare_sequence(expected_cropped_path, output_cropped_path, save_diff=True, percentage_accuracy=1e-6)
+    compare_sequence(expected_boundaries_path, output_boundaries_path, save_diff=True, percentage_accuracy=1e-6)
+    print()
+
+    print("Step 2: Comparing files after Anscomb transform...")
+    compare_sequence(expected_anscombe_path, output_anscombe_path, save_diff=True, percentage_accuracy=1e-6)
+    print()
+
+    print("Step 3: Comparing files after F0 estimation...")
+    compare_files(expected_f0_path, output_f0_path, save_diff=True, percentage_accuracy=1e-6)
+    print()
+    
+    print("Step 4: Comparing files after dF computation...")
+    compare_sequence(expected_dF_path, output_dF_path, save_diff=True, percentage_accuracy=1e-6)
+    print()
+
+    print("Step 5: Comparing files after Z-score computation...")
+    compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=True, percentage_accuracy=1e-6)
+    print()
 
     print("Step 6: Comparing files after closing in space...")
-    compare_sequence(expected_closing_path, output_closing_path, save_diff=False, percentage_accuracy=1e-6)
+    compare_sequence(expected_closing_path, output_closing_path, save_diff=True, percentage_accuracy=1e-6)
     print()
 
     print("Step 7: Comparing files after median filtering...")
-    compare_sequence(expected_median_path, output_median_path, save_diff=False, percentage_accuracy=1e-6)
+    compare_sequence(expected_median_path, output_median_path, save_diff=True, percentage_accuracy=1e-6)
     print()
 
     print("Step 8: Comparing files after active voxels detection...")
