@@ -5,5 +5,6 @@
 __pycache__/
 __init__.py
 *.pyc
-docs/
+docs/html/
+docs/latex/
 astroca.egg-info/

@@ -17,6 +17,7 @@ Crée un environnement virtuel :
 python -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+pip install -e .
 ```
 
 ## Exécution
@@ -24,7 +25,8 @@ pip install -r requirements.txt
 Exécute le script principal :
 
 ```bash
-python tests/main.py
+chmod +x tests/main.py
+./tests/main.py
 ```
 
 ## Générer la documentation

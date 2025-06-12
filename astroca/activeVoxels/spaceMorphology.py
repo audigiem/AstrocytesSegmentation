@@ -9,7 +9,7 @@ from scipy.ndimage import generic_filter
 from math import ceil
 from skimage.morphology import ball
 from skimage.util import view_as_windows
-from numba import njit, prange
+from numba import njit, prange, config
 
 
 def create_ball_structuring_element(radius_z, radius_y, radius_x):
