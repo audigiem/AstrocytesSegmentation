@@ -227,7 +227,6 @@ def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime'
 
     elapsed_time = time.time() - start_time
     print(f"Background F0 estimated in {elapsed_time:.2f} seconds.")
-    print()
 
     if save_results:
         if output_directory is None:
@@ -237,6 +236,7 @@ def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime'
         # Save the result as a .tif file
         export_data(F0, output_directory, export_as_single_tif=True, file_name="F0_estimated")
 
+    print()
     return F0
 
 
@@ -430,8 +430,6 @@ def compute_dynamic_image(image_sequence: ImageSequence3DPlusTime,
 
     mean_noise = float(np.median(flattened_dF[:k]))
     print(f"mean_Noise = {mean_noise}")
-    print(f"Dynamic image computed.")
-    print()
 
     if save_results:
         if output_directory is None:
@@ -440,7 +438,7 @@ def compute_dynamic_image(image_sequence: ImageSequence3DPlusTime,
             os.makedirs(output_directory)
         # Save the dF as a .tif file
         export_data(dF, output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
-        print(f"Dynamic image saved to {output_directory}")
 
+    print()
     return dF, mean_noise
 

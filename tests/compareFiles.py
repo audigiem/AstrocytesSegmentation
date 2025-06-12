@@ -173,38 +173,37 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
         print("No differences found in any frame.")
 
 
-
-
-
-
-if __name__ == "__main__":
+def main():
     # Define paths to expected and output files
-    expected_f0_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/F0.tif"
-    output_f0_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/F0_estimated.tif"
+    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdir/"
+    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/"
 
-    expected_cropped_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/data_cropped.tif"
-    output_cropped_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/cropped_image_sequence.tif"
+    expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
+    output_f0_path = OUTPUT_DIR_PATH + "F0_estimated.tif"
 
-    expected_boundaries_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/data_boundaries.tif"
-    output_boundaries_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/bounded_image_sequence.tif"
+    expected_cropped_path = EXPECTED_DIR_PATH + "data_cropped.tif"
+    output_cropped_path = OUTPUT_DIR_PATH + "cropped_image_sequence.tif"
 
-    expected_anscombe_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/anscombeTransform.tif"
-    output_anscombe_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/variance_stabilized_sequence.tif"
-    
-    expected_dF_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/dF.tif"
-    output_dF_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/dynamic_image_dF.tif"
+    expected_boundaries_path = EXPECTED_DIR_PATH + "data_boundaries.tif"
+    output_boundaries_path = OUTPUT_DIR_PATH + "bounded_image_sequence.tif"
 
-    expected_Zscore_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/Zscore.tif"
-    output_Zscore_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/zScore.tif"
+    expected_anscombe_path = EXPECTED_DIR_PATH + "anscombeTransform.tif"
+    output_anscombe_path = OUTPUT_DIR_PATH + "variance_stabilized_sequence.tif"
 
-    expected_closing_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/Closing_in_space.tif"
-    output_closing_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/filledSpaceMorphology.tif"
+    expected_dF_path = EXPECTED_DIR_PATH + "dF.tif"
+    output_dF_path = OUTPUT_DIR_PATH + "dynamic_image_dF.tif"
 
-    expected_median_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/Median.tif"
-    output_median_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/medianFiltered_2.tif"
+    expected_Zscore_path = EXPECTED_DIR_PATH + "Zscore.tif"
+    output_Zscore_path = OUTPUT_DIR_PATH + "zScore.tif"
 
-    expected_active_voxels_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/AV.tif"
-    output_active_voxels_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/activeVoxels.tif"
+    expected_closing_path = EXPECTED_DIR_PATH + "Closing_in_space.tif"
+    output_closing_path = OUTPUT_DIR_PATH + "filledSpaceMorphology.tif"
+
+    expected_median_path = EXPECTED_DIR_PATH + "Median.tif"
+    output_median_path = OUTPUT_DIR_PATH + "medianFiltered_2.tif"
+
+    expected_active_voxels_path = EXPECTED_DIR_PATH + "AV.tif"
+    output_active_voxels_path = OUTPUT_DIR_PATH + "activeVoxels.tif"
 
     print("Comparing files after each step...")
     print("Step 1: Comparing files after crop and boundaries computations...")
@@ -220,7 +219,7 @@ if __name__ == "__main__":
     print("Step 3: Comparing files after F0 estimation...")
     compare_files(expected_f0_path, output_f0_path, save_diff=True, percentage_accuracy=1e-6)
     print()
-    
+
     print("Step 4: Comparing files after dF computation...")
     compare_sequence(expected_dF_path, output_dF_path, save_diff=True, percentage_accuracy=1e-6)
     print()
@@ -242,3 +241,8 @@ if __name__ == "__main__":
     print()
 
     print("All comparisons completed.")
+
+
+
+if __name__ == "__main__":
+    main()

@@ -36,26 +36,28 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         export_data(data, output_directory, export_as_single_tif=True, file_name="zScore")
+    print()
     # data = apply_median_filter(data, size=size_median_filter)
     # if save_results:
     #     export_data(data, output_directory, export_as_single_tif=True, file_name="medianFiltered_1")
     data = fill_space_morphology(data, radius)
     if save_results:
         export_data(data, output_directory, export_as_single_tif=True, file_name="filledSpaceMorphology")
+    print()
     # data = apply_median_filter_3d_per_time(data, size=size_median_filter)
     # data = apply_median_filter_spherical(data)
     # data = apply_median_filter_spherical_fast(data)
     data = apply_median_filter_spherical_numba(data)
     if save_results:
         export_data(data, output_directory, export_as_single_tif=True, file_name="medianFiltered_2")
+    print()
     # vox(x,t) > 0 -> active_vox(x,t) = dF(x,t)
     # vox(x,t) = 0 -> active_vox(x,t) = 0
     # vox(x,t) < 0 -> active_vox(x,t) = std_noise
     active_voxels = voxels_finder(data, dF, std_noise, index_xmin, index_xmax)
     if save_results:
         export_data(active_voxels, output_directory, export_as_single_tif=True, file_name="activeVoxels")
-
-
+    print()
     return active_voxels
 
 
@@ -69,6 +71,7 @@ def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, i
     @param index_xmax: 1D array of cropping bounds (right) for each Z slice.
     @return: 4D numpy array of active voxels with the same shape as input data, where active voxels are marked as dF value and inactive as 0.
     """
+    print("Finding active voxels...")
     if filtered_data.ndim != 4 or dF.ndim != 4:
         raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
 

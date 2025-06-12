@@ -32,6 +32,8 @@ def fill_space_morphology(data: np.ndarray, radius: tuple) -> np.ndarray:
     @param radius: Tuple specifying the radius for the ball structuring element (radius_z, radius_y, radius_x).
     @return : 4D numpy array with the same shape as input data, where the structure is filled.
     """
+    print(f"Apply manual closing with (X,Y,Z)={radius} + 'edge' padding on all axes")
+
     if data.ndim != 4:
         raise ValueError("Expected 4D input array (T, Z, Y, X)")
 
@@ -57,7 +59,6 @@ def fill_space_morphology(data: np.ndarray, radius: tuple) -> np.ndarray:
 
         result[t] = closed.astype(np.uint8) * 255
 
-    print(f"Applied manual closing with (X,Y,Z)=({radius_x},{radius_y},{radius_z}) + 'edge' padding on all axes")
     return result
 
 
@@ -177,11 +178,11 @@ def apply_median_filter_spherical_numba(data: np.ndarray, radius: float = 1.5) -
     """
     Very fast median filter with spherical mask using Numba over (T, Z, Y, X)
     """
+    print(f"Apply Numba-accelerated spherical median filter with radius={radius}")
     offsets = spherical_offsets(radius)
     filtered = np.empty_like(data)
     for t in range(data.shape[0]):
         filtered[t] = median_filter_sphere_3d(data[t], offsets)
-    print(f"Applied Numba-accelerated spherical median filter with radius={radius}")
     return filtered
 
 def main():

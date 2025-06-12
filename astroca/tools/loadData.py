@@ -7,6 +7,8 @@ import numpy as np
 import os
 import tifffile as tif
 import glob
+import configparser
+
 
 def load_data(file_path: str) -> np.ndarray:
     """
@@ -27,3 +29,26 @@ def load_data(file_path: str) -> np.ndarray:
         return tif.imread(file_path)
     else:
         raise ValueError(f"Invalid file path: {file_path}. Must be a .tif file or a directory containing .tif files.")
+
+
+
+def read_config(config_file: str = None) -> dict:
+    """
+    Read configuration parameters from a .ini file.
+
+    @param config_file: Path to the configuration file. If None, default is relative to this file.
+    @return: Dictionary containing configuration parameters.
+    """
+    if config_file is None:
+        # Default path to the configuration file
+        base_dir = os.path.dirname(os.path.abspath(__file__))  # /.../astroca/tools
+        config_file = os.path.join(base_dir, "..", "..", "config.ini")
+        config_file = os.path.normpath(config_file)
+
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    if not config.sections():
+        raise ValueError(f"No sections found in configuration file: {config_file}")
+
+    return {section: dict(config.items(section)) for section in config.sections()}

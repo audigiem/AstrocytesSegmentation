@@ -35,7 +35,6 @@ def crop_boundaries(image_sequence: ImageSequence3DPlusTime, coordinate_range_pe
     image_sequence.set_data(cropped_data)
     image_sequence.set_dimensions(cropped_time_length, cropped_depth, cropped_height, cropped_width)
     print(f"Cropped data shape: {cropped_data.shape}")
-    print()
 
     if save_results:
         if output_directory is None:
@@ -43,7 +42,6 @@ def crop_boundaries(image_sequence: ImageSequence3DPlusTime, coordinate_range_pe
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         export_data(cropped_data, output_directory, export_as_single_tif=True, file_name="cropped_image_sequence")
-        print(f"Cropped data saved to {output_directory}/cropped_image_sequence.tif")
-
+    print()
 
 

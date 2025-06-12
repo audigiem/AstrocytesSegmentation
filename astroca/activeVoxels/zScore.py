@@ -21,6 +21,8 @@ def compute_z_score(data: np.ndarray, std_noise: float, gaussian_noise_mean: flo
     @param index_xmax: 1D array of cropping bounds (right) for each Z slice.
     @return: 4D numpy array of z-scores with the same shape as input data.
     """
+    print(f"Compute binary z-score with masking on X boundaries for each Z slice...")
+
     T, Z, Y, X = data.shape
 
     if std_noise <= 0:
@@ -46,5 +48,4 @@ def compute_z_score(data: np.ndarray, std_noise: float, gaussian_noise_mean: flo
         # Affecter 255 dans processed sur la même zone uniquement où mask est True
         processed[:, z, :, x_min:x_max][mask] = 255
 
-    print(f"Computed binary z-score with masked X-range per Z")
     return processed

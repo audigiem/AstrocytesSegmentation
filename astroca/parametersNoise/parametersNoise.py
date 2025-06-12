@@ -63,6 +63,7 @@ def estimate_std_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray)
     valid = std_map[~np.isnan(std_map) & (std_map > 0)]
     std = float(np.median(valid)) if valid.size else 0.0
     print(f"Estimated std over time (median of map): {std:.7f}")
+    print()
     return std
 
 

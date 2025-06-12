@@ -65,7 +65,6 @@ def compute_boundaries(image_sequence: ImageSequence3DPlusTime, pixel_cropped: i
     # image_sequence.default_value = default_value
     
     print(f"Cropping boundaries computed: \n    index_xmin={index_xmin}, \n    index_xmax={index_xmax}, \n    default_value={default_value}")
-    print()
 
     if save_results:
         if output_directory is None:
@@ -73,5 +72,6 @@ def compute_boundaries(image_sequence: ImageSequence3DPlusTime, pixel_cropped: i
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         export_data(data, output_directory, export_as_single_tif=True, file_name="bounded_image_sequence")
+    print()
 
     return index_xmin, index_xmax, default_value

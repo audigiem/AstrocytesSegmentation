@@ -45,7 +45,6 @@ def compute_variance_stabilization(image_sequence: ImageSequence3DPlusTime,
 
     image_sequence.set_data(data)  # Update the data in place
     print("Variance stabilization completed.")
-    print()
 
     if save_results:
         if output_directory is None:
@@ -53,7 +52,8 @@ def compute_variance_stabilization(image_sequence: ImageSequence3DPlusTime,
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         export_data(data, output_directory, export_as_single_tif=True, file_name="variance_stabilized_sequence")
-        print(f"Transformed data saved to {output_directory}")
+
+    print()
 
 def check_variance(image_sequence: ImageSequence3DPlusTime,
                    index_xmin: np.ndarray,

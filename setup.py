@@ -13,6 +13,7 @@ setup(
         "numba",
         "scipy",
         "matplotlib",
+        "configparser",
     ],
     author='Audigier matteo',
     description='Segmentation et analyse d\'astrocytes en 3D+temps',
