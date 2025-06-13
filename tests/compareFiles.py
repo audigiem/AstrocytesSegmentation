@@ -124,9 +124,8 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
 
         if np.all(frame_differences == 0):
             print(f"Frame {t}: Files are identical.")
-
-        elif np.all(frame_differences < percentage_accuracy * np.abs(expected_frame)):
-            print(f"Frame {t}: Files are similar within the acceptable percentage ({percentage_accuracy * 100:.6f}%).")
+        elif compute_frame_accuracy(expected_frame, frame_differences, percentage_accuracy) > 99.8:
+            print(f"Frame {t}: has less than .5% error with the expected frame within the accuracy {percentage_accuracy}.")
         elif np.max(frame_differences) < 1e-5:
             print(f"Frame {t}: Files are similar within a very small margin (less than 1e-5).")
         else:
@@ -138,18 +137,6 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
             list_mean_diff.append(mean_diff)
             list_accuracy.append(compute_frame_accuracy(expected_frame, frame_differences, percentage_accuracy))
 
-            # compute the number of voxels that differ by more than the acceptable percentage
-            # threshold = percentage_accuracy * np.abs(expected_frame)
-            # significant_differences = np.sum(frame_differences > threshold)
-            # total_voxels = expected_frame.size
-            # percentage_differences = (significant_differences / total_voxels) * 100
-            # print(f"Frame {t}: Percentage of voxels differing by more than {percentage_accuracy * 100:.6f}%: {percentage_differences:.6f}%")
-            # print(f"         : Max difference: {max_diff:.6f}")
-            # print(f"         : Mean difference: {mean_diff:.6f}")
-            #
-            # # show info on max difference
-            # print(f"         : Max difference voxel coordinates: {np.unravel_index(np.argmax(frame_differences), frame_differences.shape)}")
-            # print(f"         : Max difference voxel value: {expected_frame[np.unravel_index(np.argmax(frame_differences), frame_differences.shape)]}")
     if differences_exist:
         # display global statistics for the differences
         print("\nGlobal statistics for differences across all frames:")
@@ -175,8 +162,8 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
 
 def main():
     # Define paths to expected and output files
-    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdir/"
-    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/"
+    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdirFewerTime/"
+    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectoryFewerTime/"
 
     expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
     output_f0_path = OUTPUT_DIR_PATH + "F0_estimated.tif"

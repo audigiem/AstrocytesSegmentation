@@ -7,7 +7,7 @@ from numba import njit, prange, types
 from numba.typed import Dict, List
 
 
-@njit(parallel=True)
+# @njit(parallel=True)
 def find_events(av: np.ndarray, threshold_size3D: int,
                 threshold_size3D_removed: int, threshold_corr: float):
     T, Z, Y, X = av.shape
@@ -22,13 +22,13 @@ def find_events(av: np.ndarray, threshold_size3D: int,
 
     # Pré-calcul des profils avec vérification des dimensions
     all_profiles = np.empty((X, Y, Z, T), dtype=np.float32)
-    for x in prange(X):
+    for x in range(X):
         for y in range(Y):
             for z in range(Z):
                 for t in range(T):
                     all_profiles[x, y, z, t] = av[t, z, y, x]
 
-    for t in prange(T):
+    for t in range(T):
         while True:
             seed = _find_seed_optimized(av, id_connected, t, Z, Y, X)
             if seed[0] == -1:
@@ -72,7 +72,7 @@ def find_events(av: np.ndarray, threshold_size3D: int,
     return id_connected, np.int32(len(final_ids))  # Conversion explicite
 
 
-@njit
+# @njit
 def _find_seed_optimized(av, id_connected, t0, Z, Y, X):
     max_val = 0.0
     best = (np.int32(-1), np.int32(-1), np.int32(-1), np.int32(-1))
@@ -86,7 +86,7 @@ def _find_seed_optimized(av, id_connected, t0, Z, Y, X):
     return best
 
 
-@njit
+# @njit
 def _detect_pattern_range(profile, t):
     t = np.int32(t)
     if profile[t] == 0:
@@ -103,7 +103,7 @@ def _detect_pattern_range(profile, t):
     return (np.int32(start), np.int32(end))
 
 
-@njit
+# @njit
 def _ncc_optimized(v1, v2):
     mean1 = np.mean(v1)
     mean2 = np.mean(v2)
@@ -116,7 +116,7 @@ def _ncc_optimized(v1, v2):
     return np.float32(np.sum(v1 * v2) / (norm1 * norm2))
 
 
-@njit
+# @njit
 def _find_connected_voxels_optimized(av, id_connected, all_profiles,
                                      seed, pattern, group_id,
                                      threshold_corr, T, Z, Y, X,
@@ -157,7 +157,11 @@ def _find_connected_voxels_optimized(av, id_connected, all_profiles,
                         if start == -1:
                             continue
                         sub = profile[start:end].copy()
-                        corr = _ncc_optimized(pattern, sub)
+                        if len(sub) != len(pattern):
+                            min_len = min(len(sub), len(pattern))
+                            corr = _ncc_optimized(pattern[:min_len], sub[:min_len])
+                        else:
+                            corr = _ncc_optimized(pattern, sub)
                         if corr > threshold_corr:
                             for dt in range(end - start):
                                 t_curr = start + dt
@@ -167,7 +171,7 @@ def _find_connected_voxels_optimized(av, id_connected, all_profiles,
     return count
 
 
-@njit
+# @njit
 def _process_groups_optimized(id_connected, final_ids, threshold_size3D_removed, T, Z, Y, X):
     group_counts = Dict.empty(key_type=types.int32, value_type=types.int32)
 
