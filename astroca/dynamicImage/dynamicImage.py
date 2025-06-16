@@ -3,6 +3,7 @@
 @brief Module for computing the dynamic image (ΔF = F - F0) and the background F0 estimation over time.
 @detail Applies a moving mean or median filter to estimate the fluorescence baseline (F0) and supports min or percentile aggregation.
 """
+from email.contentmanager import raw_data_manager
 
 from astroca.tools.scene import ImageSequence3DPlusTime
 
@@ -13,6 +14,8 @@ import os
 import numpy as np
 import time
 from numpy.lib.stride_tricks import sliding_window_view
+from astroca.varianceStabilization.varianceStabilization import anscombe_inverse
+from astroca.tools.loadData import load_data
 
 def background_estimation_numpy(image_sequence: 'ImageSequence3DPlusTime',
                                  index_xmin: np.ndarray,
@@ -128,10 +131,7 @@ def background_estimation_numpy(image_sequence: 'ImageSequence3DPlusTime',
 def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime',
                                        index_xmin: np.ndarray,
                                        index_xmax: np.ndarray,
-                                       moving_window: int,
-                                       method: str = "percentile",
-                                       method2: str = "Mean",
-                                       percentile: float = 10.0,
+                                       params_values: dict,
                                        save_results: bool = False,
                                        output_directory: str = None) -> np.ndarray:
     """
@@ -140,16 +140,21 @@ def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime'
     @param image_sequence: 4D image sequence (T, Z, Y, X)
     @param index_xmin: Array of cropping bounds (left) for each Z
     @param index_xmax: Array of cropping bounds (right) for each Z
-    @param moving_window: Size of the moving window for aggregation
-    @param method: Aggregation method ('min' or 'percentile')
-    @param method2: Secondary aggregation method ('Mean' or 'Med')
-    @param percentile: Percentile value for 'percentile' method (default 10.0)
+    @param params_values: Dictionary containing parameters for background estimation
     @param save_results: If True, saves the result to the specified output directory
     @param output_directory: Directory to save the result if save_results is True
     @return: Background array of shape (1, Z, Y, X)
     """
     start_time = time.time()
     print("Estimating background F0 (single block mode, optimized)...")
+
+    if len(params_values) != 4:
+        raise ValueError("params_values must contain 'moving_window', 'method', 'method2', and 'percentile' keys")
+
+    moving_window = int(params_values['moving_window'])
+    method = params_values['method']
+    method2 = params_values['method2']
+    percentile = float(params_values['percentile'])
 
     # Parameters validation
     if method not in ["min", "percentile"]:
@@ -442,3 +447,30 @@ def compute_dynamic_image(image_sequence: ImageSequence3DPlusTime,
     print()
     return dF, mean_noise
 
+
+def compute_image_amplitude(data_cropped, index_xmin: np.ndarray, index_xmax: np.ndarray, save_results: bool=False, output_directory: str=None) -> np.ndarray:
+    """
+    @brief Compute the amplitude of the image using the Anscombe inverse transform.
+    result -> (data_cropped - f0_inv)/f0_inv
+    @param data_cropped: 4D numpy array of shape (T, Z, Y, X) representing the cropped raw data.
+    @param index_xmin: 1D array of shape (depth,) with left cropping bounds per z
+    @param index_xmax: 1D array of shape (depth,) with right cropping bounds per z
+    @param save_results: If True, saves the transformed ata to the specified output directory
+    @param output_directory: Directory to save the transformed data if save_results is True
+    @return: 4D numpy array of shape (T, Z, Y, X) with the amplitude values.
+    """
+    print("Computing image amplitude...")
+
+    f0_inv = anscombe_inverse(data_cropped, index_xmin, index_xmax, save_results=save_results, output_directory=output_directory)
+    safe_f0_inv = np.where(f0_inv == 0, 1e-10, f0_inv)  # Avoid division by zero
+    image_amplitude = (data_cropped - f0_inv) / safe_f0_inv  # Compute the amplitude
+
+    if save_results:
+        if output_directory is None:
+            raise ValueError("Output directory must be specified when save_results is True.")
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        # Save the amplitude as a .tif file
+        export_data(image_amplitude, output_directory, export_as_single_tif=True, file_name="image_amplitude")
+    print()
+    return image_amplitude

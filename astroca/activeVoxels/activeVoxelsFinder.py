@@ -9,19 +9,16 @@ from astroca.activeVoxels.spaceMorphology import fill_space_morphology, apply_me
 import os
 from astroca.tools.exportData import export_data
 
-def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, threshold: float, index_xmin: list, index_xmax: list, radius: tuple, border_condition : str = 'nearest', size_median_filter: float = 2, save_results: bool = False, output_directory: str = None) -> np.ndarray:
+def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, index_xmin: list, index_xmax: list, params_values: dict, save_results: bool = False, output_directory: str = None) -> np.ndarray:
     """
     @brief Find active voxels in a 3D+time image sequence based on z-score thresholding.
 
     @param dF: 4D numpy array of shape (T, Z, Y, X) representing the image sequence.
     @param std_noise: Standard deviation of the noise level to normalize the z-score.
     @param gaussian_noise_mean: Mean (or median) of the Gaussian noise, used to center the z-score calculation.
-    @param threshold: Threshold value to determine significant deviations in the z-score.
     @param index_xmin: 1D array of cropping bounds (left) for each Z slice.
     @param index_xmax: 1D array of cropping bounds (right) for each Z slice.
-    @param radius: Tuple specifying the radius for morphological operations (e.g., (1, 1, 1) for 3D).
-    @param border_condition: String specifying the border condition for median filtering ('nearest', 'reflect', etc.).
-    @param size_median_filter: Size of the median filter to apply for smoothing the data.
+    @param params_values: Dictionary containing parameters for feature computation.
     @param save_results: Boolean flag to indicate whether to save the results.
     @param output_directory: Directory to save the results if save_results is True.
     @return: 4D numpy array of active voxels with the same shape as input data, where active voxels are marked as dF value and inactive as 0.
@@ -29,6 +26,14 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     """
     if dF.ndim != 4:
         raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
+
+    if len(params_values) != 4:
+        raise ValueError("params_values must contain exactly 4 parameters: 'size_median_filter', 'border_condition', 'threshold', and 'radius'.")
+    threshold = float(params_values['threshold_zscore'])
+    radius = int(params_values['radius_closing_morphology'])
+    radius = (radius, radius, radius)  # Convert to tuple for 3D morphology
+    size_median_filter = float(params_values['median_size'])
+    border_condition = params_values['border_condition']
 
     data = compute_z_score(dF, std_noise, gaussian_noise_mean, threshold, index_xmin, index_xmax)
     if save_results:

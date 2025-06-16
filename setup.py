@@ -14,6 +14,7 @@ setup(
         "scipy",
         "matplotlib",
         "configparser",
+        "openpyxl",
     ],
     author='Audigier matteo',
     description='Segmentation et analyse d\'astrocytes en 3D+temps',

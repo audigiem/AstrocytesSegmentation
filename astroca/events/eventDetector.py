@@ -471,21 +471,22 @@ class EventDetectorOptimized:
         return stats
 
 
-def detect_calcium_events_optimized(av_data: np.ndarray, threshold_size_3d: int = 10,
-                                   threshold_size_3d_removed: int = 5,
-                                   threshold_corr: float = 0.5,
+def detect_calcium_events_optimized(av_data: np.ndarray, params_values: dict = None,
                                    save_results: bool = False,
                                    output_directory: str = None) -> Tuple[np.ndarray, List[int]]:
     """
     Function to detect calcium events in 4D active voxel data using the optimized EventDetector.
     @param av_data: 4D numpy array of shape (T, Z, Y, X) representing the active voxel data.
-    @param threshold_size_3d: Minimum size of the 3D region to be considered an event.
-    @param threshold_size_3d_removed: Minimum size of the 3D region to be retained after merging small events.
-    @param threshold_corr: Threshold for normalized cross-correlation to link voxels.
+    @param params_values: Dictionary containing parameters for event detection.
     @param save_results: Boolean flag to save results to disk.
     @param output_directory: Directory to save results if save_results is True.
     @return: Tuple containing: list of detected events, their IDs, and statistics.
     """
+    if len(params_values) != 3:
+        raise ValueError("params_values must contain exactly 3 parameters: 'threshold_size_3d', 'threshold_size_3d_removed', and 'threshold_corr'.")
+    threshold_size_3d = int(params_values['threshold_size_3d'])
+    threshold_size_3d_removed = int(params_values['threshold_size_3d_removed'])
+    threshold_corr = float(params_values['threshold_corr'])
     detector = EventDetectorOptimized(av_data, threshold_size_3d,
                                     threshold_size_3d_removed, threshold_corr)
     detector.find_events()
