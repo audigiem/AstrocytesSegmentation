@@ -78,12 +78,12 @@ class EventDetectorOptimized:
         id_small_AV_groups = []
 
         for t in range(self.time_length_):
-            print(f"\nProcessing time frame {t}, searching seed ...")
-            frame_time = time.time()
+            # print(f"\nProcessing time frame {t}, searching seed ...")
+            # frame_time = time.time()
             seed = self._find_seed_point(t)
             while seed is not None:
                 x, y, z = seed
-                print(f"Found seed at ({x}, {y}, {z}) in frame {t}, identifier {event_id}")
+                # print(f"Found seed at ({x}, {y}, {z}) in frame {t}, identifier {event_id}")
 
                 intensity_profile = self.av_[:, z, y, x]
                 pattern = self._detect_pattern_optimized(intensity_profile, t)
@@ -113,11 +113,11 @@ class EventDetectorOptimized:
                         raise ValueError(f"Invalid pattern for voxel ({index[3]}, {index[2]}, {index[1]}, {index[0]})")
                     self._find_connected_AV(index, pattern, event_id, waiting_for_processing)
                     index_waiting_for_processing += 1
-                print(f"    Size of group ID={event_id} : {len(waiting_for_processing)}")
+                # print(f"    Size of group ID={event_id} : {len(waiting_for_processing)}")
 
                 # check if the number of voxels in the group is below the threshold
                 if len(waiting_for_processing) < self.threshold_size_3d_:
-                    print(f"    Group ID={event_id} is too small ({len(waiting_for_processing)} voxels), adding to small groups")
+                    # print(f"    Group ID={event_id} is too small ({len(waiting_for_processing)} voxels), adding to small groups")
                     small_AV_groups.append(waiting_for_processing.copy())
                     id_small_AV_groups.append(event_id)
                 else:
@@ -128,17 +128,17 @@ class EventDetectorOptimized:
                 waiting_for_processing.clear()
                 index_waiting_for_processing = 0
                 seed = self._find_seed_point(t)
-            print(f"Time for frame {t}: {time.time() - frame_time:.2f} seconds")
+            # print(f"Time for frame {t}: {time.time() - frame_time:.2f} seconds")
 
         # if there are small groups, try to merge them with larger groups
         if len(small_AV_groups) > 0:
-            print(f"\nFound {len(small_AV_groups)} small groups, trying to merge them with larger groups...")
+            # print(f"\nFound {len(small_AV_groups)} small groups, trying to merge them with larger groups...")
             self._group_small_neighborhood_regions(small_AV_groups, id_small_AV_groups)
 
             for i, group in enumerate(small_AV_groups):
-                change_id = self._change_id_small_regions(small_AV_groups, id_small_AV_groups)
+                change_id = self._change_id_small_regions(group, id_small_AV_groups)
                 if change_id:
-                    print(f"Group {id_small_AV_groups[i]} merged into larger group")
+                    # print(f"Group {id_small_AV_groups[i]} merged into larger group")
                     self.stats_["events_merged"] += 1
                     small_AV_groups.pop(i)
                     id_small_AV_groups.pop(i)
@@ -146,10 +146,10 @@ class EventDetectorOptimized:
                 else:
                     # if the small group is not isolated, check its size and add/remove it
                     if len(group) >= self.threshold_size_3d_removed_:
-                        print(f"Group {id_small_AV_groups[i]} is large enough ({len(group)} voxels), adding to final events")
+                        # print(f"Group {id_small_AV_groups[i]} is large enough ({len(group)} voxels), adding to final events")
                         self.final_id_events_.append(id_small_AV_groups[i])
                     else:
-                        print(f"Group {id_small_AV_groups[i]} is isolated and too small ({len(group)} voxels), removing it")
+                        # print(f"Group {id_small_AV_groups[i]} is isolated and too small ({len(group)} voxels), removing it")
                         # remove the small group from the id_connected_voxel_
                         for index_point in group:
                             t, z, y, x = index_point
@@ -382,46 +382,50 @@ class EventDetectorOptimized:
         If found, change the group's ID to the largest neighbor's ID.
 
         Args:
-            list_av: List of voxels [[t, z, y, x]] in the small AV group.
+            list_av: List of voxels [t, z, y, x] in the small AV group.
             list_ids_small_av_group: List of IDs of all small AV groups.
 
         Returns:
             True if the group ID was changed, False otherwise.
         """
-        neighbor_id_counts = {}
+        list_ids_neighborhood = []
+        list_count = []
 
-        for index_points in list_av:
-             for index_point in index_points:
-                t, z, y, x = index_point
-                for dt in [-1, 0, 1]:
-                    nt = t + dt
-                    if nt < 0 or nt >= self.time_length_:
+        for index_point in list_av:
+            t, z, y, x = index_point
+            for dt in [-1, 0, 1]:
+                nt = t + dt
+                if nt < 0 or nt >= self.time_length_:
+                    continue
+                for dz in [-1, 0, 1]:
+                    nz = z + dz
+                    if nz < 0 or nz >= self.depth_:
                         continue
-                    for dz in [-1, 0, 1]:
-                        nz = z + dz
-                        if nz < 0 or nz >= self.depth_:
+                    for dy in [-1, 0, 1]:
+                        ny = y + dy
+                        if ny < 0 or ny >= self.height_:
                             continue
-                        for dy in [-1, 0, 1]:
-                            ny = y + dy
-                            if ny < 0 or ny >= self.height_:
+                        for dx in [-1, 0, 1]:
+                            nx = x + dx
+                            if dx == dy == dz == 0:
                                 continue
-                            for dx in [-1, 0, 1]:
-                                nx = x + dx
-                                if dx == dy == dz == dt == 0:
-                                    continue
-                                if nx < 0 or nx >= self.width_:
-                                    continue
-                                neighbor_id = self.id_connected_voxel_[nt, nz, ny, nx]
-                                if neighbor_id != 0 and neighbor_id not in list_ids_small_av_group:
-                                    neighbor_id_counts[neighbor_id] = neighbor_id_counts.get(neighbor_id, 0) + 1
+                            if nx < 0 or nx >= self.width_:
+                                continue
+                            neighbor_id = self.id_connected_voxel_[nt, nz, ny, nx]
+                            if neighbor_id != 0 and neighbor_id not in list_ids_small_av_group:
+                                if neighbor_id in list_ids_neighborhood:
+                                    idx = list_ids_neighborhood.index(neighbor_id)
+                                    list_count[idx] += 1
+                                else:
+                                    list_ids_neighborhood.append(neighbor_id)
+                                    list_count.append(1)
 
-        if neighbor_id_counts:
-            # Find the neighbor group with the most contacts
-            new_id = max(neighbor_id_counts, key=neighbor_id_counts.get)
-            for index_points in list_av:
-                for index_point in index_points:
-                    t, z, y, x = index_point
-                    self.id_connected_voxel_[t, z, y, x] = new_id
+        if list_ids_neighborhood:
+            index_new_id = int(np.argmax(list_count))
+            new_id = list_ids_neighborhood[index_new_id]
+            for index_point in list_av:
+                t, z, y, x = index_point
+                self.id_connected_voxel_[t, z, y, x] = new_id
             return True
         else:
             return False
@@ -485,27 +489,16 @@ def detect_calcium_events_optimized(av_data: np.ndarray, threshold_size_3d: int 
     detector = EventDetectorOptimized(av_data, threshold_size_3d,
                                     threshold_size_3d_removed, threshold_corr)
     detector.find_events()
-    results = detector.get_results()
+    id_connections, id_events = detector.get_results()
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified if save_results is True.")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-        export_data(results[0], output_directory, export_as_single_tif=True, filename="ID_calciumEvents.tif")
+        id_connections = id_connections.astype(np.float32)  # Ensure the data is in float32 format
+        export_data(id_connections, output_directory, export_as_single_tif=True, file_name="ID_calciumEvents")
 
-
-
-    # stats = detector.get_statistics()
-
-    # print(f"\n=== STATISTICS ===")
-    # print(f"Number of events: {stats['nb_events']}")
-    # if stats['nb_events'] > 0:
-    #     print(f"Event sizes: {stats['event_sizes']}")
-    #     print(f"Mean event size: {stats['mean_event_size']:.1f}")
-    #     print(f"Max event size: {stats['max_event_size']}")
-    #     print(f"Total event voxels: {stats['total_event_voxels']}")
-
-    return results[0], results[1]
+    return id_connections, id_events
 
 
 def test_with_synthetic_data():

@@ -158,31 +158,69 @@ def spherical_offsets(radius: float):
     return np.array(offsets, dtype=np.int32)
 
 @njit(parallel=True)
-def median_filter_sphere_3d(frame, offsets):
+def median_filter_sphere_3d(frame, offsets, border_condition='nearest'):
     Z, Y, X = frame.shape
     output = np.empty_like(frame)
-    for z in prange(Z):
-        for y in range(Y):
-            for x in range(X):
-                values = []
-                for k in range(offsets.shape[0]):
-                    dz, dy, dx = offsets[k]
-                    zz = min(max(z + dz, 0), Z - 1)
-                    yy = min(max(y + dy, 0), Y - 1)
-                    xx = min(max(x + dx, 0), X - 1)
-                    values.append(frame[zz, yy, xx])
-                output[z, y, x] = np.median(np.array(values))
-    return output
+    if border_condition not in ['nearest', 'reflect']:
+        raise ValueError("Unsupported border condition. Use 'nearest', 'reflect'.")
+    if border_condition == 'nearest':
+        # Nearest neighbor padding
+        for z in prange(Z):
+            for y in range(Y):
+                for x in range(X):
+                    values = []
+                    for k in range(offsets.shape[0]):
+                        dz, dy, dx = offsets[k]
+                        zz = min(max(z + dz, 0), Z - 1)
+                        yy = min(max(y + dy, 0), Y - 1)
+                        xx = min(max(x + dx, 0), X - 1)
+                        values.append(frame[zz, yy, xx])
+                    output[z, y, x] = np.median(np.array(values))
+        return output
+    else:
+        # Reflective padding
+        for z in prange(Z):
+            for y in range(Y):
+                for x in range(X):
+                    values = []
+                    for k in range(offsets.shape[0]):
+                        dz, dy, dx = offsets[k]
+                        zz = z + dz
+                        yy = y + dy
+                        xx = x + dx
+                        if zz < 0:
+                            zz = -zz
+                        elif zz >= Z:
+                            zz = 2 * Z - zz - 2
+                        if yy < 0:
+                            yy = -yy
+                        elif yy >= Y:
+                            yy = 2 * Y - yy - 2
+                        if xx < 0:
+                            xx = -xx
+                        elif xx >= X:
+                            xx = 2 * X - xx - 2
+                        values.append(frame[zz, yy, xx])
+                    output[z, y, x] = np.median(np.array(values))
+        return output
 
-def apply_median_filter_spherical_numba(data: np.ndarray, radius: float = 1.5) -> np.ndarray:
+def apply_median_filter_spherical_numba(data: np.ndarray, radius: float = 1.5, border_condition: str = 'nearest') -> np.ndarray:
     """
     Very fast median filter with spherical mask using Numba over (T, Z, Y, X)
+    @param data: 4D array (T, Z, Y, X)
+    @param radius: Spherical radius (float)
+    @param border_condition: 'nearest' or 'reflect' for handling borders
     """
-    print(f"Apply Numba-accelerated spherical median filter with radius={radius}")
+    print(f"Apply Numba-accelerated spherical median filter with radius={radius}, and border condition='{border_condition}'")
     offsets = spherical_offsets(radius)
     filtered = np.empty_like(data)
     for t in range(data.shape[0]):
-        filtered[t] = median_filter_sphere_3d(data[t], offsets)
+        try:
+            filtered[t] = median_filter_sphere_3d(data[t], offsets, border_condition)
+        except Exception as e:
+            print(f"Error processing frame {t}: {e}")
+            filtered[t] = data[t]
+
     return filtered
 
 def main():

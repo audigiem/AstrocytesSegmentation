@@ -9,7 +9,7 @@ from astroca.activeVoxels.spaceMorphology import fill_space_morphology, apply_me
 import os
 from astroca.tools.exportData import export_data
 
-def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, threshold: float, index_xmin: list, index_xmax: list, radius: tuple, size_median_filter: int = 2, save_results: bool = False, output_directory: str = None) -> np.ndarray:
+def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, threshold: float, index_xmin: list, index_xmax: list, radius: tuple, border_condition : str = 'nearest', size_median_filter: float = 2, save_results: bool = False, output_directory: str = None) -> np.ndarray:
     """
     @brief Find active voxels in a 3D+time image sequence based on z-score thresholding.
 
@@ -20,6 +20,7 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     @param index_xmin: 1D array of cropping bounds (left) for each Z slice.
     @param index_xmax: 1D array of cropping bounds (right) for each Z slice.
     @param radius: Tuple specifying the radius for morphological operations (e.g., (1, 1, 1) for 3D).
+    @param border_condition: String specifying the border condition for median filtering ('nearest', 'reflect', etc.).
     @param size_median_filter: Size of the median filter to apply for smoothing the data.
     @param save_results: Boolean flag to indicate whether to save the results.
     @param output_directory: Directory to save the results if save_results is True.
@@ -47,7 +48,7 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     # data = apply_median_filter_3d_per_time(data, size=size_median_filter)
     # data = apply_median_filter_spherical(data)
     # data = apply_median_filter_spherical_fast(data)
-    data = apply_median_filter_spherical_numba(data)
+    data = apply_median_filter_spherical_numba(data, radius=size_median_filter, border_condition=border_condition)
     if save_results:
         export_data(data, output_directory, export_as_single_tif=True, file_name="medianFiltered_2")
     print()
@@ -77,20 +78,20 @@ def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, i
 
     active_voxels = np.zeros_like(dF)
 
-    T, Z, Y, X = filtered_data.shape
+    # positive_mask: dF(x,t) > 0 and filtered_data(x,t) > 0
+    positive_mask = (filtered_data > 0) & (dF >= 0)
+    # negative_mask: dF(x,t) < 0 and filtered_data(x,t) > 0
+    negative_mask = (filtered_data > 0) & (dF < 0)
+    # null_mask: remaining voxels where filtered_data(x,t) <= 0
+    null_mask = filtered_data <= 0
 
+    T, Z, Y, X = dF.shape
+
+    active_voxels[positive_mask] = dF[positive_mask]
+    active_voxels[negative_mask] = std_noise
+    active_voxels[null_mask] = 0
+    # Cropping the active voxels based on index_xmin and index_xmax
     for z in range(Z):
-        x_min = index_xmin[z]
-        x_max = index_xmax[z] + 1
+        active_voxels[:, z, :, index_xmin[z]:index_xmax[z]] = active_voxels[:, z, :, index_xmin[z]:index_xmax[z]]
 
-        filtered_slice = filtered_data[:, z, :, x_min:x_max]  # shape (T, Y, x_max-x_min)
-        dF_slice = dF[:, z, :, x_min:x_max]
-        active_slice = active_voxels[:, z, :, x_min:x_max]
-
-        mask_nonzero = filtered_slice != 0  # condition processedAV[i][index] != 0
-        mask_pos = (filtered_slice > 0) & mask_nonzero
-        mask_neg = (filtered_slice < 0) & mask_nonzero
-
-        active_slice[mask_pos] = dF_slice[mask_pos]
-        active_slice[mask_neg] = std_noise
     return active_voxels
