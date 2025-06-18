@@ -15,8 +15,12 @@ setup(
         "matplotlib",
         "configparser",
         "openpyxl",
+        "pandas",
+        "tqdm"
     ],
     author='Audigier matteo',
     description='Segmentation et analyse d\'astrocytes en 3D+temps',
     license='MIT',
 )
+
+

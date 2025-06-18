@@ -69,14 +69,16 @@ def main():
     # === Compute Z-score, closing morphology, median filter ===
     active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params_values=params['active_voxels'], save_results=save_results, output_directory=output_folder)
 
+
+    active_voxels = load_data(output_folder + "activeVoxels.tif")
     # === Detect calcium events ===
-    id_connected_voxels, events_ids = detect_calcium_events_optimized(active_voxels, params_values=params['events_extraction'], save_results=save_results, output_directory=output_folder)
-
-    # === Compute image amplitude ===
-    image_amplitude = compute_image_amplitude(data_cropped, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
-
-    # === Compute features ===
-    save_features_from_events(id_connected_voxels, events_ids, image_amplitude, params_values=params['features_extraction'], save_result=save_results, output_directory=output_folder)
+    # id_connected_voxels, events_ids = detect_calcium_events_optimized(active_voxels, params_values=params['events_extraction'], save_results=save_results, output_directory=output_folder)
+    #
+    # # === Compute image amplitude ===
+    # image_amplitude = compute_image_amplitude(data_cropped, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
+    #
+    # # === Compute features ===
+    # save_features_from_events(id_connected_voxels, events_ids, image_amplitude, params_values=params['features_extraction'], save_result=save_results, output_directory=output_folder)
 
     
 

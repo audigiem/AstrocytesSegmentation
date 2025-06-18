@@ -5,7 +5,8 @@
 
 import numpy as np
 from astroca.activeVoxels.zScore import compute_z_score
-from astroca.activeVoxels.spaceMorphology import fill_space_morphology, apply_median_filter_3d_per_time, apply_median_filter_spherical, apply_median_filter_spherical_fast, apply_median_filter_spherical_numba
+from astroca.activeVoxels.spaceMorphology import *
+from astroca.activeVoxels.testMedianFilter import *
 import os
 from astroca.tools.exportData import export_data
 
@@ -31,7 +32,6 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
         raise ValueError("params_values must contain exactly 4 parameters: 'size_median_filter', 'border_condition', 'threshold', and 'radius'.")
     threshold = float(params_values['threshold_zscore'])
     radius = int(params_values['radius_closing_morphology'])
-    radius = (radius, radius, radius)  # Convert to tuple for 3D morphology
     size_median_filter = float(params_values['median_size'])
     border_condition = params_values['border_condition']
 
@@ -43,17 +43,19 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
             os.makedirs(output_directory)
         export_data(data, output_directory, export_as_single_tif=True, file_name="zScore")
     print()
-    # data = apply_median_filter(data, size=size_median_filter)
-    # if save_results:
-    #     export_data(data, output_directory, export_as_single_tif=True, file_name="medianFiltered_1")
-    data = fill_space_morphology(data, radius)
+
+    data = closing_morphology_in_space(data, radius, border_condition)
     if save_results:
         export_data(data, output_directory, export_as_single_tif=True, file_name="filledSpaceMorphology")
     print()
     # data = apply_median_filter_3d_per_time(data, size=size_median_filter)
-    # data = apply_median_filter_spherical(data)
-    # data = apply_median_filter_spherical_fast(data)
-    data = apply_median_filter_spherical_numba(data, radius=size_median_filter, border_condition=border_condition)
+    # data = apply_median_filter_spherical_numba(data, radius=size_median_filter, border_condition=border_condition)
+    # data = median_filter_3d(data, 1.5, border_condition)
+    # data = median_3d_for_4d_stack(data, size_median_filter, n_workers=8)
+    data = unified_median_filter_3d(data, size_median_filter)
+
+    # data = apply_median_filter_4d(data)   nul
+    # data = apply_median_filter_4d_parallel(data)
     if save_results:
         export_data(data, output_directory, export_as_single_tif=True, file_name="medianFiltered_2")
     print()

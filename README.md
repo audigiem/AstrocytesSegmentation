@@ -4,14 +4,14 @@ Segmentation des astrocytes à partir d'images de fluorescence 3D+temps.
 
 ## Installation
 
-Clone le dépôt :
+Cloner le dépôt :
 
 ```bash
 git clone https://gitlab.inria.fr/anbadoua/analyzeastrocasignals.git
 cd analyzeastrocasignals
 ```
 
-Crée un environnement virtuel :
+Créer un environnement virtuel :
 
 ```bash
 python -m venv venv
@@ -22,7 +22,7 @@ pip install -e .
 
 ## Exécution
 
-Exécute le script principal :
+Exécuter le script principal :
 
 ```bash
 chmod +x tests/main.py

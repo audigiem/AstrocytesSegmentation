@@ -8,3 +8,4 @@ scipy
 matplotlib
 configparser
 openpyxl
+tqdm

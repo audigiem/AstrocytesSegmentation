@@ -2,14 +2,54 @@
 @file spaceMorphology.py
 @brief This module provides functionality to fill/connect the structure in space, with a ball-like morphology of radius 1.
 """
-
-from scipy.ndimage import median_filter, binary_closing, binary_dilation, binary_erosion
+from dask.array.creation import pad_udf
+from scipy.ndimage import median_filter, binary_closing, generate_binary_structure
 import numpy as np
 from scipy.ndimage import generic_filter
 from math import ceil
 from skimage.morphology import ball
 from skimage.util import view_as_windows
 from numba import njit, prange, config
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
+from tqdm import tqdm
+
+def closing_morphology_in_space(data: np.ndarray, radius: int, border_mode: str='reflect') -> np.ndarray:
+    """
+    Apply 3D morphological closing (dilation followed by erosion) with a spherical structuring element
+    to each time frame of a 4D sequence (T, Z, Y, X).
+    @param data: 4D numpy array (T, Z, Y, X), binary (0/255 or 0/1)
+    @param radius: Radius of the spherical structuring element
+    @param border_mode: Padding mode for borders, e.g., 'reflect', 'edge', 'constant', etc.
+    @return: 4D numpy array (T, Z, Y, X) after closing
+    """
+    if border_mode not in ['reflect', 'edge']:
+        raise ValueError("Unsupported border mode. Use 'reflect' or 'edge'.")
+    # Spherical structuring element
+    struct_elem = ball(radius)
+    pad_width = ((radius, radius), (radius, radius), (radius, radius))  # (Z, Y, X)
+
+    # Ensure binary input
+    binary = (data > 0)
+    result = np.empty_like(binary, dtype=np.uint8)
+    if border_mode == 'edge':
+        for t in range(binary.shape[0]):
+            padded = np.pad(binary[t], pad_width=pad_width, mode='edge')
+            # Apply 3D closing to each time frame
+            closed = binary_closing(padded, structure=struct_elem)
+            result[t] = closed.astype(np.uint8) * 255
+
+        return result
+    else:
+        for t in range(binary.shape[0]):
+            padded = np.pad(binary[t], pad_width=pad_width, mode='reflect')
+            # Apply 3D closing to each time frame
+            closed = binary_closing(padded, structure=struct_elem)
+            # Crop to original shape
+            closed = closed[radius:-radius, radius:-radius, radius:-radius]
+            result[t] = closed.astype(np.uint8) * 255
+
+        return result
 
 
 def create_ball_structuring_element(radius_z, radius_y, radius_x):
@@ -22,7 +62,12 @@ def create_ball_structuring_element(radius_z, radius_y, radius_x):
         -radius_x:radius_x + 1
     ]
     mask = (np.abs(zz) / radius_z + np.abs(yy) / radius_y + np.abs(xx) / radius_x) <= 1
+    # mask = (zz / radius_z) ** 2 + (yy / radius_y) ** 2 + (xx / radius_x) ** 2 <= 1.0
+
     return mask
+
+
+
 
 def fill_space_morphology(data: np.ndarray, radius: tuple) -> np.ndarray:
     """
@@ -42,24 +87,93 @@ def fill_space_morphology(data: np.ndarray, radius: tuple) -> np.ndarray:
 
     pad_width = ((radius_z, radius_z), (radius_y, radius_y), (radius_x, radius_x))
 
+    T, Z, Y, X = data.shape
     result = np.zeros_like(data, dtype=np.uint8)
-    binary_input = (data == 255)
 
-    for t in range(data.shape[0]):
-        frame = binary_input[t]
+    for t in range(T):
+        binary_frame = (data[t] > 0)
 
         # Pad Z, Y, X with 'edge' to replicate border values
-        padded = np.pad(frame, pad_width, mode='edge')
+        padded = np.pad(binary_frame, pad_width, mode='reflect')
 
         # Morphological closing (dilation followed by erosion)
-        closed = binary_erosion(binary_dilation(padded, structure=struct_elem), structure=struct_elem)
-
+        # closed = binary_erosion(binary_dilation(padded, structure=struct_elem), structure=struct_elem)
+        closed = binary_closing(padded, structure=struct_elem)
         # Crop to original shape
         closed = closed[radius_z:-radius_z, radius_y:-radius_y, radius_x:-radius_x]
 
         result[t] = closed.astype(np.uint8) * 255
 
     return result
+
+
+
+def median_3d_for_4d_stack(fourd_stack, radius=2, n_workers=None):
+    """
+    Applique un filtre médian 3D à chaque frame 3D d'un stack 4D.
+
+    Args:
+        fourd_stack (numpy.ndarray): Stack 4D (T, Z, Y, X)
+        radius (float): Rayon du voisinage (1.5 donne un voisinage 3×3×3)
+        n_workers (int): Nombre de workers pour le traitement parallèle
+
+    Returns:
+        numpy.ndarray: Stack 4D filtré
+    """
+    # round up radius to nearest bigger odd integer
+    footprint = ball(ceil(radius))
+    n_frames = fourd_stack.shape[0]
+    filtered_stack = np.empty_like(fourd_stack)
+
+    def process_frame(t):
+        filtered_stack[t] = median_filter(
+            fourd_stack[t],
+            footprint=footprint,
+            mode='reflect'
+        )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
+        list(tqdm(executor.map(process_frame, range(n_frames)), total=n_frames, desc="Processing frames"))
+
+    return filtered_stack
+
+
+def median_filter_3d(data: np.ndarray, size_radius: float = 1.5, border_mode: str='reflect') -> np.ndarray:
+    """
+    Apply a 3D median filter to each time frame (Z, Y, X).
+    @param data: 4D numpy array of shape (T, Z, Y, X)
+    @param size: Size of the median filter kernel (should be odd)
+    @param border_mode: Padding mode for borders, e.g., 'reflect', 'edge', etc.
+    @return: Filtered 4D data.
+    """
+
+    if border_mode not in ['reflect', 'edge']:
+        raise ValueError("Unsupported border mode. Use 'reflect' or 'edge'.")
+
+    struct = ball(size_radius)
+    int_size_radius = ceil(size_radius)
+    if int_size_radius % 2 == 0:
+        int_size_radius += 1
+    pad_width = ((int_size_radius, int_size_radius), (int_size_radius, int_size_radius), (int_size_radius, int_size_radius))
+
+    filtered = np.empty_like(data)
+    if border_mode == 'edge':
+        for t in range(data.shape[0]):
+            padded = np.pad(data[t], pad_width=pad_width, mode='edge')
+            filtered_temps = median_filter(padded, footprint=struct, mode='edge')
+            filtered_temps = filtered_temps[int_size_radius:-int_size_radius, int_size_radius:-int_size_radius, int_size_radius:-int_size_radius]
+            filtered[t] = filtered_temps
+
+        return filtered
+    else:
+        for t in range(data.shape[0]):
+            padded = np.pad(data[t], pad_width=pad_width, mode='reflect')
+            filtered_temps = median_filter(padded, footprint=struct, mode='reflect')
+            filtered_temps = filtered_temps[int_size_radius:-int_size_radius, int_size_radius:-int_size_radius, int_size_radius:-int_size_radius]
+            filtered[t] = filtered_temps
+
+        return filtered
+
 
 
 
@@ -79,70 +193,9 @@ def apply_median_filter_3d_per_time(data: np.ndarray, size: float = 1.5) -> np.n
 
     filtered = np.empty_like(data)
     for t in range(data.shape[0]):
-        filtered[t] = median_filter(data[t], size=size_3d)
+        filtered[t] = median_filter(data[t], size=size_3d, mode='mirror')
 
     print(f"Applied 3D median filter per frame with size={size_3d}")
-    return filtered
-
-def spherical_mask(radius: float) -> np.ndarray:
-    """
-    Create a 3D spherical structuring element with a given radius (can be float).
-    """
-    r = ceil(radius)
-    L = np.arange(-r, r + 1)
-    Z, Y, X = np.meshgrid(L, L, L, indexing='ij')
-    sphere = (X**2 + Y**2 + Z**2) <= radius**2
-    return sphere
-
-def apply_median_filter_spherical(data: np.ndarray, radius: float = 1.5) -> np.ndarray:
-    """
-    Apply a median filter with a spherical structuring element to each time frame.
-    @param data: 4D array (T, Z, Y, X)
-    @param radius: Spherical radius (float), like in Filters3D.MEDIAN
-    """
-    struct = spherical_mask(radius)
-    filtered = np.empty_like(data)
-    for t in range(data.shape[0]):
-        filtered[t] = generic_filter(data[t], np.median, footprint=struct, mode='mirror')
-    print(f"Applied spherical median filter with radius={radius} (shape {struct.shape}, {struct.sum()} voxels)")
-    return filtered
-
-
-def fast_spherical_median_filter(frame: np.ndarray, radius: float) -> np.ndarray:
-    """
-    Apply a fast spherical median filter to a single 3D frame (Z, Y, X)
-    @param frame: 3D array (Z, Y, X)
-    @param radius: Spherical radius (float)
-    @return: 2D array (Z, Y, X) with the median values within the spherical mask.
-    """
-    mask = spherical_mask(radius)
-    patch_size = mask.shape
-    pad_width = tuple((s // 2, s // 2) for s in patch_size)
-    padded = np.pad(frame, pad_width, mode='reflect')
-
-    # Extract sliding windows (patches)
-    patches = view_as_windows(padded, patch_size)
-    Z, Y, X, *_ = patches.shape
-
-    # Reshape and mask
-    patches = patches.reshape(Z, Y, X, -1)  # (Z, Y, X, N)
-    masked = patches[..., mask.flatten()]  # keep only values in sphere
-
-    # Compute median along last axis
-    return np.median(masked, axis=-1).astype(frame.dtype)
-
-
-def apply_median_filter_spherical_fast(data: np.ndarray, radius: float = 1.5) -> np.ndarray:
-    """
-    Vectorized fast spherical median filter over 4D (T, Z, Y, X)
-    @param data: 4D array (T, Z, Y, X)
-    @param radius: Spherical radius (float)
-    @return: 4D array with the same shape as input data, where each frame is filtered.
-    """
-    filtered = np.empty_like(data)
-    for t in range(data.shape[0]):
-        filtered[t] = fast_spherical_median_filter(data[t], radius)
-    print(f"Applied fast spherical median filter with radius={radius}")
     return filtered
 
 
@@ -157,8 +210,18 @@ def spherical_offsets(radius: float):
                     offsets.append((dz, dy, dx))
     return np.array(offsets, dtype=np.int32)
 
+
+@njit
+def compute_median(values):
+    n = len(values)
+    sorted_vals = np.sort(values)
+    if n % 2 == 0:
+        return 0.5 * (sorted_vals[n // 2 - 1] + sorted_vals[n // 2])
+    else:
+        return sorted_vals[n // 2]
+
 @njit(parallel=True)
-def median_filter_sphere_3d(frame, offsets, border_condition='nearest'):
+def median_filter_sphere_3d(frame, offsets, border_condition='reflect'):
     Z, Y, X = frame.shape
     output = np.empty_like(frame)
     if border_condition not in ['nearest', 'reflect']:
@@ -201,10 +264,10 @@ def median_filter_sphere_3d(frame, offsets, border_condition='nearest'):
                         elif xx >= X:
                             xx = 2 * X - xx - 2
                         values.append(frame[zz, yy, xx])
-                    output[z, y, x] = np.median(np.array(values))
+                    output[z, y, x] = compute_median(np.array(values))
         return output
 
-def apply_median_filter_spherical_numba(data: np.ndarray, radius: float = 1.5, border_condition: str = 'nearest') -> np.ndarray:
+def apply_median_filter_spherical_numba(data: np.ndarray, radius: float = 1.5, border_condition: str = 'reflect') -> np.ndarray:
     """
     Very fast median filter with spherical mask using Numba over (T, Z, Y, X)
     @param data: 4D array (T, Z, Y, X)
@@ -222,6 +285,56 @@ def apply_median_filter_spherical_numba(data: np.ndarray, radius: float = 1.5, b
             filtered[t] = data[t]
 
     return filtered
+
+
+
+
+def unified_median_filter_3d(
+        data: np.ndarray,
+        radius: float = 1.5,
+        border_mode: str = 'reflect',
+        n_workers: int = None
+) -> np.ndarray:
+    """
+    Median filter 3D unifié pour stacks 4D (T,Z,Y,X)
+
+    Args:
+        data: Input stack (T,Z,Y,X)
+        radius: Rayon de la sphère (1.5 → voisinage 3×3×7)
+        border_mode: 'reflect', 'nearest', 'constant', etc.
+        n_workers: Nombre de threads
+    """
+    r = int(np.ceil(radius))
+
+    # Créer le masque sphérique
+    shape = (2 * r + 1, 2 * r + 1, 2 * r + 1)
+    mask = np.zeros(shape, dtype=bool)
+    center = np.array([r, r, r])
+    for idx in np.ndindex(shape):
+        if np.linalg.norm(np.array(idx) - center) <= radius:
+            mask[idx] = True
+
+    # Padding manuel : seulement sur les axes Z, Y, X
+    pad_width = [(0, 0), (r, r), (r, r), (r, r)]
+    padded = np.pad(data, pad_width=pad_width, mode=border_mode)
+
+    filtered = np.empty_like(data)
+
+    def process_frame(t):
+        result = median_filter(
+            padded[t], footprint=mask, mode='constant', cval=0.0  # on ignore mode ici
+        )
+        # Enlever le padding
+        filtered[t] = result[r:-r, r:-r, r:-r]
+
+    with ThreadPoolExecutor(max_workers=n_workers) as executor:
+        list(tqdm(
+            executor.map(process_frame, range(data.shape[0])),
+            total=data.shape[0]
+        ))
+
+    return filtered
+
 
 def main():
     # Example usage

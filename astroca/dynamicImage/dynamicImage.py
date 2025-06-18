@@ -136,7 +136,6 @@ def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime'
                                        output_directory: str = None) -> np.ndarray:
     """
     @brief Estimate the background F0 using entire time sequence as single block.
-    Version optimisée NumPy avec le même comportement que Java.
     @param image_sequence: 4D image sequence (T, Z, Y, X)
     @param index_xmin: Array of cropping bounds (left) for each Z
     @param index_xmax: Array of cropping bounds (right) for each Z
@@ -176,58 +175,40 @@ def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime'
 
     F0 = np.zeros((1, Z, Y, X), dtype=np.float32)
 
-    # Calcul du nombre d'itérations comme en Java
     time_window = T
     num_iter = time_window - moving_window + 1
 
     print(f"Processing entire sequence of {T} frames with moving window {moving_window}")
     print(f"Number of iterations: {num_iter}")
 
-    # Traitement optimisé par slice Z
     for z in range(Z):
         x_min = int(index_xmin[z])
         x_max = int(index_xmax[z])
 
-        # Vérification des bornes comme en Java
         if x_min >= x_max or x_min < 0 or x_max >= X:
             continue
 
-        # Extraire la région d'intérêt pour ce Z
-        # Inclure x_max comme en Java (+1)
         roi_data = data[:, z, :, x_min:x_max + 1]  # Shape: (T, Y, X_roi)
 
-        # Créer une vue de fenêtre glissante sur l'axe temporel
-        # roi_data.shape = (T, Y, X_roi)
-        # On veut une fenêtre glissante sur l'axe 0 (temps)
         windowed_data = np.lib.stride_tricks.sliding_window_view(
             roi_data, window_shape=moving_window, axis=0
         )  # Shape: (num_iter, Y, X_roi, moving_window)
 
-        # Calcul de la moyenne ou médiane mobile
         if method2 == "Mean":
-            # Moyenne sur la dernière dimension (fenêtre temporelle)
             moving_values = np.mean(windowed_data, axis=-1)  # Shape: (num_iter, Y, X_roi)
         else:  # method2 == "Med"
-            # Médiane sur la dernière dimension (fenêtre temporelle)
             moving_values = np.median(windowed_data, axis=-1)  # Shape: (num_iter, Y, X_roi)
 
-        # Agrégation finale selon la méthode
         if method == "min":
-            # Minimum sur l'axe des itérations
             result = np.min(moving_values, axis=0)  # Shape: (Y, X_roi)
-        else:  # method == "percentile"
-            # Tri sur l'axe des itérations pour chaque pixel
+        else:
             sorted_values = np.sort(moving_values, axis=0)  # Shape: (num_iter, Y, X_roi)
 
-            # Calcul de l'index du percentile comme en Java avec Math.ceil
             index_percentile = int(np.ceil(percentile / 100.0 * num_iter))
-            # Assurer que l'index est au moins 1 (comme le ceil en Java)
             index_percentile = max(1, index_percentile)
 
-            # Sélectionner le percentile (indexation 0-based donc -1)
             result = sorted_values[index_percentile - 1]  # Shape: (Y, X_roi)
 
-        # Assigner le résultat à la région correspondante
         F0[0, z, :, x_min:x_max + 1] = result
 
     elapsed_time = time.time() - start_time

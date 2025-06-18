@@ -1,3 +1,4 @@
+#! /usr/bin/env python3
 import numpy as np
 import tifffile as tiff
 import matplotlib.pyplot as plt
@@ -71,12 +72,15 @@ def plot_slice_comparison(vol1, vol2, diff, frame=0, z_slice=0):
 
 if __name__ == "__main__":
     # Remplace par tes fichiers .tif
-    expected_closing_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir/Closing_in_space.tif"
-    output_closing_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/filledSpaceMorphology.tif"
+    expected_closing_path = "/home/matteo/Bureau/INRIA/codeJava/outputdirFewerTime/Median.tif"
+    output_closing_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectoryFewerTime/medianFiltered_2.tif"
 
     vol1 = load_data(expected_closing_path)
     vol2 = load_data(output_closing_path)
-
+    if vol1.ndim != 4 or vol2.ndim != 4:
+        raise ValueError(f"Both volumes must be 4D arrays (T, Z, Y, X), got shapes {vol1.shape} and {vol2.shape}")
+    elif vol1.shape != vol2.shape:
+        raise ValueError(f"Volumes must have the same shape, got {vol1.shape} and {vol2.shape}")
     diff, percent_diff = compare_volumes(vol1, vol2, threshold=1e-4)
     plot_histograms(vol1, vol2, diff)
 
