@@ -25,6 +25,7 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     @return: 4D numpy array of active voxels with the same shape as input data, where active voxels are marked as dF value and inactive as 0.
     @raise ValueError: If the input data is not a 4D numpy array or if the standard deviation of noise is not greater than zero.
     """
+    print("=== Finding active voxels in the 3D+time image sequence ===")
     if dF.ndim != 4:
         raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
 
@@ -65,6 +66,8 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     active_voxels = voxels_finder(data, dF, std_noise, index_xmin, index_xmax)
     if save_results:
         export_data(active_voxels, output_directory, export_as_single_tif=True, file_name="activeVoxels")
+
+    print(60 * "=")
     print()
     return active_voxels
 
@@ -79,7 +82,7 @@ def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, i
     @param index_xmax: 1D array of cropping bounds (right) for each Z slice.
     @return: 4D numpy array of active voxels with the same shape as input data, where active voxels are marked as dF value and inactive as 0.
     """
-    print("Finding active voxels...")
+    print(" - Finding active voxels...")
     if filtered_data.ndim != 4 or dF.ndim != 4:
         raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
 
@@ -98,7 +101,7 @@ def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, i
     active_voxels[negative_mask] = std_noise
     active_voxels[null_mask] = 0
     # Cropping the active voxels based on index_xmin and index_xmax
-    for z in range(Z):
+    for z in tqdm(range(Z), desc="Cropping active voxels", unit="slice"):
         active_voxels[:, z, :, index_xmin[z]:index_xmax[z]] = active_voxels[:, z, :, index_xmin[z]:index_xmax[z]]
 
     return active_voxels

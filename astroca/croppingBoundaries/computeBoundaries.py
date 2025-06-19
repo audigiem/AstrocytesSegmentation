@@ -11,67 +11,75 @@ import numpy as np
 from astroca.tools.scene import ImageSequence3DPlusTime
 from astroca.tools.exportData import export_data
 import os
+from tqdm import tqdm
 
-def compute_boundaries(image_sequence: ImageSequence3DPlusTime, pixel_cropped: int = 2, save_results: bool = False, output_directory: str = None) -> tuple:
+def compute_boundaries(image_sequence: 'ImageSequence3DPlusTime',
+                       pixel_cropped: int = 2,
+                       save_results: bool = False,
+                       output_directory: str = None) -> tuple:
     """
-    @brief Compute cropping boundaries (empty bands) for a 3D image sequence with time dimension in place.
-    @param image_sequence: An instance of ImageSequence3DPlusTime containing the image data.
-    @param pixel_cropped: Number of pixels to remove at both ends of the valid region (in X) for each Z slice.
-    @param save_results: If True, the computed boundaries will be saved to the image_sequence object.
-    @param output_directory: Directory where the cropped data will be saved if save_results is True.
-    @return: Tuple (index_xmin, index_xmax, default_value) updated in-place in the image_sequence object.
+    Compute cropping boundaries in X for each Z slice based on background values.
+    Sets boundary pixels to default_value and saves results optionally.
+
+    @param image_sequence: ImageSequence3DPlusTime instance with 4D data (T, Z, Y, X)
+    @param pixel_cropped: Number of pixels to trim inside each boundary
+    @param save_results: Whether to save the updated sequence
+    @param output_directory: Directory to save the bounded sequence if save_results is True
+    @return: (index_xmin, index_xmax, default_value)
     """
-    
-    print("Computing cropping boundaries...")
-    data = image_sequence.get_data()  # shape: (T, Z, Y, X)
+    print(" - Computing cropping boundaries in X for each Z slice...")
+    data = image_sequence.get_data()
     T, Z, Y, X = data.shape
-    t = 0  # Use the first time frame to compute cropping bounds
+    t = 0  # analyse du premier temps uniquement
 
-
-    # Sample 10% of Y values
     nb_y_tested = max(1, int(0.1 * Y))
     y_array = np.random.choice(Y, size=nb_y_tested, replace=False)
 
-    # Define default value from a known empty pixel
     default_value = float(data[t, 0, 0, X - 1])
     image_sequence.set_default_value(default_value)
 
     index_xmin = np.full(Z, -1, dtype=int)
     index_xmax = np.full(Z, X - 1, dtype=int)
 
-    for z in range(Z):
+    for z in tqdm(range(Z), desc="Computing X bounds per Z-slice", unit="slice"):
+        found = False
         for x in range(X):
             values = data[t, z, y_array, x]
             if not np.all(values == default_value):
-                if index_xmin[z] == -1:
+                if not found:
                     index_xmin[z] = x
-            elif index_xmin[z] != -1:
+                    found = True
+            elif found:
                 index_xmax[z] = x - 1
                 break
 
-    # Replace values on borders with default_value
-    for t in range(T):
+    for t in tqdm(range(T), desc="Cropping borders", unit="frame"):
         for z in range(Z):
-            for y in range(Y):
-                data[t, z, y, index_xmin[z]:index_xmin[z] + pixel_cropped] = default_value
-                data[t, z, y, index_xmax[z] - pixel_cropped + 1:index_xmax[z] + 1] = default_value
+            x_start = index_xmin[z]
+            x_end = index_xmax[z]
+            if x_start < 0 or x_end <= x_start:
+                continue  # skip invalid bounds
+
+            crop_start = x_start
+            crop_end = x_end + 1
+
+            data[t, z, :, crop_start:crop_start + pixel_cropped] = default_value
+            data[t, z, :, crop_end - pixel_cropped:crop_end] = default_value
+
 
     index_xmin += pixel_cropped
     index_xmax -= pixel_cropped
 
-    image_sequence.set_data(data)  # In-place update
-    # image_sequence.index_xmin = index_xmin
-    # image_sequence.index_xmax = index_xmax
-    # image_sequence.default_value = default_value
-    
-    print(f"Cropping boundaries computed: \n    index_xmin={index_xmin}, \n    index_xmax={index_xmax}, \n    default_value={default_value}")
+    image_sequence.set_data(data)
+
+    print(f"    index_xmin = {index_xmin}\n     index_xmax = {index_xmax}\n     default_value = {default_value}")
 
     if save_results:
         if output_directory is None:
             raise ValueError("output_directory must be specified if save_results is True.")
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
+        os.makedirs(output_directory, exist_ok=True)
         export_data(data, output_directory, export_as_single_tif=True, file_name="bounded_image_sequence")
-    print()
 
+    print(60*"=")
+    print()
     return index_xmin, index_xmax, default_value

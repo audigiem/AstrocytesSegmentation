@@ -6,6 +6,7 @@
 import numpy as np
 import pandas as pd
 import os
+from tqdm import tqdm
 
 
 def save_features_from_events(calcium_events: np.ndarray, events_ids: list, image_amplitude: np.ndarray, params_values: dict=None, save_result: bool=False, output_directory: str=None) -> None:
@@ -25,6 +26,7 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: list, imag
     @param output_directory: Directory to save the results if save_result is True.
     @return:
     """
+    print("=== Computing features from calcium events ===")
     features = compute_features(calcium_events, events_ids, image_amplitude, params_values, save_result, output_directory)
 
     if save_result:
@@ -34,6 +36,7 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: list, imag
             os.makedirs(output_directory)
         write_excel_features(features, output_directory)
         write_csv_features(features, output_directory)
+    print(60*"=")
 
 
 def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitude: np.ndarray, params_values: dict=None, save_result: bool=False, output_directory: str=None) -> dict:
@@ -54,40 +57,36 @@ def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitu
     @param output_directory: Directory to save the results if save_result is True.
     @return: Dictionary containing computed features.
     """
-    if calcium_events.ndim != 4:
-        raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
-    if image_amplitude.ndim != 4:
-        raise ValueError("Image amplitude must be a 4D numpy array of shape (T, Z, Y, X).")
+    if calcium_events.ndim != 4 or image_amplitude.ndim != 4:
+        raise ValueError("Inputs must be 4D arrays (T, Z, Y, X)")
 
-    features = {}
-    voxel_size_x = float(params_values['voxel_size_x'])
-    voxel_size_y = float(params_values['voxel_size_y'])
-    voxel_size_z = float(params_values['voxel_size_z'])
-    voxel_size = np.array([voxel_size_x, voxel_size_y, voxel_size_z])
+    if params_values is None:
+        raise ValueError("params_values must be provided")
+
+    voxel_size = np.array([
+        float(params_values['voxel_size_x']),
+        float(params_values['voxel_size_y']),
+        float(params_values['voxel_size_z']),
+    ])
     volume_localized = float(params_values['volume_localized'])
 
+    features = {}
 
-    for event_id in events_ids:
-        # voxels belonging to the event
+    for event_id in tqdm(events_ids, desc="Computing features per event"):
         event_mask = (calcium_events == event_id)
         if not np.any(event_mask):
             continue
+
         coords = np.argwhere(event_mask)
         nb_voxels = coords.shape[0]
-        t0 = coords[:, 0].min()  # First frame of the event
-        t1 = coords[:, 0].max()  # Last frame of the event
+        t0 = coords[:, 0].min()
+        t1 = coords[:, 0].max()
         duration = t1 - t0 + 1
-
-        # centroïd calculation
         centroid = np.mean(coords, axis=0)
-
-        # volume calculation
         volume = nb_voxels * np.prod(voxel_size)
-
-        # mean amplitude calculation (or max ??)
         amplitude = np.max(image_amplitude[event_mask])
 
-        # classification
+        # Classification
         if duration > 1:
             class_label, confidence = classify_event(coords, t0, duration, volume, params_values)
         else:
@@ -98,7 +97,6 @@ def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitu
                 class_label = "localized but not microdomain"
                 confidence = 1.0
 
-        # Store features
         features[event_id] = {
             'duration': duration,
             't0': t0,
@@ -108,48 +106,37 @@ def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitu
             'classification': class_label,
             'confidence': confidence
         }
+
     return features
 
 def classify_event(coords , t0: int, duration: int, volume: float, params_values: dict) -> tuple:
     """
-    Determine the classification of a calcium event based on its spatial characteristics (localized or wave) and compute its confidence level.
-
+    Classify event as 'Wave', 'Localized', or 'Localized but no microdomain'
+    based on centroid dynamics and volume.
     """
-    threshold_distance_localized = float(params_values['threshold_distance_localized'])
-    threshold_median_localized = float(params_values['threshold_median_localized'])
+    threshold_dist = float(params_values['threshold_distance_localized'])
+    threshold_med = float(params_values['threshold_median_localized'])
     volume_localized = float(params_values['volume_localized'])
 
-    # Centroid calculation for each frame in the event
-    centroids = []
-    for t in range(t0, t0 + duration):
+    # Compute centroids per time frame
+    centroids = np.full((duration, 3), np.nan)
+    for i, t in enumerate(range(t0, t0 + duration)):
         frame_coords = coords[coords[:, 0] == t]
-        if frame_coords.shape[0] == 0:
-            centroids.append([np.nan, np.nan, np.nan])
-        else:
-            centroids.append(frame_coords[:, 1:4].mean(axis=0))
-    centroids = np.array(centroids)
+        if frame_coords.size > 0:
+            centroids[i] = frame_coords[:, 1:4].mean(axis=0)
 
-    # Calculate distances between consecutive centroids
     dists = np.linalg.norm(np.diff(centroids, axis=0), axis=1)
-    big_distance = np.any(dists > threshold_distance_localized)
-    confidence = 0.0
-
-    if big_distance:
-        idx = np.argmax(dists > threshold_distance_localized)
-        confidence = min(100, dists[idx] * 80 / threshold_distance_localized)
+    if np.any(dists > threshold_dist):
+        idx = np.argmax(dists > threshold_dist)
+        confidence = min(100, dists[idx] * 80 / threshold_dist)
         return "Wave", confidence
     else:
         median_val = np.nanmedian(dists)
-        if median_val < threshold_distance_localized:
-            confidence = min(100, median_val * 50 / threshold_median_localized)
-            if volume <= volume_localized:
-                return "Localized", confidence
-            else:
-                return "Localized but no microdomain", confidence
+        confidence = min(100, median_val * 50 / threshold_med)
+        if volume <= volume_localized:
+            return "Localized", confidence
         else:
-            confidence = min(100, median_val * 50 / threshold_median_localized)
-            return "Wave", confidence
-
+            return "Localized but no microdomain", confidence
 
 def write_excel_features(features: dict, output_directory: str) -> None:
     """

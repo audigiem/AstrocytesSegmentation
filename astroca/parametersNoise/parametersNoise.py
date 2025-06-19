@@ -6,6 +6,7 @@
 
 import numpy as np
 import time
+from tqdm import tqdm
 
 from astroca.tools.scene import ImageSequence3DPlusTime
 
@@ -34,7 +35,7 @@ def estimate_std_map_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndar
     @param data: 4D numpy array of shape (T, Z, Y, X) representing the image sequence.
     @param xmin: 1D array of cropping bounds (left) for each Z slice.
     @param xmax: 1D array of cropping bounds (right) for each Z slice.
-    @return : 3D numpy array of shape (Z, Y, X) containing the estimated standard deviation for each voxel.
+    @return: 3D numpy array of shape (Z, Y, X) containing the estimated standard deviation for each voxel.
     """
     T, Z, Y, X = data.shape
     residuals = compute_pseudo_residuals(data)  # Shape: (T-1, Z, Y, X)
@@ -42,7 +43,7 @@ def estimate_std_map_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndar
     # Initial std map with NaNs (to exclude out-of-ROI voxels)
     std_map = np.full((Z, Y, X), np.nan, dtype=np.float32)
 
-    for z in range(Z):
+    for z in tqdm(range(Z), desc="Estimating std over time", unit="slice"):
         x0, x1 = xmin[z], xmax[z] + 1
         if x0 >= x1: continue
         roi = (slice(z, z + 1), slice(None), slice(x0, x1))  # Shape: (1, Y, xmax-xmin)
@@ -59,10 +60,12 @@ def estimate_std_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray)
     @param xmax: 1D array of cropping bounds (right) for each Z slice.
     @return : Estimated standard deviation of the noise over time.
     """
+    print(" - Estimating standard deviation over time ...")
     std_map = estimate_std_map_over_time(data, xmin, xmax)
     valid = std_map[~np.isnan(std_map) & (std_map > 0)]
     std = float(np.median(valid)) if valid.size else 0.0
-    print(f"Estimated std over time (median of map): {std:.7f}")
+    print(f"    std_noise = {std:.7f}")
+    print(60*"=")
     print()
     return std
 

@@ -163,8 +163,8 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
 
 def main():
     # Define paths to expected and output files
-    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdir/"
-    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/"
+    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdirFewerTime/"
+    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectoryFewerTime/"
 
     expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
     output_f0_path = OUTPUT_DIR_PATH + "F0_estimated.tif"

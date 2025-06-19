@@ -23,6 +23,7 @@ def closing_morphology_in_space(data: np.ndarray, radius: int, border_mode: str=
     @param border_mode: Padding mode for borders, e.g., 'reflect', 'edge', 'constant', etc.
     @return: 4D numpy array (T, Z, Y, X) after closing
     """
+    print(f" - Apply morphological closing with radius={radius} and border mode='{border_mode}'")
     if border_mode not in ['reflect', 'edge']:
         raise ValueError("Unsupported border mode. Use 'reflect' or 'edge'.")
     # Spherical structuring element
@@ -33,7 +34,7 @@ def closing_morphology_in_space(data: np.ndarray, radius: int, border_mode: str=
     binary = (data > 0)
     result = np.empty_like(binary, dtype=np.uint8)
     if border_mode == 'edge':
-        for t in range(binary.shape[0]):
+        for t in tqdm(range(binary.shape[0]), desc="Morphological closing over time", unit="frame"):
             padded = np.pad(binary[t], pad_width=pad_width, mode='edge')
             # Apply 3D closing to each time frame
             closed = binary_closing(padded, structure=struct_elem)
@@ -41,7 +42,7 @@ def closing_morphology_in_space(data: np.ndarray, radius: int, border_mode: str=
 
         return result
     else:
-        for t in range(binary.shape[0]):
+        for t in tqdm(range(binary.shape[0]), desc="Morphological closing over time", unit="frame"):
             padded = np.pad(binary[t], pad_width=pad_width, mode='reflect')
             # Apply 3D closing to each time frame
             closed = binary_closing(padded, structure=struct_elem)
@@ -133,7 +134,7 @@ def median_3d_for_4d_stack(fourd_stack, radius=2, n_workers=None):
         )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=n_workers) as executor:
-        list(tqdm(executor.map(process_frame, range(n_frames)), total=n_frames, desc="Processing frames"))
+        list(tqdm(executor.map(process_frame, range(n_frames)), total=n_frames, desc="Processing frames", unit="frame"))
 
     return filtered_stack
 
@@ -304,6 +305,7 @@ def unified_median_filter_3d(
         border_mode: 'reflect', 'nearest', 'constant', etc.
         n_workers: Nombre de threads
     """
+    print(f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'")
     r = int(np.ceil(radius))
 
     # Créer le masque sphérique
@@ -330,7 +332,7 @@ def unified_median_filter_3d(
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
         list(tqdm(
             executor.map(process_frame, range(data.shape[0])),
-            total=data.shape[0]
+            total=data.shape[0], desc="Processing frames with median filter", unit="frame"
         ))
 
     return filtered

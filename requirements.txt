@@ -9,3 +9,5 @@ matplotlib
 configparser
 openpyxl
 tqdm
+py-spy
+scalene

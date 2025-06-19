@@ -6,6 +6,7 @@
 
 
 import numpy as np
+from tqdm import tqdm
 from astroca.tools.scene import ImageSequence3DPlusTime
 
 def compute_z_score(data: np.ndarray, std_noise: float, gaussian_noise_mean: float, threshold: float, index_xmin: list, index_xmax: list) -> np.ndarray:
@@ -21,7 +22,7 @@ def compute_z_score(data: np.ndarray, std_noise: float, gaussian_noise_mean: flo
     @param index_xmax: 1D array of cropping bounds (right) for each Z slice.
     @return: 4D numpy array of z-scores with the same shape as input data.
     """
-    print(f"Compute binary z-score with masking on X boundaries for each Z slice...")
+    print(f" - Compute binary z-score...")
 
     T, Z, Y, X = data.shape
 
@@ -31,7 +32,7 @@ def compute_z_score(data: np.ndarray, std_noise: float, gaussian_noise_mean: flo
     processed = np.zeros_like(data, dtype=np.uint8)
     value = data - gaussian_noise_mean
 
-    for z in range(Z):
+    for z in tqdm(range(Z), desc="Computing z-score for each Z slice"):
         x_min = index_xmin[z]
         x_max = index_xmax[z] + 1  # +1 for python slice inclusivity
 

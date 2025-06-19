@@ -15,6 +15,7 @@ import numpy as np
 import time
 from numpy.lib.stride_tricks import sliding_window_view
 from astroca.varianceStabilization.varianceStabilization import anscombe_inverse
+from tqdm import tqdm
 from astroca.tools.loadData import load_data
 
 def background_estimation_numpy(image_sequence: 'ImageSequence3DPlusTime',
@@ -135,94 +136,82 @@ def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime'
                                        save_results: bool = False,
                                        output_directory: str = None) -> np.ndarray:
     """
-    @brief Estimate the background F0 using entire time sequence as single block.
+    Estimate the background F0 using the entire time sequence as a single block.
+
     @param image_sequence: 4D image sequence (T, Z, Y, X)
     @param index_xmin: Array of cropping bounds (left) for each Z
     @param index_xmax: Array of cropping bounds (right) for each Z
-    @param params_values: Dictionary containing parameters for background estimation
-    @param save_results: If True, saves the result to the specified output directory
+    @param params_values: Dictionary with keys: 'moving_window', 'method', 'method2', 'percentile'
+    @param save_results: If True, saves the result to output_directory
     @param output_directory: Directory to save the result if save_results is True
     @return: Background array of shape (1, Z, Y, X)
     """
-    start_time = time.time()
-    print("Estimating background F0 (single block mode, optimized)...")
-
-    if len(params_values) != 4:
-        raise ValueError("params_values must contain 'moving_window', 'method', 'method2', and 'percentile' keys")
+    print("=== Fluorescence baseline F0 estimation ===")
+    required_keys = {'moving_window', 'method', 'method2', 'percentile'}
+    if set(params_values.keys()) != required_keys:
+        raise ValueError(f"params_values must contain exactly: {required_keys}")
 
     moving_window = int(params_values['moving_window'])
     method = params_values['method']
     method2 = params_values['method2']
     percentile = float(params_values['percentile'])
 
-    # Parameters validation
-    if method not in ["min", "percentile"]:
+    if method not in {'min', 'percentile'}:
         raise ValueError("method must be 'min' or 'percentile'")
-    if method2 not in ["Mean", "Med"]:
+    if method2 not in {'Mean', 'Med'}:
         raise ValueError("method2 must be 'Mean' or 'Med'")
-    if not 0 <= percentile <= 100:
+    if not (0 <= percentile <= 100):
         raise ValueError("percentile must be between 0 and 100")
 
-    data = image_sequence.get_data()  # (T, Z, Y, X)
+    data = image_sequence.get_data()  # shape: (T, Z, Y, X)
     T, Z, Y, X = data.shape
 
-    # Dimension validation
     if len(index_xmin) != Z or len(index_xmax) != Z:
         raise ValueError("index_xmin and index_xmax must have length Z")
-
     if T < moving_window:
-        raise ValueError(f"Time sequence length {T} is less than moving_window {moving_window}")
+        raise ValueError(f"Time sequence too short: T={T}, window={moving_window}")
 
+    num_iter = T - moving_window + 1
     F0 = np.zeros((1, Z, Y, X), dtype=np.float32)
 
-    time_window = T
-    num_iter = time_window - moving_window + 1
-
-    print(f"Processing entire sequence of {T} frames with moving window {moving_window}")
-    print(f"Number of iterations: {num_iter}")
-
-    for z in range(Z):
+    for z in tqdm(range(Z), desc="Estimating background per Z-slice", unit="slice"):
         x_min = int(index_xmin[z])
         x_max = int(index_xmax[z])
 
-        if x_min >= x_max or x_min < 0 or x_max >= X:
+        if not (0 <= x_min < x_max < X):
             continue
 
-        roi_data = data[:, z, :, x_min:x_max + 1]  # Shape: (T, Y, X_roi)
+        roi = data[:, z, :, x_min:x_max + 1]  # shape: (T, Y, X_roi)
+        windowed = sliding_window_view(roi, window_shape=moving_window, axis=0)  # shape: (num_iter, Y, X_roi, moving_window)
 
-        windowed_data = np.lib.stride_tricks.sliding_window_view(
-            roi_data, window_shape=moving_window, axis=0
-        )  # Shape: (num_iter, Y, X_roi, moving_window)
+        # Move the window dimension to the last axis for easier reduction
+        windowed = np.moveaxis(windowed, -1, 0)  # shape: (moving_window, num_iter, Y, X_roi)
 
         if method2 == "Mean":
-            moving_values = np.mean(windowed_data, axis=-1)  # Shape: (num_iter, Y, X_roi)
-        else:  # method2 == "Med"
-            moving_values = np.median(windowed_data, axis=-1)  # Shape: (num_iter, Y, X_roi)
+            moving_vals = np.mean(windowed, axis=0)  # shape: (num_iter, Y, X_roi)
+        else:  # Med
+            moving_vals = np.median(windowed, axis=0)
 
         if method == "min":
-            result = np.min(moving_values, axis=0)  # Shape: (Y, X_roi)
-        else:
-            sorted_values = np.sort(moving_values, axis=0)  # Shape: (num_iter, Y, X_roi)
-
-            index_percentile = int(np.ceil(percentile / 100.0 * num_iter))
-            index_percentile = max(1, index_percentile)
-
-            result = sorted_values[index_percentile - 1]  # Shape: (Y, X_roi)
+            result = np.min(moving_vals, axis=0)
+        else:  # percentile
+            k = int(np.ceil((percentile / 100.0) * num_iter))
+            k = np.clip(k, 1, num_iter)
+            sorted_vals = np.sort(moving_vals, axis=0)
+            result = sorted_vals[k - 1]  # kth smallest
 
         F0[0, z, :, x_min:x_max + 1] = result
 
-    elapsed_time = time.time() - start_time
-    print(f"Background F0 estimated in {elapsed_time:.2f} seconds.")
 
     if save_results:
         if output_directory is None:
-            raise ValueError("Output directory must be specified when save_results is True.")
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
-        # Save the result as a .tif file
+            raise ValueError("Output directory must be specified.")
+        os.makedirs(output_directory, exist_ok=True)
         export_data(F0, output_directory, export_as_single_tif=True, file_name="F0_estimated")
 
+    print(60*"=")
     print()
+
     return F0
 
 
@@ -370,7 +359,8 @@ def background_estimation_numba(data: np.ndarray,
     return F0
 
 
-def compute_dynamic_image(image_sequence: ImageSequence3DPlusTime,
+
+def compute_dynamic_image(image_sequence: 'ImageSequence3DPlusTime',
                           F0: np.ndarray,
                           index_xmin: np.ndarray,
                           index_xmax: np.ndarray,
@@ -378,7 +368,7 @@ def compute_dynamic_image(image_sequence: ImageSequence3DPlusTime,
                           save_results: bool = False,
                           output_directory: str = None) -> tuple[np.ndarray, float]:
     """
-    @brief Compute ΔF = F - F0 and estimate the noise level as the median of ΔF.
+    Compute ΔF = F - F0 and estimate the noise level as the median of ΔF.
 
     @param image_sequence: 4D image sequence (T, Z, Y, X)
     @param F0: Background array of shape (nbF0, Z, Y, X)
@@ -389,40 +379,40 @@ def compute_dynamic_image(image_sequence: ImageSequence3DPlusTime,
     @param output_directory: Directory to save the result if save_results is True
     @return: (dF: array of shape (T, Z, Y, X), mean_noise: float)
     """
-    print("Computing dynamic image (dF = F - F0) and estimating noise...")
+    print("=== Computing dynamic image (dF = F - F0) and estimating noise... ===")
+    print(" - Computing dynamic image...")
+
     data = image_sequence.get_data()  # shape (T, Z, Y, X)
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
 
-    width_without_zeros = sum(index_xmax[z] - index_xmin[z] + 1 for z in range(Z))
-
-    flattened_dF = np.empty((T * Y * width_without_zeros), dtype=np.float32)
-    k = 0
-
     dF = np.copy(data)
 
-    for t in range(T):
+    # Préallocation avec estimation maximale
+    width_without_zeros = sum(max(0, index_xmax[z] - index_xmin[z] + 1) for z in range(Z))
+    flattened_dF = np.empty(T * Y * width_without_zeros, dtype=np.float32)
+    k = 0
+
+    for t in tqdm(range(T), desc="Computing ΔF over time", unit="frame"):
         it = min(t // time_window, nbF0 - 1)
         for z in range(Z):
             x_min, x_max = index_xmin[z], index_xmax[z] + 1
             if x_min >= x_max:
                 continue
-            for y in range(Y):
-                # slice (X,)
-                delta = dF[t, z, y, x_min:x_max] - F0[it, z, y, x_min:x_max]
-                dF[t, z, y, x_min:x_max] = delta
-                flattened_dF[k:k + x_max - x_min] = delta
-                k += x_max - x_min
+            # Vectorisé sur Y
+            delta = data[t, z, :, x_min:x_max] - F0[it, z, :, x_min:x_max]
+            dF[t, z, :, x_min:x_max] = delta
+            n = x_max - x_min
+            flattened_dF[k:k + Y * n] = delta.reshape(-1)
+            k += Y * n
 
     mean_noise = float(np.median(flattened_dF[:k]))
-    print(f"mean_Noise = {mean_noise}")
+    print(f"    mean_Noise = {mean_noise:.6f}")
 
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_results is True.")
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
-        # Save the dF as a .tif file
+        os.makedirs(output_directory, exist_ok=True)
         export_data(dF, output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
 
     print()
@@ -440,18 +430,21 @@ def compute_image_amplitude(data_cropped, index_xmin: np.ndarray, index_xmax: np
     @param output_directory: Directory to save the transformed data if save_results is True
     @return: 4D numpy array of shape (T, Z, Y, X) with the amplitude values.
     """
-    print("Computing image amplitude...")
+    print("=== Computing image amplitude... ===")
 
-    f0_inv = anscombe_inverse(data_cropped, index_xmin, index_xmax, save_results=save_results, output_directory=output_directory)
-    safe_f0_inv = np.where(f0_inv == 0, 1e-10, f0_inv)  # Avoid division by zero
-    image_amplitude = (data_cropped - f0_inv) / safe_f0_inv  # Compute the amplitude
+    f0_inv = anscombe_inverse(data_cropped.copy(), index_xmin, index_xmax,
+                              save_results=save_results,
+                              output_directory=output_directory)
+
+    # prevent division by zero
+    safe_f0_inv = np.where(f0_inv == 0, 1e-10, f0_inv)
+    image_amplitude = (data_cropped - f0_inv) / safe_f0_inv
 
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_results is True.")
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
-        # Save the amplitude as a .tif file
+        os.makedirs(output_directory, exist_ok=True)
         export_data(image_amplitude, output_directory, export_as_single_tif=True, file_name="image_amplitude")
+    print(60*"=")
     print()
     return image_amplitude

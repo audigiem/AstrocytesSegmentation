@@ -18,7 +18,8 @@ def crop_boundaries(image_sequence: ImageSequence3DPlusTime, coordinate_range_pe
     @param output_directory: Directory where the cropped data will be saved if save_results is True.
     @raises ValueError: If coordinate_range_per_dimension does not contain exactly 3 tuples.
     """
-    print("Cropping boundaries...")
+    print("=== Cropping boundaries and compute boundaries ===")
+    print(" - Cropping the boundaries of the image sequence...")
     
     if len(coordinate_range_per_dimension) != 3:
         raise ValueError("coordinate_range_per_dimension must contain exactly 3 tuples for (depth, height, width).")
@@ -34,7 +35,7 @@ def crop_boundaries(image_sequence: ImageSequence3DPlusTime, coordinate_range_pe
     # modify the image sequence in place
     image_sequence.set_data(cropped_data)
     image_sequence.set_dimensions(cropped_time_length, cropped_depth, cropped_height, cropped_width)
-    print(f"Cropped data shape: {cropped_data.shape}")
+    print(f"    Cropped data shape: {cropped_data.shape}")
 
     if save_results:
         if output_directory is None:
