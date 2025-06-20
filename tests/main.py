@@ -3,10 +3,7 @@
 @file main.py
 @brief Entry point, pipeline of astrocytes cells segmentation
 """
-from networkx.algorithms.components import is_connected
-from skimage.filters.rank import threshold
-import os
-# os.environ['NUMBA_THREADING_LAYER'] = 'tbb'
+
 
 from astroca.tools.scene import ImageSequence3DPlusTime
 from astroca.tools.loadData import load_data, read_config
@@ -17,7 +14,7 @@ from astroca.dynamicImage.dynamicImage import compute_dynamic_image, background_
 from astroca.parametersNoise.parametersNoise import estimate_std_over_time
 from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
 from astroca.events.eventDetector import detect_calcium_events_optimized
-from astroca.events.eventDetectorScipy import detected_events, show_results
+from astroca.events.eventDetectorScipy import detect_events, show_results
 from astroca.features.featuresComputation import save_features_from_events
 
 

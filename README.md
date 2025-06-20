@@ -11,22 +11,32 @@ git clone https://gitlab.inria.fr/anbadoua/analyzeastrocasignals.git
 cd analyzeastrocasignals
 ```
 
-Crée un environnement virtuel :
+Installe les dépendances et crée un environnement virtuel géré par Poetry :
 
 ```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
+poetry install
 ```
 
 ## Exécution
+
+Active l'environnement Poetry :
+
+```bash
+poetry env list
+poetry env activate
+```
 
 Exécute le script principal :
 
 ```bash
 chmod +x tests/main.py
-./tests/main.py
+poetry run ./tests/main.py
+```
+
+Ou sans activer l'environnement Poetry :
+
+```bash
+poetry run python tests/main.py
 ```
 
 ## Générer la documentation
