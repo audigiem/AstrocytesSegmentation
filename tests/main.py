@@ -17,6 +17,7 @@ from astroca.dynamicImage.dynamicImage import compute_dynamic_image, background_
 from astroca.parametersNoise.parametersNoise import estimate_std_over_time
 from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
 from astroca.events.eventDetector import detect_calcium_events_optimized
+from astroca.events.eventDetectorScipy import detected_events, show_results
 from astroca.features.featuresComputation import save_features_from_events
 
 
@@ -69,14 +70,17 @@ def main():
     # === Compute Z-score, closing morphology, median filter ===
     active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params_values=params['active_voxels'], save_results=save_results, output_directory=output_folder)
 
+    # active_voxels = load_data("/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/activeVoxels.tif")
     # === Detect calcium events ===
-    id_connected_voxels, events_ids = detect_calcium_events_optimized(active_voxels, params_values=params['events_extraction'], save_results=save_results, output_directory=output_folder)
+    final_labels = detected_events(active_voxels, params)
+    show_results(final_labels)
+    # id_connected_voxels, events_ids = detect_calcium_events_optimized(active_voxels, params_values=params['events_extraction'], save_results=save_results, output_directory=output_folder)
 
-    # === Compute image amplitude ===
-    image_amplitude = compute_image_amplitude(data_cropped, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
-
-    # === Compute features ===
-    save_features_from_events(id_connected_voxels, events_ids, image_amplitude, params_values=params['features_extraction'], save_result=save_results, output_directory=output_folder)
+    # # === Compute image amplitude ===
+    # image_amplitude = compute_image_amplitude(data_cropped, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
+    #
+    # # === Compute features ===
+    # save_features_from_events(id_connected_voxels, events_ids, image_amplitude, params_values=params['features_extraction'], save_result=save_results, output_directory=output_folder)
 
     
 

@@ -8,6 +8,7 @@ from skimage.measure import label
 import matplotlib.pyplot as plt
 import os
 from astroca.tools.exportData import export_data
+from collections import deque
 
 class EventDetectorOptimized:
     """
@@ -78,8 +79,8 @@ class EventDetectorOptimized:
         id_small_AV_groups = []
 
         for t in range(self.time_length_):
+        # for t in range(15):
             # print(f"\nProcessing time frame {t}, searching seed ...")
-            # frame_time = time.time()
             seed = self._find_seed_point(t)
             while seed is not None:
                 x, y, z = seed

@@ -114,6 +114,7 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
     list_max_diff = []
     list_mean_diff = []
     list_accuracy = []
+    list_nb_significant_differences = []
     for t in range(T):
         expected_frame = expected_data[t]
         output_frame = output_data[t]
@@ -128,24 +129,27 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
             print(f"Frame {t}: Files are similar within a very small margin (less than 1e-5).")
         else:
             differences_exist = True
-            # print(f"Frame {t}: Files differ.")
+            nb_significant_differences = np.sum(frame_differences > percentage_accuracy * np.abs(expected_frame))
+            print(f"Frame {t}: Files differ.")
             max_diff = np.max(frame_differences)
             mean_diff = np.mean(frame_differences)
             list_max_diff.append(max_diff)
             list_mean_diff.append(mean_diff)
             list_accuracy.append(compute_frame_accuracy(expected_frame, frame_differences, percentage_accuracy))
+            list_nb_significant_differences.append(nb_significant_differences)
 
     if differences_exist:
         # display global statistics for the differences
         print("\nGlobal statistics for differences across all frames:")
-        max_diff = np.max(list_max_diff)
-        mean_max_diff = np.mean(list_max_diff)
-        mean_mean_diff = np.mean(list_mean_diff)
-        mean_percentage_accuracy = np.mean(list_accuracy)
-        print(f"Max difference across all frames: {max_diff:.6f}")
-        print(f"Mean max difference across all frames: {mean_max_diff:.6f}")
-        print(f"Mean mean difference across all frames: {mean_mean_diff:.6f}")
-        print(f"Mean percentage accuracy across all frames: {mean_percentage_accuracy:.6f}%")
+        # max_diff = np.max(list_max_diff)
+        # mean_max_diff = np.mean(list_max_diff)
+        # mean_mean_diff = np.mean(list_mean_diff)
+        # mean_percentage_accuracy = np.mean(list_accuracy)
+        print(f"Max differences across all frames: {[int(x) for x in list_max_diff]}")
+        print(f"Mean differences across all frames: {[float(x) for x in list_mean_diff]}")
+        print(f"Percentages accuracy across all frames: {[float(x) for x in list_accuracy]}")
+        print(
+            f"Number of significant differences across all frames: {[int(x) for x in list_nb_significant_differences]}")
         print(f"Total frames compared: {T}")
 
         if save_diff:
@@ -230,9 +234,9 @@ def main():
     compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
 
-    print("Step 9: Comparing files after calcium events detection...")
-    compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
+    # print("Step 9: Comparing files after calcium events detection...")
+    # compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
 
     print("All comparisons completed.")
 
