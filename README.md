@@ -12,6 +12,15 @@ cd analyzeastrocasignals
 ```
 
 Installe les dépendances et crée un environnement virtuel géré par Poetry :
+Verifie que Poetry est installé :
+```bash
+poetry --version
+```
+
+Si ce n'est pas le cas, installe-le :
+```bash
+curl -sSL https://install.python-poetry.org | python3 -
+```
 
 ```bash
 poetry install

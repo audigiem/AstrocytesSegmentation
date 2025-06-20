@@ -15,12 +15,14 @@ from astroca.parametersNoise.parametersNoise import estimate_std_over_time
 from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
 from astroca.events.eventDetector import detect_calcium_events_optimized
 from astroca.events.eventDetectorScipy import detect_events, show_results
+from time import time
 from astroca.features.featuresComputation import save_features_from_events
 
 
 
 def main():
 
+    start_time = time()
     # loading parameters from config file
     params = read_config()
 
@@ -42,8 +44,9 @@ def main():
 
     # === Loading ===
     data = load_data(input_folder)  # shape (T, Z, Y, X)
-    T, Z, Y, X = data.shape
     print(f"Loaded data of shape: {data.shape}")
+    T, Z, Y, X = data.shape
+
     print()
 
     # === Initialization ===
@@ -69,9 +72,10 @@ def main():
 
     # active_voxels = load_data("/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectory/activeVoxels.tif")
     # === Detect calcium events ===
-    final_labels = detected_events(active_voxels, params)
+    final_labels = detect_events(active_voxels, params)
     show_results(final_labels)
-    # id_connected_voxels, events_ids = detect_calcium_events_optimized(active_voxels, params_values=params['events_extraction'], save_results=save_results, output_directory=output_folder)
+    id_connected_voxels, events_ids = detect_calcium_events_optimized(active_voxels, params_values=params['events_extraction'], save_results=save_results, output_directory=output_folder)
+    print(f"Number of detected events with previous method: {len(events_ids)}")
 
     # # === Compute image amplitude ===
     # image_amplitude = compute_image_amplitude(data_cropped, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
@@ -79,6 +83,9 @@ def main():
     # # === Compute features ===
     # save_features_from_events(id_connected_voxels, events_ids, image_amplitude, params_values=params['features_extraction'], save_result=save_results, output_directory=output_folder)
 
+    end_time = time()
+
+    print(f"Pipeline completed in {end_time - start_time:.2f} seconds.")
     
 
 if __name__ == "__main__":

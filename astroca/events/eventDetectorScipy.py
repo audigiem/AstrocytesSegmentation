@@ -42,8 +42,8 @@ def detect_events(active_voxels: np.ndarray, params_values: dict) -> np.ndarray:
         raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
 
     # Conversion en types optimaux
-    threshold_size_3d = int(params_values['threshold_size_3d'])
-    threshold_size_3d_removed = int(params_values['threshold_size_3d_removed'])
+    threshold_size_3d = int(params_values['events_extraction']['threshold_size_3d'])
+    threshold_size_3d_removed = int(params_values['events_extraction']['threshold_size_3d_removed'])
 
     # Structure pré-calculée (réutilisable)
     structure = generate_binary_structure(4, 1)
