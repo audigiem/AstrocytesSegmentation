@@ -4,29 +4,48 @@ Segmentation des astrocytes à partir d'images de fluorescence 3D+temps.
 
 ## Installation
 
-Cloner le dépôt :
+Clone le dépôt :
 
 ```bash
 git clone https://gitlab.inria.fr/anbadoua/analyzeastrocasignals.git
 cd analyzeastrocasignals
 ```
 
-Créer un environnement virtuel :
+Installe les dépendances et crée un environnement virtuel géré par Poetry :
+Verifie que Poetry est installé :
+```bash
+poetry --version
+```
+
+Si ce n'est pas le cas, installe-le :
+```bash
+curl -sSL https://install.python-poetry.org | python3 -
+```
 
 ```bash
-python -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
+poetry install
 ```
 
 ## Exécution
 
-Exécuter le script principal :
+Active l'environnement Poetry :
+
+```bash
+poetry env list
+poetry env activate
+```
+
+Exécute le script principal :
 
 ```bash
 chmod +x tests/main.py
-./tests/main.py
+poetry run ./tests/main.py
+```
+
+Ou sans activer l'environnement Poetry :
+
+```bash
+poetry run python tests/main.py
 ```
 
 ## Générer la documentation

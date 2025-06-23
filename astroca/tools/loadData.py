@@ -26,7 +26,14 @@ def load_data(file_path: str) -> np.ndarray:
         return np.array(data)
     elif os.path.isfile(file_path) and file_path.endswith('.tif'):
         # Load single .tif file
-        return tif.imread(file_path)
+        data = tif.imread(file_path)
+        # prevent (1, T, Z, Y, X) shape
+        if data.ndim == 5 and data.shape[0] == 1:
+            data = np.squeeze(data, axis=0)
+        if data.ndim != 4:
+            raise ValueError(f"Loaded data must be a 4D array (T, Z, Y, X), but got shape {data.shape}.")
+        return data
+
     else:
         raise ValueError(f"Invalid file path: {file_path}. Must be a .tif file or a directory containing .tif files.")
 

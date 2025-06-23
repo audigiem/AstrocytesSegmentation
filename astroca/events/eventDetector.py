@@ -1,8 +1,3 @@
-"""
-@file eventDetector.py
-@brief Event Detector for calcium events in 4D data (time, depth, height, width).
-"""
-
 import numpy as np
 import numba as nb
 from numba import njit, prange
@@ -14,6 +9,7 @@ import matplotlib.pyplot as plt
 import os
 from astroca.tools.exportData import export_data
 from tqdm import tqdm
+from collections import deque
 
 class EventDetectorOptimized:
     """
@@ -68,6 +64,8 @@ class EventDetectorOptimized:
         """
         Main method to find events in the active voxel data.
         """
+        start_time = time.time()
+        print("\n=== Finding events ===")
         print(f"Thresholds -> size: {self.threshold_size_3d_}, removed: {self.threshold_size_3d_removed_}, corr: {self.threshold_corr_}")
 
         if len(self.nonzero_cords_[0]) == 0:
@@ -165,6 +163,11 @@ class EventDetectorOptimized:
             small_AV_groups.clear()
             id_small_AV_groups.clear()
         print(f"\nTotal events found: {len(self.final_id_events_)}")
+
+        self._compute_final_id_events()
+
+        print(f"Total time taken: {time.time() - start_time:.2f} seconds")
+        print()
 
 
     def _find_connected_AV(self, seed: List[int], pattern: np.ndarray, event_id: int,waiting_for_processing: List[List[int]]):
@@ -434,20 +437,16 @@ class EventDetectorOptimized:
         Remap event IDs in id_connected_voxel_ to consecutive values (1, 2, 3, ...)
         using final_id_events_ as reference.
         """
-        if not self.final_id_events_:
-            return  # Rien à faire
-
-        # Étape 1 : créer un mapping numpy de taille max_id + 1
-        max_id = self.id_connected_voxel_.max()
-        id_map = np.zeros(max_id + 1, dtype=self.id_connected_voxel_.dtype)
-
-        # Étape 2 : construire le mapping {old_id → new_id}
         final_ids = sorted(self.final_id_events_)
-        for new_id, old_id in enumerate(final_ids, start=1):
-            id_map[old_id] = new_id
+        id_map = {old_id: new_id for new_id, old_id in enumerate(final_ids, start=1)}
 
-        # Étape 3 : appliquer le mapping vectorisé
-        self.id_connected_voxel_ = id_map[self.id_connected_voxel_]
+        for t in range(self.time_length_):
+            for z in range(self.depth_):
+                for y in range(self.height_):
+                    for x in range(self.width_):
+                        value = self.id_connected_voxel_[t, z, y, x]
+                        if value in id_map:
+                            self.id_connected_voxel_[t, z, y, x] = id_map[value]
 
 
     def get_results(self) -> Tuple[np.ndarray, List[int]]:
@@ -474,7 +473,7 @@ class EventDetectorOptimized:
         return stats
 
 
-def detect_calcium_events(av_data: np.ndarray, params_values: dict = None,
+def detect_calcium_events_optimized(av_data: np.ndarray, params_values: dict = None,
                                    save_results: bool = False,
                                    output_directory: str = None) -> Tuple[np.ndarray, List[int]]:
     """
@@ -485,19 +484,15 @@ def detect_calcium_events(av_data: np.ndarray, params_values: dict = None,
     @param output_directory: Directory to save results if save_results is True.
     @return: Tuple containing: list of detected events, their IDs, and statistics.
     """
-
-    threshold_size_3d = int(params_values['events_extraction']['threshold_size_3d'])
-    threshold_size_3d_removed = int(params_values['events_extraction']['threshold_size_3d_removed'])
-    threshold_corr = float(params_values['events_extraction']['threshold_corr'])
-    save_results = int(params_values['files']['save_results']) == 1
-    output_directory = params_values['paths']['output_dir'] if output_directory is None else output_directory
-
+    if len(params_values) != 3:
+        raise ValueError("params_values must contain exactly 3 parameters: 'threshold_size_3d', 'threshold_size_3d_removed', and 'threshold_corr'.")
+    threshold_size_3d = int(params_values['threshold_size_3d'])
+    threshold_size_3d_removed = int(params_values['threshold_size_3d_removed'])
+    threshold_corr = float(params_values['threshold_corr'])
     detector = EventDetectorOptimized(av_data, threshold_size_3d,
                                     threshold_size_3d_removed, threshold_corr)
-
     detector.find_events()
     id_connections, id_events = detector.get_results()
-
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified if save_results is True.")
@@ -505,8 +500,7 @@ def detect_calcium_events(av_data: np.ndarray, params_values: dict = None,
             os.makedirs(output_directory)
         id_connections = id_connections.astype(np.float32)  # Ensure the data is in float32 format
         export_data(id_connections, output_directory, export_as_single_tif=True, file_name="ID_calciumEvents")
-    print(60*"=")
-    print()
+
     return id_connections, id_events
 
 
@@ -525,7 +519,10 @@ def test_with_synthetic_data():
     print(f"Created synthetic data with shape {shape}")
     print(f"Non-zero voxels: {np.count_nonzero(av_data)}")
 
-    results = detect_calcium_events(av_data)
+    results = detect_calcium_events_optimized(av_data,
+                                            threshold_size_3d=50,
+                                            threshold_size_3d_removed=10,
+                                            threshold_corr=0.3)
 
     return results
 
