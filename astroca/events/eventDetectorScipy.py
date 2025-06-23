@@ -129,6 +129,7 @@ def detect_events(active_voxels: np.ndarray, params_values: dict) -> np.ndarray:
                 # Optimisation 10: Marquer explicitement comme background
                 final_labels[group_mask] = 0
 
+
     return final_labels
 
 
@@ -152,9 +153,7 @@ if __name__ == "__main__":
     # Example usage
     active_voxels = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdirFewerTime/AV.tif")
     params_values = {
-        'threshold_size_3d': 400,
-        'threshold_size_3d_removed': 20,
-        'threshold_corr': 0.5
+        'events_extraction': {'threshold_size_3d': 400, 'threshold_size_3d_removed': 20, 'threshold_corr': 0.5}
     }
 
     detected_events = detect_events(active_voxels, params_values)

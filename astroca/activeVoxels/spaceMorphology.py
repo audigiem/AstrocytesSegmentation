@@ -2,7 +2,6 @@
 @file spaceMorphology.py
 @brief This module provides functionality to fill/connect the structure in space, with a ball-like morphology of radius 1.
 """
-from dask.array.creation import pad_udf
 from scipy.ndimage import median_filter, binary_closing, generate_binary_structure
 import numpy as np
 from scipy.ndimage import generic_filter

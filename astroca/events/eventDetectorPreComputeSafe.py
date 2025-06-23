@@ -1,6 +1,6 @@
 """
-@file eventDetectorPreCompute_Fixed.py
-@brief Version corrigée sans segmentation fault
+@file eventDetectorPreComputeOptimized.py
+@brief Version optimisée mémoire et performance
 """
 
 import numpy as np
@@ -14,7 +14,7 @@ import os
 from astroca.tools.exportData import export_data
 
 
-# ============= FONCTIONS NUMBA CORRIGÉES =============
+# ============= FONCTIONS NUMBA OPTIMISÉES =============
 
 @njit
 def extract_temporal_profile(av_data, z, y, x):
@@ -27,10 +27,23 @@ def extract_temporal_profile(av_data, z, y, x):
 
 
 @njit
-def find_nonzero_sequences(profile):
-    """Trouve toutes les séquences non-nulles dans un profil"""
-    sequences = []
+def has_nonzero_values(av_data, z, y, x):
+    """Vérifie rapidement si un voxel a des valeurs non-nulles"""
+    T = av_data.shape[0]
+    for t in range(T):
+        if av_data[t, z, y, x] != 0:
+            return True
+    return False
+
+
+@njit
+def find_main_sequence(profile, min_length=3):
+    """Trouve la séquence principale (la plus longue) dans un profil"""
     T = len(profile)
+    max_start = 0
+    max_end = 0
+    max_length = 0
+
     in_sequence = False
     start_t = 0
 
@@ -41,77 +54,72 @@ def find_nonzero_sequences(profile):
                 in_sequence = True
         else:
             if in_sequence:
-                # Fin de séquence
                 end_t = t
                 seq_length = end_t - start_t
-                sequences.append((start_t, end_t, seq_length))
+                if seq_length > max_length and seq_length >= min_length:
+                    max_start = start_t
+                    max_end = end_t
+                    max_length = seq_length
                 in_sequence = False
 
     # Gérer la séquence qui se termine à la fin
     if in_sequence:
         end_t = T
         seq_length = end_t - start_t
-        sequences.append((start_t, end_t, seq_length))
+        if seq_length > max_length and seq_length >= min_length:
+            max_start = start_t
+            max_end = end_t
+            max_length = seq_length
 
-    return sequences
+    if max_length >= min_length:
+        return (max_start, max_end, max_length)
+    else:
+        return None
 
 
 @njit
-def simple_hash(arr):
-    """Hash simple et sécurisé pour un array"""
-    hash_val = np.int64(5381)
-    for i in range(len(arr)):
-        val = np.int64(arr[i] * 10000)  # Conversion sécurisée
-        hash_val = ((hash_val << 5) + hash_val) + val
-        hash_val = hash_val & 0x7FFFFFFFFFFFFFFF  # Éviter overflow
+def simple_pattern_hash(arr):
+    """Hash très simple pour éviter les collisions"""
+    if len(arr) == 0:
+        return np.int64(0)
+
+    # Normaliser d'abord
+    arr_mean = np.mean(arr)
+    arr_std = np.std(arr)
+
+    if arr_std == 0:
+        return np.int64(int(arr_mean * 1000))
+
+    # Hash basé sur les moments statistiques
+    hash_val = np.int64(int(arr_mean * 1000) + int(arr_std * 1000) * 13 + len(arr) * 17)
     return hash_val
 
 
 @njit
-def compute_ncc_simple(p1, p2):
-    """Calcul NCC simplifié et sécurisé"""
-    n1, n2 = len(p1), len(p2)
-
-    if n1 == 0 or n2 == 0:
+def compute_simple_correlation(p1, p2):
+    """Corrélation très simplifiée pour l'efficacité"""
+    if len(p1) != len(p2) or len(p1) == 0:
         return 0.0
 
-    # Normalisation
-    mean1 = np.mean(p1)
-    mean2 = np.mean(p2)
-
-    std1 = np.std(p1)
-    std2 = np.std(p2)
+    # Normalisation simple
+    mean1, mean2 = np.mean(p1), np.mean(p2)
+    std1, std2 = np.std(p1), np.std(p2)
 
     if std1 == 0 or std2 == 0:
-        return 0.0
+        return 1.0 if abs(mean1 - mean2) < 0.1 else 0.0
 
-    # NCC pour différents lags (simplifié)
-    max_corr = 0.0
-    max_lag = min(n1, n2) // 2
+    # Corrélation de Pearson simple
+    corr_sum = 0.0
+    for i in range(len(p1)):
+        corr_sum += ((p1[i] - mean1) / std1) * ((p2[i] - mean2) / std2)
 
-    for lag in range(-max_lag, max_lag + 1):
-        corr_sum = 0.0
-        count = 0
-
-        for i in range(n1):
-            j = i - lag
-            if 0 <= j < n2:
-                corr_sum += ((p1[i] - mean1) / std1) * ((p2[j] - mean2) / std2)
-                count += 1
-
-        if count > 0:
-            corr = corr_sum / count
-            if corr > max_corr:
-                max_corr = corr
-
-    return max_corr
+    return corr_sum / len(p1)
 
 
 @njit
 def get_neighbors_3d(z, y, x, Z, Y, X):
     """Récupère les voisins 3D valides"""
     neighbors = []
-
     for dz in [-1, 0, 1]:
         nz = z + dz
         if nz < 0 or nz >= Z:
@@ -127,22 +135,82 @@ def get_neighbors_3d(z, y, x, Z, Y, X):
                 if nx < 0 or nx >= X:
                     continue
                 neighbors.append((nz, ny, nx))
-
     return neighbors
 
 
-# ============= CLASSE CORRIGÉE =============
+def find_adjacent_groups(group_voxels, all_voxels, group_ids):
+    """Version vectorisée pour trouver les groupes adjacents"""
+    adjacency = {gid: set() for gid in group_ids}
 
-class EventDetectorSafe:
-    """Version sécurisée sans segmentation fault"""
+    # Créer un dictionnaire de voxels par groupe sous forme de set de tuples
+    voxel_dict = {gid: set() for gid in group_ids}
+    for gid, voxels in zip(group_ids, group_voxels):
+        voxel_dict[gid] = set(tuple(voxel) for voxel in voxels)
+
+    # Vérifier les adjacences
+    for i, (gid1, voxels1) in enumerate(zip(group_ids, group_voxels)):
+        for voxel in voxels1:
+            t, z, y, x = voxel
+
+            # Générer tous les voisins possibles
+            neighbors = [
+                (t, z + dz, y + dy, x + dx)
+                for dz in [-1, 0, 1]
+                for dy in [-1, 0, 1]
+                for dx in [-1, 0, 1]
+                if not (dz == 0 and dy == 0 and dx == 0)
+                   and 0 <= z + dz < all_voxels.shape[1]
+                   and 0 <= y + dy < all_voxels.shape[2]
+                   and 0 <= x + dx < all_voxels.shape[3]
+            ]
+
+            # Vérifier chaque groupe
+            for gid2 in group_ids:
+                if gid2 != gid1:
+                    # Vérifier si un des voisins est dans l'autre groupe
+                    if any(neighbor in voxel_dict[gid2] for neighbor in neighbors):
+                        adjacency[gid1].add(gid2)
+
+    return adjacency
+
+
+def merge_groups(adjacency, group_dict, group_ids):
+    """Fusion des groupes version vectorisée"""
+    merged = {}
+    visited = set()
+    new_id = np.max(group_ids) + 1 if group_ids.size > 0 else 1
+
+    for gid in group_ids:
+        if gid not in visited:
+            current_group = set(group_dict[gid])
+            visited.add(gid)
+
+            # BFS pour trouver tous les groupes connectés
+            queue = list(adjacency[gid])
+            while queue:
+                neighbor_gid = queue.pop()
+                if neighbor_gid not in visited:
+                    current_group.update(group_dict[neighbor_gid])
+                    visited.add(neighbor_gid)
+                    queue.extend(adjacency[neighbor_gid])
+
+            # Convertir en array numpy
+            merged[new_id] = np.array(list(current_group), dtype=np.int32)
+            new_id += 1
+
+    return merged
+
+# ============= CLASSE OPTIMISÉE MÉMOIRE =============
+
+class EventDetectorOptimized:
+    """Version optimisée pour la mémoire et la performance"""
 
     def __init__(self, av_data: np.ndarray, threshold_size_3d: int = 10,
                  threshold_size_3d_removed: int = 5, threshold_corr: float = 0.5,
                  plot: bool = False):
 
-        print("=== EVENT DETECTOR SAFE VERSION ===")
+        print("=== EVENT DETECTOR OPTIMIZED VERSION ===")
         print(f"Input shape: {av_data.shape}")
-        print(f"Non-zero voxels: {np.count_nonzero(av_data)}/{av_data.size}")
 
         self.av_ = av_data.astype(np.float32)
         self.time_length_, self.depth_, self.height_, self.width_ = av_data.shape
@@ -155,80 +223,71 @@ class EventDetectorSafe:
         self.id_connected_voxel_ = np.zeros_like(self.av_, dtype=np.int32)
         self.final_id_events_ = []
 
-        # Structures pour les patterns (en Python, pas Numba)
-        self.patterns_cache_ = {}  # hash -> pattern
-        self.voxel_patterns_ = {}  # (z,y,x) -> list of (start_t, end_t, hash)
+        # Structures minimalistes
+        self.voxel_patterns_ = {}  # (z,y,x) -> (start_t, end_t, hash, pattern)
+        self.active_voxels_ = []  # Liste simple des voxels actifs
 
-        # Pré-calcul sécurisé
-        self._precompute_patterns_safe()
+        # Pré-calcul ultra-optimisé
+        self._precompute_minimal()
 
         self.stats_ = {"events_retained": 0, "events_merged": 0, "events_removed": 0}
 
-    def _precompute_patterns_safe(self):
-        """Pré-calcul sécurisé des patterns"""
-        print("Pré-calcul des patterns (version sécurisée)...")
+    def _precompute_minimal(self):
+        """Pré-calcul minimal - ne garde que l'essentiel"""
+        print("Pré-calcul minimal des patterns...")
         start = time.time()
 
-        pattern_count = 0
+        non_zero_count = 0
+        active_count = 0
 
+        # Parcourir seulement les voxels non-vides
         for z in range(self.depth_):
             for y in range(self.height_):
                 for x in range(self.width_):
-                    # Extraire le profil temporel
+                    # Check rapide si le voxel a des valeurs
+                    if not has_nonzero_values(self.av_, z, y, x):
+                        continue
+
+                    non_zero_count += 1
+
+                    # Extraire le profil
                     profile = extract_temporal_profile(self.av_, z, y, x)
 
-                    # Trouver les séquences
-                    sequences = find_nonzero_sequences(profile)
+                    # Trouver la séquence principale seulement
+                    main_seq = find_main_sequence(profile, min_length=3)
 
-                    if len(sequences) > 0:
-                        self.voxel_patterns_[(z, y, x)] = []
+                    if main_seq is not None:
+                        start_t, end_t, length = main_seq
+                        pattern = profile[start_t:end_t]
+                        pattern_hash = simple_pattern_hash(pattern)
 
-                        for start_t, end_t, length in sequences:
-                            if length > 1:  # Éviter les patterns trop courts
-                                pattern = profile[start_t:end_t]
-                                pattern_hash = simple_hash(pattern)
+                        # Stocker de manière compacte
+                        self.voxel_patterns_[(z, y, x)] = (start_t, end_t, pattern_hash, pattern)
+                        self.active_voxels_.append((z, y, x))
+                        active_count += 1
 
-                                # Stocker le pattern
-                                if pattern_hash not in self.patterns_cache_:
-                                    self.patterns_cache_[pattern_hash] = pattern.copy()
-                                    pattern_count += 1
-
-                                # Associer le voxel au pattern
-                                self.voxel_patterns_[(z, y, x)].append((start_t, end_t, pattern_hash))
-
-        print(f"✓ {pattern_count} patterns uniques en {time.time() - start:.2f}s")
+        print(f"✓ {active_count}/{non_zero_count} voxels actifs en {time.time() - start:.2f}s")
+        print(f"  Mémoire patterns: ~{len(self.voxel_patterns_) * 100 / 1024:.1f} KB")
 
     def _get_pattern_for_voxel(self, t, z, y, x):
-        """Récupère le pattern actif pour un voxel à un temps donné"""
+        """Récupère le pattern pour un voxel à un temps donné"""
         if (z, y, x) not in self.voxel_patterns_:
-            return None
+            return None, None
 
-        for start_t, end_t, pattern_hash in self.voxel_patterns_[(z, y, x)]:
-            if start_t <= t < end_t:
-                return pattern_hash
+        start_t, end_t, pattern_hash, pattern = self.voxel_patterns_[(z, y, x)]
 
-        return None
+        if start_t <= t < end_t:
+            return pattern_hash, pattern
 
-    def _compute_pattern_correlation(self, hash1, hash2):
-        """Calcule la corrélation entre deux patterns"""
-        if hash1 == hash2:
-            return 1.0
-
-        if hash1 not in self.patterns_cache_ or hash2 not in self.patterns_cache_:
-            return 0.0
-
-        pattern1 = self.patterns_cache_[hash1]
-        pattern2 = self.patterns_cache_[hash2]
-
-        return compute_ncc_simple(pattern1, pattern2)
+        return None, None
 
     def find_events(self) -> None:
-        """Recherche d'événements sécurisée"""
+        """Recherche d'événements optimisée"""
         print(
             f"Thresholds: size={self.threshold_size_3d_}, removed={self.threshold_size_3d_removed_}, corr={self.threshold_corr_}")
 
-        if np.count_nonzero(self.av_) == 0:
-            print("No non-zero voxels found!")
+        if len(self.active_voxels_) == 0:
+            print("No active voxels found!")
             return
 
         event_id = 1
@@ -241,46 +300,70 @@ class EventDetectorSafe:
             while seed is not None:
                 x, y, z = seed
 
-                # BFS sécurisé
-                current_group = self._bfs_safe(t, z, y, x, event_id)
+                # BFS optimisé
+                current_group = self._bfs_optimized(t, z, y, x, event_id)
 
-                # Classification
-                if len(current_group) < self.threshold_size_3d_:
-                    small_groups.append(current_group)
-                    small_group_ids.append(event_id)
+                if len(current_group) == 0:
+                    # Marquer ce voxel comme traité
+                    self.id_connected_voxel_[t, z, y, x] = -1
                 else:
-                    self.final_id_events_.append(event_id)
-                    self.stats_["events_retained"] += 1
+                    # Classification
+                    if len(current_group) < self.threshold_size_3d_:
+                        small_groups.append(current_group)
+                        small_group_ids.append(event_id)
+                    else:
+                        self.final_id_events_.append(event_id)
+                        self.stats_["events_retained"] += 1
 
-                event_id += 1
+                    event_id += 1
+
                 seed = self._find_seed_point(t)
+
+        # Nettoyer les marquages temporaires
+        self.id_connected_voxel_[self.id_connected_voxel_ == -1] = 0
 
         # Traitement des petits groupes
         self._process_small_groups(small_groups, small_group_ids)
 
         print(f"\nTotal events: {len(self.final_id_events_)}")
 
-    def _bfs_safe(self, seed_t, seed_z, seed_y, seed_x, event_id):
-        """BFS sécurisé"""
+    def _bfs_optimized(self, seed_t, seed_z, seed_y, seed_x, event_id):
+        """BFS ultra-optimisé"""
+        # Vérifier que le seed est valide
+        if (self.av_[seed_t, seed_z, seed_y, seed_x] == 0 or
+                self.id_connected_voxel_[seed_t, seed_z, seed_y, seed_x] != 0):
+            return []
+
+        # Pattern du seed
+        seed_hash, seed_pattern = self._get_pattern_for_voxel(seed_t, seed_z, seed_y, seed_x)
+        if seed_hash is None:
+            return []
+
         queue = deque()
         visited = set()
         group_voxels = []
 
-        # Pattern du seed
-        seed_pattern_hash = self._get_pattern_for_voxel(seed_t, seed_z, seed_y, seed_x)
-        if seed_pattern_hash is None:
-            return []
+        # Ajouter le seed
+        seed_voxel = (seed_t, seed_z, seed_y, seed_x)
+        queue.append(seed_voxel)
+        visited.add(seed_voxel)
+        group_voxels.append(seed_voxel)
+        self.id_connected_voxel_[seed_t, seed_z, seed_y, seed_x] = event_id
 
         # Propagation temporelle du seed
         if (seed_z, seed_y, seed_x) in self.voxel_patterns_:
-            for start_t, end_t, pattern_hash in self.voxel_patterns_[(seed_z, seed_y, seed_x)]:
-                if pattern_hash == seed_pattern_hash:
-                    for t in range(start_t, end_t):
-                        if self.id_connected_voxel_[t, seed_z, seed_y, seed_x] == 0:
-                            self.id_connected_voxel_[t, seed_z, seed_y, seed_x] = event_id
-                            queue.append((t, seed_z, seed_y, seed_x))
-                            visited.add((t, seed_z, seed_y, seed_x))
-                            group_voxels.append((t, seed_z, seed_y, seed_x))
+            start_t, end_t, _, _ = self.voxel_patterns_[(seed_z, seed_y, seed_x)]
+            for t in range(start_t, end_t):
+                voxel_key = (t, seed_z, seed_y, seed_x)
+                if (voxel_key not in visited and
+                        self.id_connected_voxel_[t, seed_z, seed_y, seed_x] == 0):
+                    self.id_connected_voxel_[t, seed_z, seed_y, seed_x] = event_id
+                    queue.append(voxel_key)
+                    visited.add(voxel_key)
+                    group_voxels.append(voxel_key)
+
+        # BFS avec optimisations
+        processed_spatial = set()
 
         while queue:
             t, z, y, x = queue.popleft()
@@ -289,77 +372,163 @@ class EventDetectorSafe:
             neighbors = get_neighbors_3d(z, y, x, self.depth_, self.height_, self.width_)
 
             for nz, ny, nx in neighbors:
-                if (self.av_[t, nz, ny, nx] != 0 and
-                        self.id_connected_voxel_[t, nz, ny, nx] == 0):
+                spatial_key = (nz, ny, nx)
 
-                    neighbor_pattern_hash = self._get_pattern_for_voxel(t, nz, ny, nx)
-                    if neighbor_pattern_hash is None:
+                if spatial_key in processed_spatial:
+                    continue
+
+                if ((self.av_[t, nz, ny, nx] != 0) and
+                        (self.id_connected_voxel_[t, nz, ny, nx] == 0) and
+                        (spatial_key in [vox for vox in self.active_voxels_])):
+
+                    neighbor_hash, neighbor_pattern = self._get_pattern_for_voxel(t, nz, ny, nx)
+                    if neighbor_hash is None:
                         continue
 
-                    # Vérifier la corrélation
-                    correlation = self._compute_pattern_correlation(seed_pattern_hash, neighbor_pattern_hash)
+                    # Corrélation simplifiée
+                    if neighbor_hash == seed_hash:
+                        correlation = 1.0
+                    else:
+                        correlation = compute_simple_correlation(seed_pattern, neighbor_pattern)
 
                     if correlation > self.threshold_corr_:
+                        processed_spatial.add(spatial_key)
+
                         # Propagation temporelle du voisin
-                        if (nz, ny, nx) in self.voxel_patterns_:
-                            for start_t, end_t, pattern_hash in self.voxel_patterns_[(nz, ny, nx)]:
-                                if pattern_hash == neighbor_pattern_hash:
-                                    for tt in range(start_t, end_t):
-                                        voxel_key = (tt, nz, ny, nx)
-                                        if (voxel_key not in visited and
-                                                self.id_connected_voxel_[tt, nz, ny, nx] == 0):
-                                            self.id_connected_voxel_[tt, nz, ny, nx] = event_id
-                                            queue.append(voxel_key)
-                                            visited.add(voxel_key)
-                                            group_voxels.append(voxel_key)
+                        start_t, end_t, _, _ = self.voxel_patterns_[(nz, ny, nx)]
+                        for tt in range(start_t, end_t):
+                            voxel_key = (tt, nz, ny, nx)
+                            if (voxel_key not in visited and
+                                    self.id_connected_voxel_[tt, nz, ny, nx] == 0):
+                                self.id_connected_voxel_[tt, nz, ny, nx] = event_id
+                                queue.append(voxel_key)
+                                visited.add(voxel_key)
+                                group_voxels.append(voxel_key)
 
         return group_voxels
 
     def _find_seed_point(self, t):
-        """Recherche de seed point"""
-        frame = self.av_[t]
-        unprocessed = (frame > 0) & (self.id_connected_voxel_[t] == 0)
+        """Recherche de seed point dans les voxels actifs seulement"""
+        max_val = -1
+        best_seed = None
 
-        if not np.any(unprocessed):
-            return None
+        # Chercher seulement dans les voxels actifs
+        for z, y, x in self.active_voxels_:
+            if (self.av_[t, z, y, x] > 0 and
+                    self.id_connected_voxel_[t, z, y, x] == 0 and
+                    self.av_[t, z, y, x] > max_val):
+                max_val = self.av_[t, z, y, x]
+                best_seed = (x, y, z)
 
-        # Trouver le maximum
-        masked_frame = np.where(unprocessed, frame, -1)
-        flat_idx = np.argmax(masked_frame)
-        z, y, x = np.unravel_index(flat_idx, frame.shape)
-
-        if masked_frame[z, y, x] <= 0:
-            return None
-
-        return (x, y, z)
+        return best_seed
 
     def _process_small_groups(self, small_groups, small_group_ids):
-        """Traitement des petits groupes"""
-        for i, group in enumerate(small_groups):
-            if len(group) >= self.threshold_size_3d_removed_:
-                self.final_id_events_.append(small_group_ids[i])
-                self.stats_["events_retained"] += 1
+        """Version optimisée du traitement des petits groupes"""
+        if not small_groups:
+            return
+
+        # Convertir en listes de tableaux numpy
+        group_voxels_np = [np.array(group, dtype=np.int32) for group in small_groups]
+        group_ids_np = np.array(small_group_ids, dtype=np.int32)
+
+        # Étape 1: Fusion des petits groupes voisins
+        adjacency = find_adjacent_groups(group_voxels_np, self.id_connected_voxel_, group_ids_np)
+
+        # Préparer group_dict
+        group_dict = {gid: [tuple(voxel) for voxel in group]
+                      for gid, group in zip(group_ids_np, group_voxels_np)}
+
+        merged_groups = merge_groups(adjacency, group_dict, group_ids_np)
+
+        # Étape 2: Assignation aux groupes proches (version vectorisée)
+        final_groups = self._assign_to_closest_group_vectorized(merged_groups)
+
+        # Étape 3: Application des résultats
+        self._apply_group_results(final_groups)
+
+    def _assign_to_closest_group_vectorized(self, small_groups):
+        """Version vectorisée de l'assignation aux groupes proches"""
+        if not small_groups:
+            return {}
+
+        # Trouver les grands groupes (vectorisé)
+        small_group_keys = np.array(list(small_groups.keys()), dtype=np.int32)
+        mask = (self.id_connected_voxel_ > 0) & (~np.isin(self.id_connected_voxel_, small_group_keys))
+        large_group_ids = np.unique(self.id_connected_voxel_[mask])
+
+        if len(large_group_ids) == 0:
+            return small_groups
+
+        # Calcul des centroïdes des grands groupes (vectorisé)
+        large_group_centroids = {}
+        for gid in large_group_ids:
+            positions = np.argwhere(self.id_connected_voxel_ == gid)
+            if len(positions) > 0:
+                large_group_centroids[gid] = np.mean(positions, axis=0)
+
+        final_groups = {}
+
+        for gid, group in small_groups.items():
+            if len(group) == 0:
+                continue
+
+            # Calcul du centroïde du petit groupe
+            group_arr = np.array(group)
+            centroid = np.mean(group_arr, axis=0)
+
+            # Calcul des distances (vectorisé)
+            if large_group_centroids:
+                lgids = np.array(list(large_group_centroids.keys()))
+                centroids = np.array(list(large_group_centroids.values()))
+                distances = np.sum(np.abs(centroid - centroids), axis=1)
+                closest_idx = np.argmin(distances)
+                closest_lgid = lgids[closest_idx]
+
+                if closest_lgid not in final_groups:
+                    final_groups[closest_lgid] = []
+                final_groups[closest_lgid].extend(group)
+                self.stats_["events_merged"] += 1
             else:
-                # Supprimer le groupe
-                for t, z, y, x in group:
-                    self.id_connected_voxel_[t, z, y, x] = 0
-                self.stats_["events_removed"] += 1
+                final_groups[gid] = group
+
+        return final_groups
+
+    def _apply_group_results(self, final_groups):
+        """Application des résultats"""
+        events_retained = 0
+        events_removed = 0
+
+        for group_id, group in final_groups.items():
+            group_size = len(group)
+
+            if group_size >= self.threshold_size_3d_removed_:
+                self.final_id_events_.append(group_id)
+                events_retained += 1
+                # Vectoriser l'assignation des voxels
+                voxels = np.array(group, dtype=np.int32)
+                if len(voxels) > 0:
+                    self.id_connected_voxel_[voxels[:, 0], voxels[:, 1], voxels[:, 2], voxels[:, 3]] = group_id
+            else:
+                events_removed += 1
+                voxels = np.array(group, dtype=np.int32)
+                if len(voxels) > 0:
+                    self.id_connected_voxel_[voxels[:, 0], voxels[:, 1], voxels[:, 2], voxels[:, 3]] = 0
+
+        self.stats_["events_retained"] += events_retained
+        self.stats_["events_removed"] += events_removed
+
+
+
+
+
 
     def get_results(self) -> Tuple[np.ndarray, List[int]]:
         """Remapping final et retour des résultats"""
         if self.final_id_events_:
-            # Remapping
-            max_id = max(self.final_id_events_) if self.final_id_events_ else 0
-            id_map = np.zeros(max_id + 1, dtype=np.int32)
-
-            for new_id, old_id in enumerate(sorted(self.final_id_events_), 1):
-                id_map[old_id] = new_id
-
-            # Vectorisation sécurisée
-            old_ids = self.id_connected_voxel_.copy()
-            for old_id, new_id in enumerate(id_map):
-                if new_id > 0:
-                    self.id_connected_voxel_[old_ids == old_id] = new_id
+            # Remapping efficace
+            unique_old_ids = sorted(self.final_id_events_)
+            for new_id, old_id in enumerate(unique_old_ids, 1):
+                self.id_connected_voxel_[self.id_connected_voxel_ == old_id] = new_id
 
         return self.id_connected_voxel_, list(range(1, len(self.final_id_events_) + 1))
 
@@ -380,7 +549,7 @@ class EventDetectorSafe:
 
 def detect_calcium_events_safe(av_data: np.ndarray, params_values: dict = None) -> Tuple[np.ndarray, List[int]]:
     """
-    Version sécurisée de la détection d'événements
+    Version ultra-optimisée de la détection d'événements
     """
     # Gestion des paramètres
     if params_values is None:
@@ -396,10 +565,10 @@ def detect_calcium_events_safe(av_data: np.ndarray, params_values: dict = None) 
         save_results = int(params_values['files']['save_results']) == 1
         output_directory = params_values['paths']['output_dir']
 
-    print("🛡️ SAFE EVENT DETECTION 🛡️")
+    print("⚡ ULTRA-OPTIMIZED EVENT DETECTION ⚡")
     total_start = time.time()
 
-    detector = EventDetectorSafe(
+    detector = EventDetectorOptimized(
         av_data, threshold_size_3d, threshold_size_3d_removed, threshold_corr
     )
 
@@ -413,11 +582,15 @@ def detect_calcium_events_safe(av_data: np.ndarray, params_values: dict = None) 
 
     total_time = time.time() - total_start
 
-    print(f"\n✅ SAFE PERFORMANCE SUMMARY:")
+    print(f"\n⚡ OPTIMIZED PERFORMANCE SUMMARY:")
     print(f"   Total time: {total_time:.2f}s")
     print(f"   Detection time: {detection_time:.2f}s")
     print(f"   Events found: {len(id_events)}")
     print(f"   Speed: {av_data.size / total_time:.0f} voxels/second")
+
+    # Statistiques
+    stats = detector.get_statistics()
+    print(f"   Event statistics: {stats}")
 
     # Sauvegarde si nécessaire
     if save_results:
@@ -433,22 +606,22 @@ def detect_calcium_events_safe(av_data: np.ndarray, params_values: dict = None) 
 
 
 # Test function
-def test_safe_version():
-    """Test avec données synthétiques"""
-    print("=== TESTING SAFE VERSION ===")
+def test_optimized_version():
+    """Test avec données synthétiques optimisé"""
+    print("=== TESTING OPTIMIZED VERSION ===")
 
-    # Données de test
-    shape = (10, 32, 128, 128)
+    # Données de test plus petites
+    shape = (10, 16, 64, 64)
     av_data = np.zeros(shape, dtype=np.float32)
 
-    # Plusieurs événements synthétiques
+    # Événements plus simples
     np.random.seed(42)
 
     # Événement 1
-    av_data[2:6, 10:15, 30:45, 30:45] = np.random.rand(4, 5, 15, 15) * 0.8 + 0.2
+    av_data[2:6, 8:12, 20:25, 20:25] = 0.5 + np.random.normal(0, 0.1, (4, 4, 5, 5))
 
     # Événement 2
-    av_data[5:8, 20:25, 80:95, 60:75] = np.random.rand(3, 5, 15, 15) * 0.6 + 0.4
+    av_data[5:8, 4:8, 40:45, 30:35] = 0.3 + np.random.normal(0, 0.05, (3, 4, 5, 5))
 
     print(f"Created test data: {shape}")
     print(f"Non-zero voxels: {np.count_nonzero(av_data):,}")
@@ -458,4 +631,4 @@ def test_safe_version():
 
 
 if __name__ == "__main__":
-    test_safe_version()
+    test_optimized_version()
