@@ -6,12 +6,11 @@ The transform is applied only within the meaningful X-boundaries [index_xmin[z],
 """
 
 import numpy as np
-from astroca.tools.scene import ImageSequence3DPlusTime
 import os
 from astroca.tools.exportData import export_data
 from tqdm import tqdm
 
-def compute_variance_stabilization(image_sequence: 'ImageSequence3DPlusTime',
+def compute_variance_stabilization(data: np.ndarray,
                                    index_xmin: np.ndarray,
                                    index_xmax: np.ndarray,
                                    save_results: bool = False,
@@ -19,14 +18,13 @@ def compute_variance_stabilization(image_sequence: 'ImageSequence3DPlusTime',
     """
     Applies the Anscombe variance stabilization transform in-place to the image sequence.
 
-    @param image_sequence: ImageSequence3DPlusTime instance
+    @param data: data (T, Z, Y, X) where T is time, Z is depth, Y is height, and X is width.
     @param index_xmin: 1D array of shape (Z,) with left cropping bounds per z
     @param index_xmax: 1D array of shape (Z,) with right cropping bounds per z
     @param save_results: If True, saves the transformed data to the specified output directory
     @param output_directory: Directory to save the transformed data if save_results is True
     """
     print("=== Applying variance stabilization using Anscombe transform... ===")
-    data = image_sequence.get_data()  # shape (T, Z, Y, X)
     T, Z, Y, X = data.shape
 
     for z in tqdm(range(Z), desc="Variance stabilization per Z-slice", unit="slice"):
@@ -39,7 +37,6 @@ def compute_variance_stabilization(image_sequence: 'ImageSequence3DPlusTime',
         np.sqrt(sub_volume + 3.0 / 8.0, out=sub_volume)
         sub_volume *= 2.0  # in-place multiplication
 
-    image_sequence.set_data(data)
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_results is True.")
@@ -48,17 +45,16 @@ def compute_variance_stabilization(image_sequence: 'ImageSequence3DPlusTime',
     print(60*"=")
     print()
 
-def check_variance(image_sequence: ImageSequence3DPlusTime,
+def check_variance(data: np.ndarray,
                    index_xmin: np.ndarray,
                    index_xmax: np.ndarray) -> bool:
     """
     @brief Checks if the variance of the transformed data is approximately 1.
-    @param image_sequence: ImageSequence3DPlusTime instance
+    @param data: 4D numpy array of shape (T, Z, Y, X)
     @param index_xmin: 1D array of shape (depth,) with left cropping bounds per z
     @param index_xmax: 1D array of shape (depth,) with right cropping bounds per z
     @return: True if variance is approximately 1, False otherwise
     """
-    data = image_sequence.get_data()  # shape (T, Z, Y, X)
     T, Z, Y, X = data.shape
 
     for z in range(Z):

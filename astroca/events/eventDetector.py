@@ -72,7 +72,7 @@ class EventDetectorOptimized:
 
         event_id = 1
         # Active voxels belonging to the current event whose neighbors have not been processed yet
-        waiting_for_processing = deque()
+        waiting_for_processing = []
         index_waiting_for_processing = 0
         small_AV_groups = []
         id_small_AV_groups = []
@@ -107,7 +107,7 @@ class EventDetectorOptimized:
 
                 # Check the neighbors of the seed point
                 while index_waiting_for_processing < len(waiting_for_processing):
-                    index = waiting_for_processing.popleft()
+                    index = waiting_for_processing[index_waiting_for_processing]
                     pattern = self.pattern_[index[0], index[1], index[2], index[3]]
                     if pattern is None:
                         raise ValueError(f"Invalid pattern for voxel ({index[3]}, {index[2]}, {index[1]}, {index[0]})")

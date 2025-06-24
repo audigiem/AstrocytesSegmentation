@@ -18,7 +18,6 @@ from astroca.parametersNoise.parametersNoise import estimate_std_over_time
 from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
 
 from astroca.events.eventDetector import detect_calcium_events
-from astroca.events.eventDetectorOptimized import detect_calcium_events_optimized
 from astroca.events.eventDetectorPreCompute import detect_calcium_events_ultra_optimized
 from astroca.events.eventDetectorPreComputeSafe import detect_calcium_events_safe
 from astroca.events.eventDetectorScipy import detect_events, show_results
@@ -63,7 +62,8 @@ def main():
     index_xmin, index_xmax, _, = compute_boundaries(image_seq, pixel_cropped=pixel_cropped, save_results=save_results, output_directory=output_folder)
 
     # === Variance Stabilization ===
-    compute_variance_stabilization(image_seq, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
+    data = image_seq.get_data()  # Reload data after cropping
+    compute_variance_stabilization(data, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
 
     # === F0 estimation ===
     F0 = background_estimation_single_block(image_seq, index_xmin, index_xmax, params_values=params['background_estimation'], save_results=save_results, output_directory=output_folder)
@@ -77,22 +77,20 @@ def main():
 
 
 
-    # # active_voxels = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdirFewerTime/AV.tif")
-    # # === Detect calcium events ===
+    # active_voxels = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdirFewerTime/AV.tif")
+    # === Detect calcium events ===
     # id_connected_voxels, events_ids = detect_calcium_events(active_voxels, params_values=params)
-    # # id_connected_voxels, events_ids = detect_calcium_events_optimized(active_voxels, params_values=params)
-    # # id_connected_voxels, events_ids = detect_calcium_events_ultra_optimized(active_voxels, params_values=params)
-    # # id_connected_voxels, events_ids = detect_calcium_events_safe(active_voxels, params_values=params)
-    # # labels, stats = detect_events_4d(active_voxels, params=params)
-    # # id_connected_voxels = detect_events(active_voxels, params_values=params)
-    # # events_ids = list(set(id_connected_voxels.flatten()) - {0})  # Exclude background label (0)
-    # # show_results(id_connected_voxels)
-    #
-    # # === Compute image amplitude ===
-    # image_amplitude = compute_image_amplitude(data_cropped, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
-    #
-    # # === Compute features ===
-    # save_features_from_events(id_connected_voxels, events_ids, image_amplitude, params_values=params['features_extraction'], save_result=save_results, output_directory=output_folder)
+    # id_connected_voxels, events_ids = detect_calcium_events_ultra_optimized(active_voxels, params_values=params)
+    # id_connected_voxels, events_ids = detect_calcium_events_safe(active_voxels, params_values=params)
+    id_connected_voxels = detect_events(active_voxels, params_values=params)
+    events_ids = list(set(id_connected_voxels.flatten()) - {0})  # Exclude background label (0)
+    show_results(id_connected_voxels)
+    
+    # === Compute image amplitude ===
+    image_amplitude = compute_image_amplitude(data_cropped, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
+
+    # === Compute features ===
+    save_features_from_events(id_connected_voxels, events_ids, image_amplitude, params_values=params['features_extraction'], save_result=save_results, output_directory=output_folder)
 
     
 

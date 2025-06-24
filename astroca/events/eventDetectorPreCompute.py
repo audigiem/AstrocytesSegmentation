@@ -13,11 +13,18 @@ from collections import deque
 from tqdm import tqdm
 import os
 from astroca.tools.exportData import export_data
+from astroca.events.eventMergerOptimized import process_small_groups_optimized
+from sklearn.neighbors import NearestNeighbors
+from scipy.sparse.csgraph import connected_components
+from collections import defaultdict
+
+
+VOXEL_TYPE = types.UniTuple(types.int64, 4)
 
 
 # ============= FONCTIONS NUMBA ULTRA-OPTIMISÉES =============
 
-@njit(parallel=True)
+@njit
 def precompute_all_patterns(av_data):
     """Pré-calcule TOUS les patterns possibles en une seule passe"""
     T, Z, Y, X = av_data.shape
@@ -81,28 +88,6 @@ def hash_pattern(pattern):
     return hash_val
 
 
-@njit(parallel=True)
-def precompute_correlations(patterns_dict):
-    """Pré-calcule toutes les corrélations entre patterns"""
-    # Convertir en listes pour l'indexation
-    pattern_hashes = [h for h in patterns_dict.keys()]
-    n_patterns = len(pattern_hashes)
-
-    # Matrice des corrélations max
-    correlation_matrix = np.zeros((n_patterns, n_patterns), dtype=np.float32)
-
-    for i in prange(n_patterns):
-        for j in range(i, n_patterns):
-            if i == j:
-                correlation_matrix[i, j] = 1.0
-            else:
-                pattern1 = patterns_dict[pattern_hashes[i]]
-                pattern2 = patterns_dict[pattern_hashes[j]]
-                corr = compute_max_ncc_fast(pattern1, pattern2)
-                correlation_matrix[i, j] = corr
-                correlation_matrix[j, i] = corr  # Symétrique
-
-    return correlation_matrix, pattern_hashes
 
 
 @njit
@@ -145,21 +130,6 @@ def compute_max_ncc_fast(p1, p2):
 
 
 @njit
-def get_pattern_hash_from_voxel(voxel_to_pattern_hash, t, z, y, x):
-    """Récupère le hash du pattern pour un voxel donné"""
-    return voxel_to_pattern_hash[t, z, y, x]
-
-
-@njit
-def find_pattern_index(pattern_hashes, target_hash):
-    """Trouve l'index d'un pattern dans la liste"""
-    for i in range(len(pattern_hashes)):
-        if pattern_hashes[i] == target_hash:
-            return i
-    return -1
-
-
-@njit
 def get_valid_neighbors_batch(av_data, id_connected, t, z, y, x):
     """Récupère tous les voisins valides d'un coup"""
     T, Z, Y, X = av_data.shape
@@ -192,11 +162,13 @@ def propagate_temporal_fast(voxel_to_pattern_hash, id_connected, event_id, t, z,
     T = id_connected.shape[0]
     pattern_hash = voxel_to_pattern_hash[t, z, y, x]
 
+    # Définir le type de retour explicitement
+    temporal_voxels = NumbaList.empty_list(VOXEL_TYPE)
+
     if pattern_hash == 0:
-        return []
+        return temporal_voxels
 
     # Trouver tous les voxels temporels avec le même pattern
-    temporal_voxels = []
     for tt in range(T):
         if (voxel_to_pattern_hash[tt, z, y, x] == pattern_hash and
                 id_connected[tt, z, y, x] == 0):
@@ -215,7 +187,7 @@ class EventDetectorUltraOptimized:
                  threshold_size_3d_removed: int = 5, threshold_corr: float = 0.5,
                  plot: bool = False):
 
-        print("=== EVENT DETECTOR ULTRA-OPTIMIZED ===")
+        print("=== Event Detection optimized with pre-computated patterns ===")
         print(f"Input shape: {av_data.shape}")
         print(f"Non-zero voxels: {np.count_nonzero(av_data)}/{av_data.size}")
 
@@ -236,13 +208,17 @@ class EventDetectorUltraOptimized:
         self.patterns_dict_, self.voxel_to_pattern_hash_ = precompute_all_patterns(self.av_)
         print(f"✓ {len(self.patterns_dict_)} patterns uniques en {time.time() - start:.2f}s")
 
-        # ÉTAPE 2: Pré-calcul de toutes les corrélations
-        print("Pré-calcul des corrélations...")
-        start = time.time()
-        self.correlation_matrix_, self.pattern_hashes_list_ = precompute_correlations(self.patterns_dict_)
-        print(f"✓ Matrice {self.correlation_matrix_.shape} en {time.time() - start:.2f}s")
+        # # ÉTAPE 2: Pré-calcul de toutes les corrélations
+        # print("Pré-calcul des corrélations...")
+        # start = time.time()
+        # self.correlation_matrix_, self.pattern_hashes_list_ = precompute_correlations(self.patterns_dict_)
+        # print(f"✓ Matrice {self.correlation_matrix_.shape} en {time.time() - start:.2f}s")
+        self.correlation_cache_ = Dict.empty(
+            key_type=types.UniTuple(types.int64, 2),
+            value_type=types.float32
+        )
 
-        self.stats_ = {"events_retained": 0, "events_merged": 0, "events_removed": 0}
+        self.stats_ = {"events_retained": 0, "events_merged": 0, "events_removed": 0, "events_assigned": 0}
 
     def find_events(self) -> None:
         """Version ultra-optimisée de la recherche d'événements"""
@@ -254,8 +230,7 @@ class EventDetectorUltraOptimized:
             return
 
         event_id = 1
-        small_groups = []
-        small_group_ids = []
+        all_events = {}
 
         for t in tqdm(range(self.time_length_), desc="Processing frames"):
             seed = self._find_seed_point_fast(t)
@@ -271,21 +246,35 @@ class EventDetectorUltraOptimized:
                 # BFS ultra-optimisé
                 current_group = self._bfs_ultra_fast(t, z, y, x, pattern_hash, event_id)
 
-                # Classification immédiate
-                if len(current_group) < self.threshold_size_3d_:
-                    small_groups.append(current_group)
-                    small_group_ids.append(event_id)
-                else:
-                    self.final_id_events_.append(event_id)
-                    self.stats_["events_retained"] += 1
+                all_events[event_id] = {
+                    'voxels': current_group,
+                    'size': len(current_group),
+                    'is_large': len(current_group) >= self.threshold_size_3d_,
+                }
 
                 event_id += 1
                 seed = self._find_seed_point_fast(t)
 
-        # Traitement des petits groupes (simplifié)
-        self._process_small_groups_fast(small_groups, small_group_ids)
+        print(f"Phase 2: Processing {sum(1 for e in all_events.values() if not e['is_large'])} small groups...")
+        self._process_all_small_groups_optimized(all_events)
 
         print(f"\nTotal events: {len(self.final_id_events_)}")
+
+    @staticmethod
+    @njit()
+    def get_correlation_cached(cache, patterns_dict, h1, h2):
+        key = (min(h1, h2), max(h1, h2))
+        if key in cache:
+            return cache[key]
+
+        p1 = patterns_dict[h1].astype(np.float32)
+        p2 = patterns_dict[h2].astype(np.float32)
+        corr = np.float32(compute_max_ncc_fast(p1, p2))
+        corr = np.float32(corr)
+        cache[key] = corr
+        return corr
+
+
 
     def _bfs_ultra_fast(self, seed_t, seed_z, seed_y, seed_x, seed_pattern_hash, event_id):
         """BFS ultra-rapide avec toutes les optimisations"""
@@ -304,9 +293,6 @@ class EventDetectorUltraOptimized:
             visited.add(voxel)
             group_voxels.append(voxel)
 
-        # Index du pattern seed pour les corrélations
-        seed_pattern_idx = find_pattern_index(self.pattern_hashes_list_, seed_pattern_hash)
-
         while queue:
             t, z, y, x = queue.popleft()
 
@@ -320,23 +306,22 @@ class EventDetectorUltraOptimized:
                 if neighbor_hash == 0:
                     continue
 
-                # Corrélation ultra-rapide via lookup
-                neighbor_idx = find_pattern_index(self.pattern_hashes_list_, neighbor_hash)
-                if neighbor_idx >= 0:
-                    correlation = self.correlation_matrix_[seed_pattern_idx, neighbor_idx]
+                correlation = self.get_correlation_cached(
+                    self.correlation_cache_, self.patterns_dict_,
+                    seed_pattern_hash, neighbor_hash
+                )
+                if correlation > self.threshold_corr_:
+                    # Propagation temporelle du voisin
+                    neighbor_temporal = propagate_temporal_fast(
+                        self.voxel_to_pattern_hash_, self.id_connected_voxel_,
+                        event_id, t, nz, ny, nx
+                    )
 
-                    if correlation > self.threshold_corr_:
-                        # Propagation temporelle du voisin
-                        neighbor_temporal = propagate_temporal_fast(
-                            self.voxel_to_pattern_hash_, self.id_connected_voxel_,
-                            event_id, t, nz, ny, nx
-                        )
-
-                        for nvoxel in neighbor_temporal:
-                            if nvoxel not in visited:
-                                queue.append(nvoxel)
-                                visited.add(nvoxel)
-                                group_voxels.append(nvoxel)
+                    for nvoxel in neighbor_temporal:
+                        if nvoxel not in visited:
+                            queue.append(nvoxel)
+                            visited.add(nvoxel)
+                            group_voxels.append(nvoxel)
 
         return group_voxels
 
@@ -358,23 +343,202 @@ class EventDetectorUltraOptimized:
 
         return (x, y, z)
 
-    def _process_small_groups_fast(self, small_groups, small_group_ids):
-        """Traitement rapide des petits groupes"""
-        # Version simplifiée pour la performance
-        for i, group in enumerate(small_groups):
-            if len(group) >= self.threshold_size_3d_removed_:
-                self.final_id_events_.append(small_group_ids[i])
+    def _process_all_small_groups_optimized(self, all_events: dict) -> None:
+        """Traitement optimisé de TOUS les petits groupes selon la logique de fusion"""
+
+        # Séparer petits et grands événements
+        small_events = {eid: info for eid, info in all_events.items() if not info['is_large']}
+        large_events = {eid: info for eid, info in all_events.items() if info['is_large']}
+
+        if not small_events:
+            print("No small groups to process")
+            return
+
+        print(f"Processing {len(small_events)} small groups against {len(large_events)} large groups")
+
+        # Utiliser la classe EventMergerOptimized adaptée
+        processed_result = self._merge_small_groups_with_context(small_events, large_events)
+
+        # Mettre à jour les statistiques
+        self.stats_["events_merged"] = processed_result['merged']
+        self.stats_["events_assigned"] = processed_result['assigned']
+        self.stats_["events_removed"] = processed_result['removed']
+
+        # Ajouter les événements conservés à la liste finale
+        for event_id in processed_result['kept_events']:
+            if event_id not in self.final_id_events_:
+                self.final_id_events_.append(event_id)
                 self.stats_["events_retained"] += 1
-            else:
-                # Supprimer le groupe
-                for t, z, y, x in group:
-                    self.id_connected_voxel_[t, z, y, x] = 0
-                self.stats_["events_removed"] += 1
+
+    def _merge_small_groups_with_context(self, small_events: dict, large_events: dict) -> dict:
+        """Version adaptée du merger pour travailler avec le contexte existant"""
+
+        # Créer les structures nécessaires pour le merger
+        small_groups_info = {}
+
+        for event_id, event_info in small_events.items():
+            # Calculer le centroïde
+            voxels_array = np.array(event_info['voxels'])
+            centroid = np.mean(voxels_array, axis=0) if len(voxels_array) > 0 else np.zeros(4)
+
+            small_groups_info[event_id] = {
+                'size': event_info['size'],
+                'centroid': centroid,
+                'voxels': voxels_array
+            }
+
+        large_groups_info = {}
+        for event_id, event_info in large_events.items():
+            voxels_array = np.array(event_info['voxels'])
+            centroid = np.mean(voxels_array, axis=0) if len(voxels_array) > 0 else np.zeros(4)
+
+            large_groups_info[event_id] = {
+                'size': event_info['size'],
+                'centroid': centroid,
+                'voxels': voxels_array
+            }
+
+        # Appliquer la logique de fusion optimisée
+        result = self._apply_merging_logic(small_groups_info, large_groups_info)
+
+        return result
+
+    def _apply_merging_logic(self, small_groups: dict, large_groups: dict) -> dict:
+        """Application de la logique de fusion selon vos spécifications"""
+
+
+        result = {
+            'kept_events': [],
+            'merged': 0,
+            'assigned': 0,
+            'removed': 0
+        }
+
+        if not small_groups:
+            return result
+
+        # ÉTAPE 1: Grouper les petits groupes voisins
+        print("Step 1: Merging neighboring small groups...")
+        merged_groups = self._merge_neighboring_groups(small_groups)
+        result['merged'] = len(small_groups) - len(merged_groups)
+
+        # ÉTAPE 2: Assigner aux grands groupes proches
+        if large_groups:
+            print("Step 2: Assigning to closest large groups...")
+            assigned_count = self._assign_to_large_groups(merged_groups, large_groups)
+            result['assigned'] = assigned_count
+
+        # ÉTAPE 3: Traiter les groupes restants
+        print("Step 3: Processing remaining groups...")
+        for group_data in merged_groups:
+            if not group_data.get('assigned', False):
+                if group_data['size'] >= self.threshold_size_3d_removed_:
+                    # Conserver le groupe
+                    for original_id in group_data['original_ids']:
+                        result['kept_events'].append(original_id)
+                else:
+                    # Supprimer le groupe
+                    result['removed'] += len(group_data['original_ids'])
+                    for original_id in group_data['original_ids']:
+                        # Marquer pour suppression dans l'array principal
+                        for t, z, y, x in small_groups[original_id]['voxels']:
+                            self.id_connected_voxel_[t, z, y, x] = 0
+
+        return result
+
+    def _merge_neighboring_groups(self, small_groups: dict) -> list:
+        """Fusionne les petits groupes voisins"""
+        if len(small_groups) <= 1:
+            return [{'original_ids': list(small_groups.keys()),
+                     'size': sum(g['size'] for g in small_groups.values()),
+                     'centroid': list(small_groups.values())[0]['centroid'] if small_groups else np.zeros(4)}]
+
+        # Créer matrice de distances
+        group_ids = list(small_groups.keys())
+        centroids = np.array([small_groups[gid]['centroid'] for gid in group_ids])
+
+        # Seuil de voisinage adaptatif
+        T, Z, Y, X = self.id_connected_voxel_.shape
+        spatial_threshold = max(5.0, np.sqrt(np.mean([g['size'] for g in small_groups.values()])))
+
+        nn = NearestNeighbors(radius=spatial_threshold, metric='euclidean')
+        nn.fit(centroids)
+        adjacency = nn.radius_neighbors_graph(centroids)
+
+        # Composantes connexes
+        n_components, labels = connected_components(adjacency, directed=False)
+
+        # Créer les groupes fusionnés
+        merged_groups = []
+        groups_by_component = defaultdict(list)
+
+        for i, label in enumerate(labels):
+            groups_by_component[label].append(group_ids[i])
+
+        for component_group_ids in groups_by_component.values():
+            # Fusionner les groupes de cette composante
+            total_size = sum(small_groups[gid]['size'] for gid in component_group_ids)
+
+            # Centroïde pondéré par la taille
+            weighted_centroids = []
+            total_weight = 0
+            for gid in component_group_ids:
+                weight = small_groups[gid]['size']
+                weighted_centroids.append(small_groups[gid]['centroid'] * weight)
+                total_weight += weight
+
+            merged_centroid = np.sum(weighted_centroids, axis=0) / total_weight if total_weight > 0 else np.zeros(4)
+
+            merged_groups.append({
+                'original_ids': component_group_ids,
+                'size': total_size,
+                'centroid': merged_centroid,
+                'assigned': False
+            })
+
+        return merged_groups
+
+    def _assign_to_large_groups(self, merged_groups: list, large_groups: dict) -> int:
+        """Assigne les groupes fusionnés aux grands groupes proches"""
+        if not large_groups:
+            return 0
+
+        # Préparer les centroïdes des grands groupes
+        large_ids = list(large_groups.keys())
+        large_centroids = np.array([large_groups[lid]['centroid'] for lid in large_ids])
+
+        nn = NearestNeighbors(n_neighbors=1, metric='euclidean')
+        nn.fit(large_centroids)
+
+        assigned_count = 0
+
+        for group_data in merged_groups:
+            # Calculer seuil adaptatif
+            max_distance = max(10.0, np.power(group_data['size'], 1 / 3) * 3)
+
+            # Trouver le plus proche
+            distances, indices = nn.kneighbors([group_data['centroid']], n_neighbors=1)
+            closest_distance = distances[0][0]
+
+            if closest_distance <= max_distance:
+                # Assigner au groupe proche
+                target_large_id = large_ids[indices[0][0]]
+
+                # Réassigner physiquement les voxels
+                for original_small_id in group_data['original_ids']:
+                    mask = (self.id_connected_voxel_ == original_small_id)
+                    self.id_connected_voxel_[mask] = target_large_id
+
+                group_data['assigned'] = True
+                assigned_count += 1
+
+        return assigned_count
 
     def get_results(self) -> Tuple[np.ndarray, List[int]]:
         """Remapping final et retour des résultats"""
         if self.final_id_events_:
             # Remapping vectorisé ultra-rapide
+            print("Remapping final des IDs...")
             max_id = max(self.final_id_events_) if self.final_id_events_ else 0
             id_map = np.zeros(max_id + 1, dtype=np.int32)
 
@@ -420,7 +584,6 @@ def detect_calcium_events_ultra_optimized(av_data: np.ndarray, params_values: di
         save_results = int(params_values['files']['save_results']) == 1
         output_directory = params_values['paths']['output_dir']
 
-    print("🚀 ULTRA-OPTIMIZED EVENT DETECTION 🚀")
     total_start = time.time()
 
     detector = EventDetectorUltraOptimized(
@@ -437,11 +600,14 @@ def detect_calcium_events_ultra_optimized(av_data: np.ndarray, params_values: di
 
     total_time = time.time() - total_start
 
-    print(f"\n🎯 PERFORMANCE SUMMARY:")
+    print(f"\n PERFORMANCE SUMMARY:")
     print(f"   Total time: {total_time:.2f}s")
     print(f"   Detection time: {detection_time:.2f}s")
     print(f"   Events found: {len(id_events)}")
     print(f"   Speed: {av_data.size / total_time:.0f} voxels/second")
+    # show event id, size, frames and duration
+    for event_id in id_events:
+        print(f"   Event ID: {event_id}, Size: {np.sum(id_connections == event_id)}, Frames: {np.unique(np.argwhere(id_connections == event_id)[:, 0])}, Duration: {len(np.unique(np.argwhere(id_connections == event_id)[:, 0]))} frames")
 
     # Sauvegarde si nécessaire
     if save_results:
@@ -453,6 +619,7 @@ def detect_calcium_events_ultra_optimized(av_data: np.ndarray, params_values: di
         export_data(id_connections, output_directory, export_as_single_tif=True, file_name="ID_calciumEvents")
 
     print("=" * 60)
+    print()
     return id_connections, id_events
 
 
