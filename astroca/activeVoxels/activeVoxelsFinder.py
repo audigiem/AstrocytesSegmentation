@@ -74,7 +74,10 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
 
 def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, index_xmin: list, index_xmax: list) -> np.ndarray:
     """
-    @brief Determine active voxels based on the value of the filtered data. If data(x,t) > 0, then active_voxels(x,t) = dF(x,t); if data(x,t) < 0, then active_voxels(x,t) = std_noise; otherwise, active_voxels(x,t) = 0.
+    @brief Determine active voxels based on the value of the filtered data. 
+    If data(x,t) > 0, then active_voxels(x,t) = dF(x,t); 
+    if data(x,t) < 0, then active_voxels(x,t) = std_noise; 
+    otherwise, active_voxels(x,t) = 0.
     @param filtered_data: 4D numpy array of shape (T, Z, Y, X) representing the filtered data.
     @param dF: 4D numpy array of shape (T, Z, Y, X) representing the dynamic image.
     @param std_noise: Standard deviation of the noise level.

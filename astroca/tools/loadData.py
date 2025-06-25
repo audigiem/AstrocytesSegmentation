@@ -30,8 +30,8 @@ def load_data(file_path: str) -> np.ndarray:
         # prevent (1, T, Z, Y, X) shape
         if data.ndim == 5 and data.shape[0] == 1:
             data = np.squeeze(data, axis=0)
-        if data.ndim != 4:
-            raise ValueError(f"Loaded data must be a 4D array (T, Z, Y, X), but got shape {data.shape}.")
+        if len(data.shape) != 4 and len(data.shape) != 3:
+            raise ValueError(f"Loaded data must be a 4D array (T, Z, Y, X) or 3D array (Z, Y, X), but got shape {data.shape}.")
         return data
 
     else:
