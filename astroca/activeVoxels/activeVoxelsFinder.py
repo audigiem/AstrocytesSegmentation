@@ -10,7 +10,7 @@ from astroca.activeVoxels.testMedianFilter import *
 import os
 from astroca.tools.exportData import export_data
 
-def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, index_xmin: list, index_xmax: list, params_values: dict, save_results: bool = False, output_directory: str = None) -> np.ndarray:
+def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, index_xmin: list, index_xmax: list, params_values: dict) -> np.ndarray:
     """
     @brief Find active voxels in a 3D+time image sequence based on z-score thresholding.
 
@@ -19,9 +19,13 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     @param gaussian_noise_mean: Mean (or median) of the Gaussian noise, used to center the z-score calculation.
     @param index_xmin: 1D array of cropping bounds (left) for each Z slice.
     @param index_xmax: 1D array of cropping bounds (right) for each Z slice.
-    @param params_values: Dictionary containing parameters for feature computation.
-    @param save_results: Boolean flag to indicate whether to save the results.
-    @param output_directory: Directory to save the results if save_results is True.
+    @param params_values: Dictionary containing the parameters:
+        - 'size_median_filter': Size of the median filter to apply.
+        - 'border_condition': Border condition for the median filter.
+        - 'threshold_zscore': Z-score threshold for determining active voxels.
+        - 'radius_closing_morphology': Radius for the closing morphology operation.
+        - 'save_results': Boolean indicating whether to save the results.
+        - 'output_directory': Directory to save the results if save_results is True.
     @return: 4D numpy array of active voxels with the same shape as input data, where active voxels are marked as dF value and inactive as 0.
     @raise ValueError: If the input data is not a 4D numpy array or if the standard deviation of noise is not greater than zero.
     """
@@ -29,12 +33,15 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     if dF.ndim != 4:
         raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
 
-    if len(params_values) != 4:
-        raise ValueError("params_values must contain exactly 4 parameters: 'size_median_filter', 'border_condition', 'threshold', and 'radius'.")
-    threshold = float(params_values['threshold_zscore'])
-    radius = int(params_values['radius_closing_morphology'])
-    size_median_filter = float(params_values['median_size'])
-    border_condition = params_values['border_condition']
+    required_keys = {'active_voxels', 'files', 'paths'}
+    if not required_keys.issubset(params_values.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
+    save_results = params_values['files']['save_results']
+    output_directory = params_values['paths']['output_dir']
+    threshold = float(params_values['active_voxels']['threshold_zscore'])
+    radius = int(params_values['active_voxels']['radius_closing_morphology'])
+    size_median_filter = float(params_values['active_voxels']['median_size'])
+    border_condition = params_values['active_voxels']['border_condition']
 
     data = compute_z_score(dF, std_noise, gaussian_noise_mean, threshold, index_xmin, index_xmax)
     if save_results:

@@ -8,27 +8,32 @@ the first and last non-empty band in each z-slice.
 """
 
 import numpy as np
-from astroca.tools.scene import ImageSequence3DPlusTime
-from astroca.tools.exportData import export_data
+from astroca.tools.exportData import export_data, save_numpy_tab 
 import os
 from tqdm import tqdm
 
-def compute_boundaries(image_sequence: 'ImageSequence3DPlusTime',
-                       pixel_cropped: int = 2,
-                       save_results: bool = False,
-                       output_directory: str = None) -> tuple:
+def compute_boundaries(data: np.ndarray, params: dict) -> tuple:
     """
     Compute cropping boundaries in X for each Z slice based on background values.
     Sets boundary pixels to default_value and saves results optionally.
 
-    @param image_sequence: ImageSequence3DPlusTime instance with 4D data (T, Z, Y, X)
-    @param pixel_cropped: Number of pixels to trim inside each boundary
-    @param save_results: Whether to save the updated sequence
-    @param output_directory: Directory to save the bounded sequence if save_results is True
+    @param data: 4D data (T, Z, Y, X)
+    @param params: Dictionary containing the parameters:
+        - pixel_cropped: Number of pixels to crop from the height dimension.
+        - save_results: Boolean indicating whether to save the results.
+        - output_directory: Directory to save the results if save_results is True.
     @return: (index_xmin, index_xmax, default_value)
     """
     print(" - Computing cropping boundaries in X for each Z slice...")
-    data = image_sequence.get_data()
+    
+    # extract necessary parameters
+    required_keys = {'preprocessing', 'files', 'paths'}
+    if not required_keys.issubset(params.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+    pixel_cropped = int(params['preprocessing']['pixel_cropped'])
+    save_results = params['files']['save_results']
+    output_directory = params['paths']['output_dir']
+    
     T, Z, Y, X = data.shape
     t = 0  # analyse du premier temps uniquement
 
@@ -36,7 +41,6 @@ def compute_boundaries(image_sequence: 'ImageSequence3DPlusTime',
     y_array = np.random.choice(Y, size=nb_y_tested, replace=False)
 
     default_value = float(data[t, 0, 0, X - 1])
-    image_sequence.set_default_value(default_value)
 
     index_xmin = np.full(Z, -1, dtype=int)
     index_xmax = np.full(Z, X - 1, dtype=int)
@@ -70,8 +74,6 @@ def compute_boundaries(image_sequence: 'ImageSequence3DPlusTime',
     index_xmin += pixel_cropped
     index_xmax -= pixel_cropped
 
-    image_sequence.set_data(data)
-
     print(f"    index_xmin = {index_xmin}\n     index_xmax = {index_xmax}\n     default_value = {default_value}")
 
     if save_results:
@@ -79,7 +81,9 @@ def compute_boundaries(image_sequence: 'ImageSequence3DPlusTime',
             raise ValueError("output_directory must be specified if save_results is True.")
         os.makedirs(output_directory, exist_ok=True)
         export_data(data, output_directory, export_as_single_tif=True, file_name="bounded_image_sequence")
-
+        save_numpy_tab(index_xmin, output_directory, file_name="index_Xmin.npy")
+        save_numpy_tab(index_xmax, output_directory, file_name="index_Xmax.npy")
+        
     print(60*"=")
     print()
-    return index_xmin, index_xmax, default_value
+    return index_xmin, index_xmax, default_value, data

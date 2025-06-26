@@ -13,18 +13,32 @@ from tqdm import tqdm
 def compute_variance_stabilization(data: np.ndarray,
                                    index_xmin: np.ndarray,
                                    index_xmax: np.ndarray,
-                                   save_results: bool = False,
-                                   output_directory: str = None):
+                                   params: dict) -> np.ndarray:
     """
-    Applies the Anscombe variance stabilization transform in-place to the image sequence.
+    @brief Applies the Anscombe variance stabilization transform in-place to the image sequence.
+    The Anscombe transform is applied as follows:
+        A(x) = sqrt(x + 3/8) * 2
+    This transform stabilizes the variance of Poisson-distributed data, making it approximately Gaussian.
 
     @param data: data (T, Z, Y, X) where T is time, Z is depth, Y is height, and X is width.
     @param index_xmin: 1D array of shape (Z,) with left cropping bounds per z
     @param index_xmax: 1D array of shape (Z,) with right cropping bounds per z
-    @param save_results: If True, saves the transformed data to the specified output directory
-    @param output_directory: Directory to save the transformed data if save_results is True
+    @param params: Dictionary containing the parameters:
+        - save_results: Boolean indicating whether to save the transformed data.
+        - output_directory: Directory to save the transformed data if save_results is True.
+    @return: The transformed data with stabilized variance.
+    
     """
     print("=== Applying variance stabilization using Anscombe transform... ===")
+    
+    # extract necessary parameters
+    required_keys = {'files', 'paths'}
+    if not required_keys.issubset(params.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+    
+    save_results = params['files']['save_results']
+    output_directory = params['paths']['output_dir']
+    
     T, Z, Y, X = data.shape
 
     for z in tqdm(range(Z), desc="Variance stabilization per Z-slice", unit="slice"):
@@ -44,6 +58,7 @@ def compute_variance_stabilization(data: np.ndarray,
         export_data(data, output_directory, export_as_single_tif=True, file_name="variance_stabilized_sequence")
     print(60*"=")
     print()
+    return data
 
 def check_variance(data: np.ndarray,
                    index_xmin: np.ndarray,

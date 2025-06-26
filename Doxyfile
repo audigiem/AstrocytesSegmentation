@@ -13,7 +13,7 @@ HIDE_UNDOC_RELATIONS   = YES
 
 # Exclusions spécifiques
 EXCLUDE                = venv/ .venv/ __pycache__/ build/ dist/
-EXCLUDE_PATTERNS       = */test_*.py */setup.py
+EXCLUDE_PATTERNS       = */test_*.py */setup.py __init__.py
 
 GENERATE_HTML          = YES
 GENERATE_LATEX         = YES

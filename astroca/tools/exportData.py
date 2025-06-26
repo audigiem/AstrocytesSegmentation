@@ -53,3 +53,18 @@ def export_data(data: np.ndarray,
         for t in range(data.shape[0]):
             imwrite(os.path.join(directory_path, f'time_frame_{t}.tif'), data[t])
             print(f"Exported time frame {t} to {os.path.join(directory_path, f'time_frame_{t}.tif')}")
+
+
+def save_numpy_tab(data: np.ndarray, output_path: str, file_name: str = "exported_data.npy"):
+    """
+    Save a numpy array to a .npy file.
+
+    @param data: Numpy array to save.
+    @param output_path: Path where the .npy file will be saved.
+    @param file_name: Name of the .npy file.
+    """
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+
+    np.save(os.path.join(output_path, file_name), data)
+    print(f"Saved numpy array to {os.path.join(output_path, file_name)}")

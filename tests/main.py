@@ -31,49 +31,31 @@ def main():
     # loading parameters from config file
     params = read_config()
 
-    input_folder = params['paths']['input_folder']
-    output_folder = params['paths']['output_dir']
-
-    save_results = int(params['files']['save_results'])
-    if save_results == 0:
-        save_results = False
-    else :
-        save_results = True
-
-    pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    x_min = int(params['preprocessing']['x_min'])
-    x_max = int(params['preprocessing']['x_max'])
-
     print("Parameters loaded successfully")
 
 
     # === Loading ===
-    data = load_data(input_folder)  # shape (T, Z, Y, X)
+    data = load_data(params['paths']['input_folder'])  # shape (T, Z, Y, X)
     T, Z, Y, X = data.shape
     print(f"Loaded data of shape: {data.shape}")
     print()
 
-    # === Initialization ===
-    image_seq = ImageSequence3DPlusTime(data, time_length=T, width=X, height=Y, depth=Z)
-
     # === Crop + boundaries ===
-    crop_boundaries(image_seq, [(0, Z), (pixel_cropped, Y), (x_min, x_max+1)], save_results=save_results, output_directory=output_folder)
-    data_cropped = image_seq.get_data()  # shape (T, Z, Y, X)
-    index_xmin, index_xmax, _, = compute_boundaries(image_seq, pixel_cropped=pixel_cropped, save_results=save_results, output_directory=output_folder)
+    cropped_data = crop_boundaries(data, params)
+    index_xmin, index_xmax, _, data = compute_boundaries(cropped_data, params)
 
     # === Variance Stabilization ===
-    data = image_seq.get_data()  # Reload data after cropping
-    compute_variance_stabilization(data, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
+    data = compute_variance_stabilization(data, index_xmin, index_xmax, params)
 
     # === F0 estimation ===
-    F0 = background_estimation_single_block(image_seq, index_xmin, index_xmax, params_values=params['background_estimation'], save_results=save_results, output_directory=output_folder)
+    F0 = background_estimation_single_block(data, index_xmin, index_xmax, params)
 
     # === Compute dF and background noise estimation ===
-    dF, mean_noise = compute_dynamic_image(image_seq, F0, index_xmin, index_xmax, T, save_results=save_results, output_directory=output_folder)
+    dF, mean_noise = compute_dynamic_image(data, F0, index_xmin, index_xmax, T, params)
     std_noise = estimate_std_over_time(dF, index_xmin, index_xmax)
 
     # === Compute Z-score, closing morphology, median filter ===
-    active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params_values=params['active_voxels'], save_results=save_results, output_directory=output_folder)
+    active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)
 
 
 
@@ -82,15 +64,15 @@ def main():
     # id_connected_voxels, events_ids = detect_calcium_events(active_voxels, params_values=params)
     # id_connected_voxels, events_ids = detect_calcium_events_ultra_optimized(active_voxels, params_values=params)
     # id_connected_voxels, events_ids = detect_calcium_events_safe(active_voxels, params_values=params)
-    id_connected_voxels = detect_events(active_voxels, params_values=params)
-    events_ids = list(set(id_connected_voxels.flatten()) - {0})  # Exclude background label (0)
-    show_results(id_connected_voxels)
+    # id_connected_voxels = detect_events(active_voxels, params_values=params)
+    # events_ids = list(set(id_connected_voxels.flatten()) - {0})  # Exclude background label (0)
+    # show_results(id_connected_voxels)
     
-    # === Compute image amplitude ===
-    image_amplitude = compute_image_amplitude(data_cropped, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
+    # # === Compute image amplitude ===
+    # image_amplitude = compute_image_amplitude(cropped_data, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
 
-    # === Compute features ===
-    save_features_from_events(id_connected_voxels, events_ids, image_amplitude, params_values=params['features_extraction'], save_result=save_results, output_directory=output_folder)
+    # # === Compute features ===
+    # save_features_from_events(id_connected_voxels, events_ids, image_amplitude, params_values=params['features_extraction'], save_result=save_results, output_directory=output_folder)
 
     
 

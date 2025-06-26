@@ -59,3 +59,4 @@ def read_config(config_file: str = None) -> dict:
         raise ValueError(f"No sections found in configuration file: {config_file}")
 
     return {section: dict(config.items(section)) for section in config.sections()}
+

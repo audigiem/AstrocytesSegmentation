@@ -129,32 +129,34 @@ def background_estimation_numpy(image_sequence: 'ImageSequence3DPlusTime',
     return F0
 
 
-def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime',
+def background_estimation_single_block(data: np.ndarray,
                                        index_xmin: np.ndarray,
                                        index_xmax: np.ndarray,
-                                       params_values: dict,
-                                       save_results: bool = False,
-                                       output_directory: str = None) -> np.ndarray:
+                                       params_values: dict) -> np.ndarray:
     """
     Estimate the background F0 using the entire time sequence as a single block.
 
-    @param image_sequence: 4D image sequence (T, Z, Y, X)
+    @param data: 4D image sequence (T, Z, Y, X)
     @param index_xmin: Array of cropping bounds (left) for each Z
     @param index_xmax: Array of cropping bounds (right) for each Z
-    @param params_values: Dictionary with keys: 'moving_window', 'method', 'method2', 'percentile'
-    @param save_results: If True, saves the result to output_directory
-    @param output_directory: Directory to save the result if save_results is True
+    @param params_values: Dictionary containing the parameters:
+        - moving_window: Size of the moving window for aggregation
+        - method: Aggregation method, either 'min' or 'percentile'
+        - method2: Secondary aggregation method, either 'Mean' or 'Med'
+        - percentile: Percentile value for 'percentile' method (default 10.0)
     @return: Background array of shape (1, Z, Y, X)
     """
     print("=== Fluorescence baseline F0 estimation ===")
-    required_keys = {'moving_window', 'method', 'method2', 'percentile'}
-    if set(params_values.keys()) != required_keys:
-        raise ValueError(f"params_values must contain exactly: {required_keys}")
+    required_keys = {'background_estimation', 'files', 'paths'}
+    if not required_keys.issubset(params_values.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
 
-    moving_window = int(params_values['moving_window'])
-    method = params_values['method']
-    method2 = params_values['method2']
-    percentile = float(params_values['percentile'])
+    moving_window = int(params_values['background_estimation']['moving_window'])
+    method = params_values['background_estimation']['method']
+    method2 = params_values['background_estimation']['method2']
+    percentile = float(params_values['background_estimation']['percentile'])
+    save_results = params_values['files']['save_results']
+    output_directory = params_values['paths']['output_dir']
 
     if method not in {'min', 'percentile'}:
         raise ValueError("method must be 'min' or 'percentile'")
@@ -163,7 +165,6 @@ def background_estimation_single_block(image_sequence: 'ImageSequence3DPlusTime'
     if not (0 <= percentile <= 100):
         raise ValueError("percentile must be between 0 and 100")
 
-    data = image_sequence.get_data()  # shape: (T, Z, Y, X)
     T, Z, Y, X = data.shape
 
     if len(index_xmin) != Z or len(index_xmax) != Z:
@@ -360,13 +361,12 @@ def background_estimation_numba(data: np.ndarray,
 
 
 
-def compute_dynamic_image(image_sequence: 'ImageSequence3DPlusTime',
+def compute_dynamic_image(data: np.ndarray,
                           F0: np.ndarray,
                           index_xmin: np.ndarray,
                           index_xmax: np.ndarray,
                           time_window: int,
-                          save_results: bool = False,
-                          output_directory: str = None) -> tuple[np.ndarray, float]:
+                          params: dict) -> tuple[np.ndarray, float]:
     """
     Compute ΔF = F - F0 and estimate the noise level as the median of ΔF.
 
@@ -375,14 +375,21 @@ def compute_dynamic_image(image_sequence: 'ImageSequence3DPlusTime',
     @param index_xmin: cropping bounds in X for each Z
     @param index_xmax: cropping bounds in X for each Z
     @param time_window: the duration of each background block
-    @param save_results: If True, saves the result to the specified output directory
-    @param output_directory: Directory to save the result if save_results is True
+    @param params: Dictionary containing the parameters:
+        - save_results: If True, saves the result to output_directory
+        - output_directory: Directory to save the result if save_results is True
     @return: (dF: array of shape (T, Z, Y, X), mean_noise: float)
     """
     print("=== Computing dynamic image (dF = F - F0) and estimating noise... ===")
     print(" - Computing dynamic image...")
 
-    data = image_sequence.get_data()  # shape (T, Z, Y, X)
+    # Extract necessary parameters
+    required_keys = {'files', 'paths'}
+    if not required_keys.issubset(params.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+    save_results = params['files']['save_results']
+    output_directory = params['paths']['output_dir']
+    
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
 
