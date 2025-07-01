@@ -89,7 +89,7 @@ class EventMergerOptimized:
         start_time = time.time()
 
         # # 1. Analyser tous les événements existants
-        # event_info = self._analyze_all_events()
+        event_info = self._analyze_all_events()
 
         # # 2. Identifier les petits et grands groupes
         # small_groups, large_groups = self._classify_events(event_info)
@@ -111,30 +111,52 @@ class EventMergerOptimized:
         return 4
 
     def _analyze_all_events(self) -> PyDict:
-        """Analyse tous les événements pour obtenir taille et centroïde"""
-        print("Analyzing all events...")
+        """Analyse tous les événements pour obtenir taille, centroïde et voxels"""
 
-        unique_ids = np.unique(self.id_connected[self.id_connected > 0])
+        import time
+        print("[INFO] Start _analyze_all_events()", flush=True)
+
+        # Sécurité mémoire : flatten au lieu de slicing 4D
+        start_time = time.time()
+        print("[INFO] Flattening id_connected and filtering non-zero IDs...", flush=True)
+
+        flat_id = self.id_connected.ravel()
+        nonzero_ids = flat_id[flat_id > 0]
+
+        print(f"[INFO] Non-zero voxels: {len(nonzero_ids):,}", flush=True)
+
+        unique_ids = np.unique(nonzero_ids)
+        print(f"[INFO] Unique events detected: {len(unique_ids)}", flush=True)
+
         self.stats['original_events'] = len(unique_ids)
-
         event_info = {}
 
-        for event_id in unique_ids:
-            # Utilisation de numpy pour l'efficacité
-            mask = (self.id_connected == event_id)
-            voxel_coords = np.column_stack(np.where(mask))
+        shape = self.id_connected.shape
+        total_voxels = np.prod(shape)
+        print(f"[INFO] Data shape: {shape}, total voxels: {total_voxels:,}", flush=True)
 
-            size = len(voxel_coords)
+        # Boucle principale
+        print("[INFO] Starting per-event analysis...", flush=True)
+        for i, event_id in enumerate(unique_ids):
+            if i % 100 == 0:
+                print(f"[INFO] Processing event {i+1}/{len(unique_ids)} (ID={event_id})", flush=True)
+
+            # Masque 4D pour cet ID
+            mask = self.id_connected == event_id
+            voxel_coords = np.column_stack(np.where(mask))  # (N, 4)
+
+            size = voxel_coords.shape[0]
             centroid = np.mean(voxel_coords, axis=0)
 
             event_info[event_id] = {
                 'size': size,
                 'centroid': centroid,
-                'voxels': voxel_coords
+                'voxels': voxel_coords  # ou list(voxel_coords) si besoin de sérialisation
             }
 
-        print(f"Found {len(unique_ids)} events")
+        print(f"[INFO] Event analysis complete in {time.time() - start_time:.2f} sec", flush=True)
         return event_info
+
 
     def _classify_events(self, event_info: PyDict) -> Tuple[PyDict, PyDict]:
         """Sépare les petits et grands groupes"""
