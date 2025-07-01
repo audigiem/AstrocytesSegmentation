@@ -139,23 +139,25 @@ def detect_events(active_voxels: np.ndarray, params_values: dict) -> np.ndarray:
     print(f"[PARAMS] Threshold size 3D: {threshold_size_3d}")
     print(f"[PARAMS] Threshold size 3D removed: {threshold_size_3d_removed}")
 
-    # Structure pré-calculée (réutilisable)
-    structure = generate_binary_structure(4, 1)
-    print("[INFO] Structure for labeling generated")
+    
+    return None
+    # # Structure pré-calculée (réutilisable)
+    # structure = generate_binary_structure(4, 1)
+    # print("[INFO] Structure for labeling generated")
 
-    # Labellisation initiale
-    print("[INFO] Performing initial labeling...")
-    labeled, num_features = label(active_voxels, structure)
-    print(f"[INFO] Initial labeling complete. Found {num_features} features")
+    # # Labellisation initiale
+    # print("[INFO] Performing initial labeling...")
+    # labeled, num_features = label(active_voxels, structure)
+    # print(f"[INFO] Initial labeling complete. Found {num_features} features")
 
-    if num_features == 0:
-        print("[WARNING] No features found in input data")
-        return np.zeros_like(labeled)
+    # if num_features == 0:
+    #     print("[WARNING] No features found in input data")
+    #     return np.zeros_like(labeled)
 
 
-    processed_result = process_small_groups_optimized(labeled, threshold_size_3d, threshold_size_3d_removed)
+    # processed_result = process_small_groups_optimized(labeled, threshold_size_3d, threshold_size_3d_removed)
 
-    return processed_result
+    # return processed_result
 
 
 def show_results(final_labels: np.ndarray):
