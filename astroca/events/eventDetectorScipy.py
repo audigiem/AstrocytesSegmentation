@@ -157,8 +157,8 @@ def detect_events(active_voxels: np.ndarray, params_values: dict) -> np.ndarray:
 
     processed_result = process_small_groups_optimized(labeled, threshold_size_3d, threshold_size_3d_removed)
 
-    # return processed_result
-    return None
+    return processed_result
+    # return None
 
 def show_results(final_labels: np.ndarray):
     """

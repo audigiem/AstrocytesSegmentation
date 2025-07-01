@@ -334,50 +334,8 @@ def process_small_groups_optimized(id_connected: np.ndarray,
     """
     print("=== STARTING OPTIMIZED SMALL GROUPS PROCESSING ===")
     merger = EventMergerOptimized(id_connected, threshold_keep, threshold_remove)
-    return None
-    # return merger.process_small_groups()
-
-
-# Integration dans votre classe existante
-def add_optimized_small_groups_processing_to_detector():
-    """
-    Modification de votre classe EventDetectorUltraOptimized pour intégrer
-    le traitement optimisé des petits groupes
-    """
-
-    # Remplacer la méthode _process_small_groups_fast existante
-    def _process_small_groups_optimized(self, small_groups, small_group_ids):
-        """Version optimisée remplaçant _process_small_groups_fast"""
-        print("Using optimized small groups processing...")
-
-        # Créer un array temporaire avec les petits groupes
-        temp_id_connected = np.zeros_like(self.id_connected_voxel_, dtype=np.int32)
-
-        # Assigner les petits groupes dans l'array temporaire
-        for i, group in enumerate(small_groups):
-            group_id = small_group_ids[i]
-            for t, z, y, x in group:
-                temp_id_connected[t, z, y, x] = group_id
-
-        # Traiter avec la méthode optimisée
-        processed = process_small_groups_optimized(
-            temp_id_connected,
-            threshold_keep=self.threshold_size_3d_,
-            threshold_remove=self.threshold_size_3d_removed_
-        )
-
-        # Réintégrer dans l'array principal
-        # Les groupes conservés gardent leur ID, les autres sont à 0
-        for group_id in small_group_ids:
-            if np.any(processed == group_id):
-                self.final_id_events_.append(group_id)
-                self.stats_["events_retained"] += 1
-            else:
-                # Supprimer de l'array principal
-                self.id_connected_voxel_[self.id_connected_voxel_ == group_id] = 0
-                self.stats_["events_removed"] += 1
-
-    return _process_small_groups_optimized
+ 
+    return merger.process_small_groups()
 
 
 # Test de performance
