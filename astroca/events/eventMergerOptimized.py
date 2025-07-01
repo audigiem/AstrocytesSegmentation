@@ -88,25 +88,27 @@ class EventMergerOptimized:
         print("=== PROCESSING SMALL GROUPS ===")
         start_time = time.time()
 
-        # 1. Analyser tous les événements existants
-        event_info = self._analyze_all_events()
+        # # 1. Analyser tous les événements existants
+        # event_info = self._analyze_all_events()
 
-        # 2. Identifier les petits et grands groupes
-        small_groups, large_groups = self._classify_events(event_info)
+        # # 2. Identifier les petits et grands groupes
+        # small_groups, large_groups = self._classify_events(event_info)
 
-        # 3. Grouper les petits groupes voisins
-        merged_small_groups = self._merge_neighboring_small_groups(small_groups)
+        # # 3. Grouper les petits groupes voisins
+        # merged_small_groups = self._merge_neighboring_small_groups(small_groups)
 
-        # 4. Assigner les groupes fusionnés aux grands groupes proches
-        self._assign_to_closest_large_groups(merged_small_groups, large_groups)
+        # # 4. Assigner les groupes fusionnés aux grands groupes proches
+        # self._assign_to_closest_large_groups(merged_small_groups, large_groups)
 
-        # 5. Nettoyer les groupes restants trop petits
-        self._remove_isolated_small_groups()
+        # # 5. Nettoyer les groupes restants trop petits
+        # self._remove_isolated_small_groups()
 
-        print(f"Processing completed in {time.time() - start_time:.2f}s")
-        self._print_statistics()
+        # print(f"Processing completed in {time.time() - start_time:.2f}s")
+        # self._print_statistics()
 
-        return self.id_connected
+        # return self.id_connected
+        
+        return 4
 
     def _analyze_all_events(self) -> PyDict:
         """Analyse tous les événements pour obtenir taille et centroïde"""
@@ -334,8 +336,9 @@ def process_small_groups_optimized(id_connected: np.ndarray,
     """
     print("=== STARTING OPTIMIZED SMALL GROUPS PROCESSING ===")
     merger = EventMergerOptimized(id_connected, threshold_keep, threshold_remove)
- 
-    return merger.process_small_groups()
+
+    id_connected = merger.process_small_groups()
+    return id_connected
 
 
 # Test de performance
