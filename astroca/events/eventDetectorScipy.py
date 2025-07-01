@@ -10,7 +10,6 @@ from tqdm import tqdm
 import time
 from astroca.events.eventMergerOptimized import process_small_groups_optimized
 
-@njit
 def fast_bincount_nonzero(labeled_flat, max_label):
     """Version optimisée de bincount pour éviter les zéros inutiles"""
     counts = np.zeros(max_label + 1, dtype=np.int32)
@@ -19,7 +18,6 @@ def fast_bincount_nonzero(labeled_flat, max_label):
             counts[labeled_flat[i]] += 1
     return counts
 
-@njit
 def assign_small_groups(labeled_array, small_labels, large_labels, distance_to_large):
     """Assign small groups to their nearest large group using precomputed distances"""
     output = labeled_array.copy()
@@ -53,6 +51,7 @@ def assign_small_groups(labeled_array, small_labels, large_labels, distance_to_l
 def process_small_groups(labeled, sizes, threshold_size_3d, threshold_size_3d_removed):
     """Process small groups according to the specified logic"""
     # Identify small and large groups
+    print("[INFO] Identifying small and large groups...")
     small_mask = (sizes < threshold_size_3d) & (sizes > 0)
     large_mask = sizes >= threshold_size_3d
 
@@ -70,52 +69,53 @@ def process_small_groups(labeled, sizes, threshold_size_3d, threshold_size_3d_re
 
     # Step 1: Group neighboring small groups together
     print("[INFO] Merging neighboring small groups...")
-    structure = generate_binary_structure(4, 1)
-    merged_small, num_merged = label(small_groups_mask, structure)
-    merged_small = merged_small * small_groups_mask  # Keep only the original small groups
+    # structure = generate_binary_structure(4, 1)
+    # merged_small, num_merged = label(small_groups_mask, structure)
+    # merged_small = merged_small * small_groups_mask  # Keep only the original small groups
 
     # Update small labels after merging
-    new_small_labels = np.unique(merged_small)
-    new_small_labels = new_small_labels[new_small_labels != 0]  # Remove background
+    # new_small_labels = np.unique(merged_small)
+    # new_small_labels = new_small_labels[new_small_labels != 0]  # Remove background
 
     # Create output array with large groups and merged small groups
-    output = np.where(large_groups_mask, labeled, 0)
-    output = np.where(merged_small > 0, merged_small + labeled.max(), output)
+    # output = np.where(large_groups_mask, labeled, 0)
+    # output = np.where(merged_small > 0, merged_small + labeled.max(), output)
 
     # Calculate sizes of new merged groups
-    new_sizes = fast_bincount_nonzero(output.ravel(), output.max())
+    # new_sizes = fast_bincount_nonzero(output.ravel(), output.max())
 
     # Identify which merged groups are still small
-    still_small_mask = (new_sizes < threshold_size_3d) & (new_sizes > 0)
-    still_small_labels = np.where(still_small_mask)[0]
+    # still_small_mask = (new_sizes < threshold_size_3d) & (new_sizes > 0)
+    # still_small_labels = np.where(still_small_mask)[0]
 
-    if len(still_small_labels) == 0:
-        return output
+    # if len(still_small_labels) == 0:
+        # return output
 
-    print(f"[INFO] {len(still_small_labels)} small groups remain after merging")
+    # print(f"[INFO] {len(still_small_labels)} small groups remain after merging")
 
     # Step 2: Assign remaining small groups to nearest large group
     print("[INFO] Assigning small groups to nearest large groups...")
 
     # Create mask of large groups for distance calculation
-    large_mask_for_dist = np.isin(output, large_labels)
+    # large_mask_for_dist = np.isin(output, large_labels)
 
     # Compute distance to nearest large group
-    distance_to_large = distance_transform_edt(~large_mask_for_dist)
+    # distance_to_large = distance_transform_edt(~large_mask_for_dist)
 
     # Assign small groups to nearest large group
-    output = assign_small_groups(output, still_small_labels, large_labels, distance_to_large)
+    # output = assign_small_groups(output, still_small_labels, large_labels, distance_to_large)
 
     # Step 3: Remove isolated groups that are too small
-    print("[INFO] Removing isolated small groups...")
-    final_sizes = fast_bincount_nonzero(output.ravel(), output.max())
-    too_small_mask = (final_sizes < threshold_size_3d_removed) & (final_sizes > 0)
-    too_small_labels = np.where(too_small_mask)[0]
+    # print("[INFO] Removing isolated small groups...")
+    # final_sizes = fast_bincount_nonzero(output.ravel(), output.max())
+    # too_small_mask = (final_sizes < threshold_size_3d_removed) & (final_sizes > 0)
+    # too_small_labels = np.where(too_small_mask)[0]
 
-    if len(too_small_labels) > 0:
-        output[np.isin(output, too_small_labels)] = 0
+    # if len(too_small_labels) > 0:
+        # output[np.isin(output, too_small_labels)] = 0
 
-    return output
+    # return output
+    return 4
 
 def detect_events(active_voxels: np.ndarray, params_values: dict) -> np.ndarray:
     """
@@ -140,25 +140,25 @@ def detect_events(active_voxels: np.ndarray, params_values: dict) -> np.ndarray:
     print(f"[PARAMS] Threshold size 3D removed: {threshold_size_3d_removed}")
 
     
-    return None
-    # # Structure pré-calculée (réutilisable)
-    # structure = generate_binary_structure(4, 1)
-    # print("[INFO] Structure for labeling generated")
+   
+    # Structure pré-calculée (réutilisable)
+    structure = generate_binary_structure(4, 1)
+    print("[INFO] Structure for labeling generated")
 
-    # # Labellisation initiale
-    # print("[INFO] Performing initial labeling...")
-    # labeled, num_features = label(active_voxels, structure)
-    # print(f"[INFO] Initial labeling complete. Found {num_features} features")
+    # Labellisation initiale
+    print("[INFO] Performing initial labeling...")
+    labeled, num_features = label(active_voxels, structure)
+    print(f"[INFO] Initial labeling complete. Found {num_features} features")
 
-    # if num_features == 0:
-    #     print("[WARNING] No features found in input data")
-    #     return np.zeros_like(labeled)
+    if num_features == 0:
+        print("[WARNING] No features found in input data")
+        return np.zeros_like(labeled)
 
 
-    # processed_result = process_small_groups_optimized(labeled, threshold_size_3d, threshold_size_3d_removed)
+    processed_result = process_small_groups_optimized(labeled, threshold_size_3d, threshold_size_3d_removed)
 
     # return processed_result
-
+    return None
 
 def show_results(final_labels: np.ndarray):
     """

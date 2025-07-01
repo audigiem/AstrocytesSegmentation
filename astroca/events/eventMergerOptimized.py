@@ -332,8 +332,10 @@ def process_small_groups_optimized(id_connected: np.ndarray,
     Returns:
         Array 4D traité avec les groupes fusionnés/supprimés
     """
+    print("=== STARTING OPTIMIZED SMALL GROUPS PROCESSING ===")
     merger = EventMergerOptimized(id_connected, threshold_keep, threshold_remove)
-    return merger.process_small_groups()
+    return None
+    # return merger.process_small_groups()
 
 
 # Integration dans votre classe existante
