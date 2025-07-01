@@ -31,11 +31,12 @@ def crop_boundaries(data: np.ndarray, params: dict) -> np.ndarray:
     x_min = int(params['preprocessing']['x_min'])
     x_max = int(params['preprocessing']['x_max'])
     pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    save_results = params['files']['save_results']
+    save_results = int(params['files']['save_results']) == 1  # Convert to boolean
     output_directory = params['paths']['output_dir']
     
-    if len(data.shape) != 4:
-        raise ValueError(f"Input data must be a 4D numpy array with shape (T, Z, Y, X) but got shape {data.shape}.")
+    
+    if len(data.shape) != 4 and len(data.shape) != 3:
+        raise ValueError(f"Input data must be a 4D (or 3D) numpy array with shape (T, Z, Y, X) or (Z, Y, X) but got shape {data.shape}.")
     
     T, Z, Y, X = data.shape    
 

@@ -31,9 +31,11 @@ def export_data(data: np.ndarray,
 
         # Reshape into a 5D array for ImageJ: (T, Z, C=1, Y, X)
         data_5d = data[:, :, np.newaxis, :, :]  # (T, Z, 1, Y, X)
-
+        if not file_name.endswith('.tif'):
+            file_name += '.tif'
+        
         imwrite(
-            os.path.join(output_path, file_name + ".tif"),
+            os.path.join(output_path, file_name),
             data_5d,
             imagej=True,
             metadata={
@@ -43,7 +45,7 @@ def export_data(data: np.ndarray,
                 'Channels': 1
             }
         )
-        print(f"Exported all time frames to {os.path.join(output_path, file_name + '.tif')}")
+        print(f"Exported all time frames to {os.path.join(output_path, file_name)}")
     else:
         # Export each time frame separately (no ImageJ metadata needed)
         directory_path = os.path.join(output_path, directory_name)

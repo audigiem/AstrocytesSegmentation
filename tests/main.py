@@ -3,12 +3,8 @@
 @file main.py
 @brief Entry point, pipeline of astrocytes cells segmentation
 """
-from networkx.algorithms.components import is_connected
-from skimage.filters.rank import threshold
 import os
-# os.environ['NUMBA_THREADING_LAYER'] = 'tbb'
 
-from astroca.tools.scene import ImageSequence3DPlusTime
 from astroca.tools.loadData import load_data, read_config
 from astroca.croppingBoundaries.cropper import crop_boundaries
 from astroca.croppingBoundaries.computeBoundaries import compute_boundaries
@@ -64,9 +60,9 @@ def main():
     # id_connected_voxels, events_ids = detect_calcium_events(active_voxels, params_values=params)
     # id_connected_voxels, events_ids = detect_calcium_events_ultra_optimized(active_voxels, params_values=params)
     # id_connected_voxels, events_ids = detect_calcium_events_safe(active_voxels, params_values=params)
-    # id_connected_voxels = detect_events(active_voxels, params_values=params)
-    # events_ids = list(set(id_connected_voxels.flatten()) - {0})  # Exclude background label (0)
-    # show_results(id_connected_voxels)
+    id_connected_voxels = detect_events(active_voxels, params_values=params)
+    events_ids = list(set(id_connected_voxels.flatten()) - {0})  # Exclude background label (0)
+    show_results(id_connected_voxels)
     
     # # === Compute image amplitude ===
     # image_amplitude = compute_image_amplitude(cropped_data, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)

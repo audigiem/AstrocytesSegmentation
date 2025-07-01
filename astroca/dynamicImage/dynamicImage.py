@@ -155,7 +155,7 @@ def background_estimation_single_block(data: np.ndarray,
     method = params_values['background_estimation']['method']
     method2 = params_values['background_estimation']['method2']
     percentile = float(params_values['background_estimation']['percentile'])
-    save_results = params_values['files']['save_results']
+    save_results = int(params_values['files']['save_results']) == 1
     output_directory = params_values['paths']['output_dir']
 
     if method not in {'min', 'percentile'}:
@@ -387,7 +387,7 @@ def compute_dynamic_image(data: np.ndarray,
     required_keys = {'files', 'paths'}
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
-    save_results = params['files']['save_results']
+    save_results = int(params['files']['save_results']) == 1
     output_directory = params['paths']['output_dir']
     
     T, Z, Y, X = data.shape

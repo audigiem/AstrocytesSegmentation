@@ -36,7 +36,7 @@ def compute_variance_stabilization(data: np.ndarray,
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
     
-    save_results = params['files']['save_results']
+    save_results = int(params['files']['save_results']) == 1
     output_directory = params['paths']['output_dir']
     
     T, Z, Y, X = data.shape

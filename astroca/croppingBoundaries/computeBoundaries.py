@@ -31,7 +31,7 @@ def compute_boundaries(data: np.ndarray, params: dict) -> tuple:
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
     pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    save_results = params['files']['save_results']
+    save_results = int(params['files']['save_results']) == 1
     output_directory = params['paths']['output_dir']
     
     T, Z, Y, X = data.shape
