@@ -72,7 +72,7 @@ class EventDetectorOptimized:
 
         event_id = 1
         # Active voxels belonging to the current event whose neighbors have not been processed yet
-        waiting_for_processing = deque()
+        waiting_for_processing = []
         index_waiting_for_processing = 0
         small_AV_groups = []
         id_small_AV_groups = []
@@ -106,12 +106,13 @@ class EventDetectorOptimized:
                         waiting_for_processing.append([t0, z, y, x])
 
                 # Check the neighbors of the seed point
-                while waiting_for_processing:
-                    index = waiting_for_processing.popleft()
+                while index_waiting_for_processing < len(waiting_for_processing):
+                    index = waiting_for_processing[index_waiting_for_processing]
                     pattern = self.pattern_[index[0], index[1], index[2], index[3]]
                     if pattern is None:
                         raise ValueError(f"Invalid pattern for voxel ({index[3]}, {index[2]}, {index[1]}, {index[0]})")
                     self._find_connected_AV(index, pattern, event_id, waiting_for_processing)
+                    index_waiting_for_processing += 1
                 # print(f"    Size of group ID={event_id} : {len(waiting_for_processing)}")
 
                 # check if the number of voxels in the group is below the threshold
