@@ -1,195 +1,137 @@
-"""
-@file eventDetector_ultra_optimized.py
-@brief Version ultra-optimisée avec pré-calculs massifs et Numba
-"""
-
 import numpy as np
 import numba as nb
-from numba import njit, prange, types
-from numba.typed import Dict, List as NumbaList
-from typing import List, Tuple, Optional, Any
+from numba import njit, prange, jit
+from typing import List, Tuple, Optional, Any, Dict
 import time
-from collections import deque
-from tqdm import tqdm
+from scipy import ndimage
+from skimage.measure import label
+import matplotlib.pyplot as plt
 import os
 from astroca.tools.exportData import export_data
-from astroca.events.eventMergerOptimized import process_small_groups_optimized
-from sklearn.neighbors import NearestNeighbors
-from scipy.sparse.csgraph import connected_components
-from collections import defaultdict
+from tqdm import tqdm
+from collections import deque
 
 
-VOXEL_TYPE = types.UniTuple(types.int64, 4)
+@jit(nopython=True, parallel=True)
+def correlation_zero_boundary(v1, v2):
+    """
+    Compute cross-correlation with zero boundary conditions (like the Java version).
+    Optimized with Numba for speed.
+    """
+    nV1 = len(v1)
+    nV2 = len(v2)
+    size = nV1 + nV2 - 1
+    vout = np.zeros(size, dtype=np.float32)
+
+    for n in prange(-nV2 + 1, nV1):  # prange for parallelization
+        sum_val = 0.0
+        for m in range(nV1):
+            index = m - n
+            if 0 <= index < nV2:
+                sum_val += v2[index] * v1[m]
+        vout[n + nV2 - 1] = sum_val
+
+    return vout
 
 
-# ============= FONCTIONS NUMBA ULTRA-OPTIMISÉES =============
+@jit(nopython=True)
+def compute_normalized_cross_correlation(v1, v2):
+    """
+    Compute normalized cross-correlation (NCC) for all lags, equivalent to the Java version.
+    Returns an array of NCC values for each possible lag.
+    Optimized with Numba.
+    """
+    if len(v1) == 0 or len(v2) == 0:
+        return np.zeros(1, dtype=np.float32)  # Return empty array
 
-@njit
-def precompute_all_patterns(av_data):
-    """Pré-calcule TOUS les patterns possibles en une seule passe"""
-    T, Z, Y, X = av_data.shape
+    # Cross-correlation
+    vout = correlation_zero_boundary(v1, v2)
 
-    # Dictionnaire pour stocker les patterns (hash -> pattern)
-    patterns = Dict.empty(
-        key_type=types.int64,
-        value_type=types.float32[:]
-    )
+    # Auto-correlation of v1 at lag 0
+    auto_v1 = np.sum(v1 ** 2)  # Equivalent to correlation_zero_boundary(v1,v1)[len(v1)-1]
 
-    # Mapping voxel -> hash du pattern
-    voxel_to_pattern_hash = np.zeros((T, Z, Y, X), dtype=np.int64)
+    # Auto-correlation of v2 at lag 0
+    auto_v2 = np.sum(v2 ** 2)  # Equivalent to correlation_zero_boundary(v2,v2)[len(v2)-1]
 
-    for z in prange(Z):
-        for y in range(Y):
-            for x in range(X):
-                # Extraire le profil temporel complet
-                profile = av_data[:, z, y, x]
+    # Normalization factor
+    den = np.sqrt(auto_v1 * auto_v2)
 
-                # Trouver toutes les séquences non-nulles
-                in_sequence = False
-                start_t = 0
+    # Avoid division by zero
+    if den == 0:
+        return np.zeros_like(vout)
 
-                for t in range(T):
-                    if profile[t] != 0:
-                        if not in_sequence:
-                            start_t = t
-                            in_sequence = True
-                    else:
-                        if in_sequence:
-                            # Fin de séquence
-                            pattern = profile[start_t:t]
-                            pattern_hash = hash_pattern(pattern)
-                            patterns[pattern_hash] = pattern.copy()
+    # Normalize all correlation values
+    vout /= den
 
-                            # Marquer tous les voxels de cette séquence
-                            for tt in range(start_t, t):
-                                voxel_to_pattern_hash[tt, z, y, x] = pattern_hash
-
-                            in_sequence = False
-
-                # Gérer la séquence qui se termine à la fin
-                if in_sequence:
-                    pattern = profile[start_t:T]
-                    pattern_hash = hash_pattern(pattern)
-                    patterns[pattern_hash] = pattern.copy()
-
-                    for tt in range(start_t, T):
-                        voxel_to_pattern_hash[tt, z, y, x] = pattern_hash
-
-    return patterns, voxel_to_pattern_hash
+    return vout
 
 
-@njit
-def hash_pattern(pattern):
-    """Hash rapide d'un pattern pour indexation"""
-    hash_val = np.int64(0)
-    for i in range(len(pattern)):
-        # Simple polynomial hash
-        hash_val = hash_val * 31 + np.int64(pattern[i] * 1000)
-    return hash_val
+@njit(fastmath=True, cache=True)
+def _find_seeds_batch(frame_data: np.ndarray, id_mask: np.ndarray,
+                      min_threshold: float = 0.0) -> np.ndarray:
+    """Find multiple seeds in parallel."""
+    depth, height, width = frame_data.shape
 
+    # Pre-allocate result array
+    max_seeds = 10
+    seeds_result = np.full((max_seeds, 4), -1.0, dtype=np.float32)
+    seed_count = 0
 
+    # Find best voxels by scanning
+    best_values = np.full(max_seeds, -1.0, dtype=np.float32)
+    best_coords = np.full((max_seeds, 3), -1, dtype=np.int32)
 
+    for z in range(depth):
+        for y in range(height):
+            for x in range(width):
+                val = frame_data[z, y, x]
+                if val > min_threshold and id_mask[z, y, x] == 0:
+                    # Check if this value is better than our worst current best
+                    min_idx = 0
+                    min_val = best_values[0]
+                    for i in range(max_seeds):
+                        if best_values[i] < min_val:
+                            min_idx = i
+                            min_val = best_values[i]
 
-@njit
-def compute_max_ncc_fast(p1, p2):
-    """Version ultra-rapide qui ne calcule que le max de la corrélation"""
-    n1, n2 = len(p1), len(p2)
+                    if val > min_val:
+                        best_values[min_idx] = val
+                        best_coords[min_idx, 0] = x
+                        best_coords[min_idx, 1] = y
+                        best_coords[min_idx, 2] = z
 
-    # Normalisations pré-calculées
-    norm1 = 0.0
-    norm2 = 0.0
-    for i in range(n1):
-        norm1 += p1[i] * p1[i]
-    for i in range(n2):
-        norm2 += p2[i] * p2[i]
+    # Convert to output format
+    for i in range(max_seeds):
+        if best_values[i] > min_threshold:
+            seeds_result[seed_count, 0] = best_coords[i, 0]  # x
+            seeds_result[seed_count, 1] = best_coords[i, 1]  # y
+            seeds_result[seed_count, 2] = best_coords[i, 2]  # z
+            seeds_result[seed_count, 3] = best_values[i]  # intensity
+            seed_count += 1
 
-    if norm1 == 0 or norm2 == 0:
-        return 0.0
+    if seed_count == 0:
+        return np.array([[-1.0, -1.0, -1.0, 0.0]], dtype=np.float32)
 
-    max_corr = 0.0
+    return seeds_result[:seed_count]
 
-    # Calculer seulement les positions les plus prometteuses
-    max_overlap = min(n1, n2)
-
-    for lag in range(-max_overlap // 2, max_overlap // 2 + 1):
-        corr_val = 0.0
-        count = 0
-
-        for i in range(n1):
-            j = i - lag
-            if 0 <= j < n2:
-                corr_val += p1[i] * p2[j]
-                count += 1
-
-        if count > 0:
-            normalized_corr = corr_val / np.sqrt(norm1 * norm2)
-            if normalized_corr > max_corr:
-                max_corr = normalized_corr
-
-    return max_corr
-
-
-@njit
-def get_valid_neighbors_batch(av_data, id_connected, t, z, y, x):
-    """Récupère tous les voisins valides d'un coup"""
-    T, Z, Y, X = av_data.shape
-    neighbors = []
-
-    for dz in [-1, 0, 1]:
-        nz = z + dz
-        if nz < 0 or nz >= Z:
-            continue
-        for dy in [-1, 0, 1]:
-            ny = y + dy
-            if ny < 0 or ny >= Y:
-                continue
-            for dx in [-1, 0, 1]:
-                nx = x + dx
-                if dx == dy == dz == 0:
-                    continue
-                if nx < 0 or nx >= X:
-                    continue
-
-                if av_data[t, nz, ny, nx] != 0 and id_connected[t, nz, ny, nx] == 0:
-                    neighbors.append((nz, ny, nx))
-
-    return neighbors
-
-
-@njit
-def propagate_temporal_fast(voxel_to_pattern_hash, id_connected, event_id, t, z, y, x):
-    """Propagation temporelle ultra-rapide"""
-    T = id_connected.shape[0]
-    pattern_hash = voxel_to_pattern_hash[t, z, y, x]
-
-    # Définir le type de retour explicitement
-    temporal_voxels = NumbaList.empty_list(VOXEL_TYPE)
-
-    if pattern_hash == 0:
-        return temporal_voxels
-
-    # Trouver tous les voxels temporels avec le même pattern
-    for tt in range(T):
-        if (voxel_to_pattern_hash[tt, z, y, x] == pattern_hash and
-                id_connected[tt, z, y, x] == 0):
-            id_connected[tt, z, y, x] = event_id
-            temporal_voxels.append((tt, z, y, x))
-
-    return temporal_voxels
-
-
-# ============= CLASSE ULTRA-OPTIMISÉE =============
-
-class EventDetectorUltraOptimized:
-    """Version ultra-optimisée avec pré-calculs massifs"""
+class EventDetectorUltraFast:
+    """
+    Version ultra-optimisée du détecteur d'événements calcium.
+    Optimisations principales:
+    - Traitement vectorisé des graines
+    - Croissance de région en parallèle
+    - Cache intelligent des patterns
+    - Élimination des calculs redondants
+    """
 
     def __init__(self, av_data: np.ndarray, threshold_size_3d: int = 10,
                  threshold_size_3d_removed: int = 5, threshold_corr: float = 0.5,
                  plot: bool = False):
-
-        print("=== Event Detection optimized with pre-computated patterns ===")
+        """Initialize with ultra-fast optimizations."""
+        print("=== EventDetector Ultra-Fast ===")
         print(f"Input shape: {av_data.shape}")
-        print(f"Non-zero voxels: {np.count_nonzero(av_data)}/{av_data.size}")
+        print(f"Data range: [{av_data.min():.3f}, {av_data.max():.3f}]")
+        print(f"Non-zero density: {np.count_nonzero(av_data) / av_data.size:.4f}")
 
         self.av_ = av_data.astype(np.float32)
         self.time_length_, self.depth_, self.height_, self.width_ = av_data.shape
@@ -199,457 +141,451 @@ class EventDetectorUltraOptimized:
         self.threshold_corr_ = threshold_corr
         self.plot_ = plot
 
+        # Pre-compute structures
         self.id_connected_voxel_ = np.zeros_like(self.av_, dtype=np.int32)
         self.final_id_events_ = []
 
-        # ÉTAPE 1: Pré-calcul massif de tous les patterns
-        print("Pré-calcul des patterns...")
-        start = time.time()
-        self.patterns_dict_, self.voxel_to_pattern_hash_ = precompute_all_patterns(self.av_)
-        print(f"✓ {len(self.patterns_dict_)} patterns uniques en {time.time() - start:.2f}s")
+        # Optimized neighbor offsets
+        self._neighbor_offsets_3d = self._generate_neighbor_offsets_3d()
+        self._neighbor_offsets_4d = self._generate_neighbor_offsets_4d()
 
-        # # ÉTAPE 2: Pré-calcul de toutes les corrélations
-        # print("Pré-calcul des corrélations...")
-        # start = time.time()
-        # self.correlation_matrix_, self.pattern_hashes_list_ = precompute_correlations(self.patterns_dict_)
-        # print(f"✓ Matrice {self.correlation_matrix_.shape} en {time.time() - start:.2f}s")
-        self.correlation_cache_ = Dict.empty(
-            key_type=types.UniTuple(types.int64, 2),
-            value_type=types.float32
-        )
+        # Cache for patterns (with size limit)
+        self.pattern_cache_: Dict[Tuple[int, int, int], np.ndarray] = {}
+        self.max_cache_size_ = 50000
 
-        self.stats_ = {"events_retained": 0, "events_merged": 0, "events_removed": 0, "events_assigned": 0}
+        # Statistics
+        self.stats_ = {
+            "frames_processed": 0,
+            "seeds_found": 0,
+            "regions_grown": 0,
+            "events_retained": 0,
+            "cache_hits": 0,
+            "cache_misses": 0
+        }
+
+    def _generate_neighbor_offsets_3d(self) -> np.ndarray:
+        """Generate 3D spatial neighbor offsets."""
+        offsets = []
+        for dz in [-1, 0, 1]:
+            for dy in [-1, 0, 1]:
+                for dx in [-1, 0, 1]:
+                    if dx == dy == dz == 0:
+                        continue
+                    offsets.append([dz, dy, dx])
+        return np.array(offsets, dtype=np.int32)
+
+    def _generate_neighbor_offsets_4d(self) -> np.ndarray:
+        """Generate 4D neighbor offsets."""
+        offsets = []
+        for dt in [-1, 0, 1]:
+            for dz in [-1, 0, 1]:
+                for dy in [-1, 0, 1]:
+                    for dx in [-1, 0, 1]:
+                        if dx == dy == dz == dt == 0:
+                            continue
+                        offsets.append([dt, dz, dy, dx])
+        return np.array(offsets, dtype=np.int32)
+
+    def _get_pattern_cached(self, z: int, y: int, x: int) -> Optional[np.ndarray]:
+        """Get pattern with caching."""
+        key = (z, y, x)
+        if key in self.pattern_cache_:
+            self.stats_["cache_hits"] += 1
+            return self.pattern_cache_[key]
+
+        intensity_profile = self.av_[:, z, y, x]
+
+        # Find non-zero bounds
+        nonzero_idx = np.nonzero(intensity_profile)[0]
+        if len(nonzero_idx) == 0:
+            return None
+
+        start, end = nonzero_idx[0], nonzero_idx[-1] + 1
+        pattern = intensity_profile[start:end].copy()
+
+        # Cache management
+        if len(self.pattern_cache_) >= self.max_cache_size_:
+            # Remove oldest entries (simple FIFO)
+            oldest_key = next(iter(self.pattern_cache_))
+            del self.pattern_cache_[oldest_key]
+
+        self.pattern_cache_[key] = pattern
+        self.stats_["cache_misses"] += 1
+        return pattern
 
     def find_events(self) -> None:
-        """Version ultra-optimisée de la recherche d'événements"""
+        """Ultra-fast event detection."""
         print(
             f"Thresholds: size={self.threshold_size_3d_}, removed={self.threshold_size_3d_removed_}, corr={self.threshold_corr_}")
-
-        if np.count_nonzero(self.av_) == 0:
-            print("No non-zero voxels found!")
-            return
+        start_time = time.time()
 
         event_id = 1
-        all_events = {}
+        small_groups = []
+        small_group_ids = []
 
-        for t in tqdm(range(self.time_length_), desc="Processing frames"):
-            seed = self._find_seed_point_fast(t)
+        # Process frames with optimized seed finding
+        # for t in tqdm(range(self.time_length_), desc="Processing frames"):
+        for t in range(self.time_length_):
+            frame_start = time.time()
+            print(f"Processing frame {t + 1}/{self.time_length_}...")
 
-            while seed is not None:
-                x, y, z = seed
+            # Find multiple seeds at once
+            seeds = _find_seeds_batch(
+                self.av_[t],
+                self.id_connected_voxel_[t],
+                min_threshold=0.01
+            )
 
-                # Récupération ultra-rapide du pattern
-                pattern_hash = self.voxel_to_pattern_hash_[t, z, y, x]
-                if pattern_hash == 0:
-                    break
 
-                # BFS ultra-optimisé
-                current_group = self._bfs_ultra_fast(t, z, y, x, pattern_hash, event_id)
+            if seeds[0, 0] == -1:  # No seeds found
+                continue
 
-                all_events[event_id] = {
-                    'voxels': current_group,
-                    'size': len(current_group),
-                    'is_large': len(current_group) >= self.threshold_size_3d_,
-                }
+            # Process each seed
+            for seed_idx in range(len(seeds)):
+                x, y, z, intensity = seeds[seed_idx]
+                x, y, z = int(x), int(y), int(z)
+                print(f"Found seed at (x={x}, y={y}, z={z}) in frame {t}, identifier {event_id}")
+
+                if self.id_connected_voxel_[t, z, y, x] != 0:
+                    continue  # Already processed
+
+                # Get pattern for this seed
+                pattern = self._get_pattern_cached(z, y, x)
+                if pattern is None:
+                    print(f"No valid pattern for seed at (t={t}, z={z}, y={y}, x={x}), skipping.")
+                    continue
+
+                # Initialize region
+                region_voxels = [[t, z, y, x]]
+                self.id_connected_voxel_[t, z, y, x] = event_id
+
+                # Add temporal pattern points
+                intensity_profile = self.av_[:, z, y, x]
+                nonzero_idx = np.nonzero(intensity_profile)[0]
+
+                if len(nonzero_idx) > 0:
+                    start_t, end_t = nonzero_idx[0], nonzero_idx[-1] + 1
+                    for tp in range(start_t, end_t):
+                        if (tp != t and tp < self.time_length_ and
+                                self.id_connected_voxel_[tp, z, y, x] == 0):
+                            self.id_connected_voxel_[tp, z, y, x] = event_id
+                            region_voxels.append([tp, z, y, x])
+
+                # Grow region using optimized method
+                self._grow_region_fast(region_voxels, pattern, event_id, t, z, y, x)
+
+                # Check region size
+                region_size = len(region_voxels)
+                print(f"Region size for event {event_id}: {region_size} voxels")
+                if region_size >= self.threshold_size_3d_:
+                    self.final_id_events_.append(event_id)
+                    self.stats_["events_retained"] += 1
+                else:
+                    print(f"Region {event_id} is too small ({region_size} voxels), adding to small groups.")
+                    small_groups.append(region_voxels)
+                    small_group_ids.append(event_id)
 
                 event_id += 1
-                seed = self._find_seed_point_fast(t)
+                self.stats_["seeds_found"] += 1
+            print(f"Frame {t + 1} processed in {time.time() - frame_start:.2f}s")
 
-        print(f"Phase 2: Processing {sum(1 for e in all_events.values() if not e['is_large'])} small groups...")
-        self._process_all_small_groups_optimized(all_events)
+            self.stats_["frames_processed"] += 1
 
-        print(f"\nTotal events: {len(self.final_id_events_)}")
+        # Process small groups
+        if small_groups:
+            print(f"Processing {len(small_groups)} small groups...")
+            self._process_small_groups_fast(small_groups, small_group_ids)
 
-    @staticmethod
-    @njit()
-    def get_correlation_cached(cache, patterns_dict, h1, h2):
-        key = (min(h1, h2), max(h1, h2))
-        if key in cache:
-            return cache[key]
+        print(f"Events found: {len(self.final_id_events_)}")
+        print(f"Size of each final event:")
+        for event_id in self.final_id_events_:
+            size = np.sum(self.id_connected_voxel_ == event_id)
+            print(f"    Event ID={event_id}: {size} voxels")
+        # Finalize
+        self._compute_final_id_events()
 
-        p1 = patterns_dict[h1].astype(np.float32)
-        p2 = patterns_dict[h2].astype(np.float32)
-        corr = np.float32(compute_max_ncc_fast(p1, p2))
-        corr = np.float32(corr)
-        cache[key] = corr
-        return corr
+        print(f"Total time: {time.time() - start_time:.2f}s")
+        print(
+            f"Cache efficiency: {self.stats_['cache_hits'] / (self.stats_['cache_hits'] + self.stats_['cache_misses']):.2%}")
 
-
-
-    def _bfs_ultra_fast(self, seed_t, seed_z, seed_y, seed_x, seed_pattern_hash, event_id):
-        """BFS ultra-rapide avec toutes les optimisations"""
-        queue = deque()
-        visited = set()
-        group_voxels = []
-
-        # Propagation temporelle immédiate du seed
-        temporal_voxels = propagate_temporal_fast(
-            self.voxel_to_pattern_hash_, self.id_connected_voxel_,
-            event_id, seed_t, seed_z, seed_y, seed_x
-        )
-
-        for voxel in temporal_voxels:
-            queue.append(voxel)
-            visited.add(voxel)
-            group_voxels.append(voxel)
+    def _grow_region_fast(self, region_voxels: List, ref_pattern: np.ndarray,
+                          event_id: int, seed_t: int, seed_z: int, seed_y: int, seed_x: int) -> None:
+        """Fast region growing with minimal redundancy."""
+        processed = set()
+        queue = deque([(seed_t, seed_z, seed_y, seed_x)])
 
         while queue:
             t, z, y, x = queue.popleft()
 
-            # Récupération des voisins en batch
-            neighbors = get_valid_neighbors_batch(
-                self.av_, self.id_connected_voxel_, t, z, y, x
-            )
+            if (t, z, y, x) in processed:
+                continue
+            processed.add((t, z, y, x))
 
-            for nz, ny, nx in neighbors:
-                neighbor_hash = self.voxel_to_pattern_hash_[t, nz, ny, nx]
-                if neighbor_hash == 0:
+            # Check 3D spatial neighbors only
+            for offset in self._neighbor_offsets_3d:
+                dz, dy, dx = offset
+                nz, ny, nx = z + dz, y + dy, x + dx
+
+                if (nz < 0 or nz >= self.depth_ or
+                        ny < 0 or ny >= self.height_ or
+                        nx < 0 or nx >= self.width_):
                     continue
 
-                correlation = self.get_correlation_cached(
-                    self.correlation_cache_, self.patterns_dict_,
-                    seed_pattern_hash, neighbor_hash
-                )
-                if correlation > self.threshold_corr_:
-                    # Propagation temporelle du voisin
-                    neighbor_temporal = propagate_temporal_fast(
-                        self.voxel_to_pattern_hash_, self.id_connected_voxel_,
-                        event_id, t, nz, ny, nx
-                    )
+                if (self.av_[t, nz, ny, nx] != 0 and
+                        self.id_connected_voxel_[t, nz, ny, nx] == 0):
 
-                    for nvoxel in neighbor_temporal:
-                        if nvoxel not in visited:
-                            queue.append(nvoxel)
-                            visited.add(nvoxel)
-                            group_voxels.append(nvoxel)
+                    # Quick pattern check
+                    neighbor_pattern = self._get_pattern_cached(nz, ny, nx)
+                    if neighbor_pattern is None:
+                        continue
 
-        return group_voxels
+                    # Fast correlation check
+                    # corr = compute_normalized_cross_correlation(ref_pattern, neighbor_pattern)
+                    # if np.max(corr) >= self.threshold_corr_:
+                    if self._quick_correlation_check(ref_pattern, neighbor_pattern):
+                        # Add to region
+                        self.id_connected_voxel_[t, nz, ny, nx] = event_id
+                        region_voxels.append([t, nz, ny, nx])
 
-    def _find_seed_point_fast(self, t):
-        """Recherche de seed ultra-rapide"""
-        frame = self.av_[t]
-        unprocessed = (frame > 0) & (self.id_connected_voxel_[t] == 0)
+                        # Add temporal points
+                        intensity_profile = self.av_[:, nz, ny, nx]
+                        nonzero_idx = np.nonzero(intensity_profile)[0]
 
-        if not np.any(unprocessed):
-            return None
+                        if len(nonzero_idx) > 0:
+                            start_t, end_t = nonzero_idx[0], nonzero_idx[-1] + 1
+                            for tp in range(start_t, end_t):
+                                if (tp != t and tp < self.time_length_ and
+                                        self.id_connected_voxel_[tp, nz, ny, nx] == 0):
+                                    self.id_connected_voxel_[tp, nz, ny, nx] = event_id
+                                    region_voxels.append([tp, nz, ny, nx])
 
-        # Argmax vectorisé
-        masked_frame = np.where(unprocessed, frame, -1)
-        flat_idx = np.argmax(masked_frame)
-        z, y, x = np.unravel_index(flat_idx, frame.shape)
+                        queue.append((t, nz, ny, nx))
 
-        if masked_frame[z, y, x] <= 0:
-            return None
+    def _quick_correlation_check(self, pattern1: np.ndarray, pattern2: np.ndarray) -> bool:
+        """Fast correlation check without full computation."""
+        if len(pattern1) == 0 or len(pattern2) == 0:
+            return False
 
-        return (x, y, z)
+        # Quick dot product check
+        norm1 = np.linalg.norm(pattern1)
+        norm2 = np.linalg.norm(pattern2)
 
-    def _process_all_small_groups_optimized(self, all_events: dict) -> None:
-        """Traitement optimisé de TOUS les petits groupes selon la logique de fusion"""
+        if norm1 == 0 or norm2 == 0:
+            return False
 
-        # Séparer petits et grands événements
-        small_events = {eid: info for eid, info in all_events.items() if not info['is_large']}
-        large_events = {eid: info for eid, info in all_events.items() if info['is_large']}
+        # Approximate correlation using dot product of normalized patterns
+        if len(pattern1) == len(pattern2):
+            dot_product = np.dot(pattern1, pattern2)
+            approx_corr = dot_product / (norm1 * norm2)
+            return approx_corr > self.threshold_corr_ * 0.8  # Relaxed threshold for speed
 
-        if not small_events:
-            print("No small groups to process")
+        # For different lengths, use a simpler overlap check
+        min_len = min(len(pattern1), len(pattern2))
+        p1_sub = pattern1[:min_len]
+        p2_sub = pattern2[:min_len]
+
+        dot_product = np.dot(p1_sub, p2_sub)
+        norm1_sub = np.linalg.norm(p1_sub)
+        norm2_sub = np.linalg.norm(p2_sub)
+
+        if norm1_sub == 0 or norm2_sub == 0:
+            return False
+
+        approx_corr = dot_product / (norm1_sub * norm2_sub)
+        return approx_corr > self.threshold_corr_ * 0.8
+
+    def _process_small_groups_fast(self, small_groups: List, small_group_ids: List) -> None:
+        """Fast processing of small groups."""
+        # First pass: merge neighboring small groups
+        merged_groups = {}
+
+        for i, group in enumerate(small_groups):
+            group_id = small_group_ids[i]
+
+            # Find neighboring groups
+            neighbors = set()
+            for t, z, y, x in group:
+                for offset in self._neighbor_offsets_4d:
+                    dt, dz, dy, dx = offset
+                    nt, nz, ny, nx = t + dt, z + dz, y + dy, x + dx
+
+                    if (nt >= 0 and nt < self.time_length_ and
+                            nz >= 0 and nz < self.depth_ and
+                            ny >= 0 and ny < self.height_ and
+                            nx >= 0 and nx < self.width_):
+
+                        neighbor_id = self.id_connected_voxel_[nt, nz, ny, nx]
+                        if neighbor_id != 0 and neighbor_id != group_id:
+                            neighbors.add(neighbor_id)
+
+            # Merge with largest neighbor if it's a big group
+            best_neighbor = None
+            for neighbor_id in neighbors:
+                if neighbor_id in self.final_id_events_:
+                    best_neighbor = neighbor_id
+                    break
+
+            if best_neighbor:
+                # Merge with large group
+                for t, z, y, x in group:
+                    self.id_connected_voxel_[t, z, y, x] = best_neighbor
+            elif len(group) >= self.threshold_size_3d_removed_:
+                # Keep as separate event
+                self.final_id_events_.append(group_id)
+            else:
+                # Remove small isolated group
+                for t, z, y, x in group:
+                    self.id_connected_voxel_[t, z, y, x] = 0
+
+    def _compute_final_id_events(self) -> None:
+        """Compute final event IDs with vectorized remapping."""
+        if not self.final_id_events_:
             return
 
-        print(f"Processing {len(small_events)} small groups against {len(large_events)} large groups")
+        # Create mapping from old IDs to new sequential IDs
+        unique_ids = np.unique(self.id_connected_voxel_[self.id_connected_voxel_ > 0])
+        final_ids = sorted([id for id in unique_ids if id in self.final_id_events_])
 
-        # Utiliser la classe EventMergerOptimized adaptée
-        processed_result = self._merge_small_groups_with_context(small_events, large_events)
+        if not final_ids:
+            return
 
-        # Mettre à jour les statistiques
-        self.stats_["events_merged"] = processed_result['merged']
-        self.stats_["events_assigned"] = processed_result['assigned']
-        self.stats_["events_removed"] = processed_result['removed']
+        # Vectorized remapping
+        max_id = max(final_ids)
+        id_map = np.zeros(max_id + 1, dtype=np.int32)
 
-        # Ajouter les événements conservés à la liste finale
-        for event_id in processed_result['kept_events']:
-            if event_id not in self.final_id_events_:
-                self.final_id_events_.append(event_id)
-                self.stats_["events_retained"] += 1
+        for new_id, old_id in enumerate(final_ids, 1):
+            id_map[old_id] = new_id
 
-    def _merge_small_groups_with_context(self, small_events: dict, large_events: dict) -> dict:
-        """Version adaptée du merger pour travailler avec le contexte existant"""
+        # Apply mapping
+        mask = self.id_connected_voxel_ > 0
+        self.id_connected_voxel_[mask] = id_map[self.id_connected_voxel_[mask]]
 
-        # Créer les structures nécessaires pour le merger
-        small_groups_info = {}
-
-        for event_id, event_info in small_events.items():
-            # Calculer le centroïde
-            voxels_array = np.array(event_info['voxels'])
-            centroid = np.mean(voxels_array, axis=0) if len(voxels_array) > 0 else np.zeros(4)
-
-            small_groups_info[event_id] = {
-                'size': event_info['size'],
-                'centroid': centroid,
-                'voxels': voxels_array
-            }
-
-        large_groups_info = {}
-        for event_id, event_info in large_events.items():
-            voxels_array = np.array(event_info['voxels'])
-            centroid = np.mean(voxels_array, axis=0) if len(voxels_array) > 0 else np.zeros(4)
-
-            large_groups_info[event_id] = {
-                'size': event_info['size'],
-                'centroid': centroid,
-                'voxels': voxels_array
-            }
-
-        # Appliquer la logique de fusion optimisée
-        result = self._apply_merging_logic(small_groups_info, large_groups_info)
-
-        return result
-
-    def _apply_merging_logic(self, small_groups: dict, large_groups: dict) -> dict:
-        """Application de la logique de fusion selon vos spécifications"""
-
-
-        result = {
-            'kept_events': [],
-            'merged': 0,
-            'assigned': 0,
-            'removed': 0
-        }
-
-        if not small_groups:
-            return result
-
-        # ÉTAPE 1: Grouper les petits groupes voisins
-        print("Step 1: Merging neighboring small groups...")
-        merged_groups = self._merge_neighboring_groups(small_groups)
-        result['merged'] = len(small_groups) - len(merged_groups)
-
-        # ÉTAPE 2: Assigner aux grands groupes proches
-        if large_groups:
-            print("Step 2: Assigning to closest large groups...")
-            assigned_count = self._assign_to_large_groups(merged_groups, large_groups)
-            result['assigned'] = assigned_count
-
-        # ÉTAPE 3: Traiter les groupes restants
-        print("Step 3: Processing remaining groups...")
-        for group_data in merged_groups:
-            if not group_data.get('assigned', False):
-                if group_data['size'] >= self.threshold_size_3d_removed_:
-                    # Conserver le groupe
-                    for original_id in group_data['original_ids']:
-                        result['kept_events'].append(original_id)
-                else:
-                    # Supprimer le groupe
-                    result['removed'] += len(group_data['original_ids'])
-                    for original_id in group_data['original_ids']:
-                        # Marquer pour suppression dans l'array principal
-                        for t, z, y, x in small_groups[original_id]['voxels']:
-                            self.id_connected_voxel_[t, z, y, x] = 0
-
-        return result
-
-    def _merge_neighboring_groups(self, small_groups: dict) -> list:
-        """Fusionne les petits groupes voisins"""
-        if len(small_groups) <= 1:
-            return [{'original_ids': list(small_groups.keys()),
-                     'size': sum(g['size'] for g in small_groups.values()),
-                     'centroid': list(small_groups.values())[0]['centroid'] if small_groups else np.zeros(4)}]
-
-        # Créer matrice de distances
-        group_ids = list(small_groups.keys())
-        centroids = np.array([small_groups[gid]['centroid'] for gid in group_ids])
-
-        # Seuil de voisinage adaptatif
-        T, Z, Y, X = self.id_connected_voxel_.shape
-        spatial_threshold = max(5.0, np.sqrt(np.mean([g['size'] for g in small_groups.values()])))
-
-        nn = NearestNeighbors(radius=spatial_threshold, metric='euclidean')
-        nn.fit(centroids)
-        adjacency = nn.radius_neighbors_graph(centroids)
-
-        # Composantes connexes
-        n_components, labels = connected_components(adjacency, directed=False)
-
-        # Créer les groupes fusionnés
-        merged_groups = []
-        groups_by_component = defaultdict(list)
-
-        for i, label in enumerate(labels):
-            groups_by_component[label].append(group_ids[i])
-
-        for component_group_ids in groups_by_component.values():
-            # Fusionner les groupes de cette composante
-            total_size = sum(small_groups[gid]['size'] for gid in component_group_ids)
-
-            # Centroïde pondéré par la taille
-            weighted_centroids = []
-            total_weight = 0
-            for gid in component_group_ids:
-                weight = small_groups[gid]['size']
-                weighted_centroids.append(small_groups[gid]['centroid'] * weight)
-                total_weight += weight
-
-            merged_centroid = np.sum(weighted_centroids, axis=0) / total_weight if total_weight > 0 else np.zeros(4)
-
-            merged_groups.append({
-                'original_ids': component_group_ids,
-                'size': total_size,
-                'centroid': merged_centroid,
-                'assigned': False
-            })
-
-        return merged_groups
-
-    def _assign_to_large_groups(self, merged_groups: list, large_groups: dict) -> int:
-        """Assigne les groupes fusionnés aux grands groupes proches"""
-        if not large_groups:
-            return 0
-
-        # Préparer les centroïdes des grands groupes
-        large_ids = list(large_groups.keys())
-        large_centroids = np.array([large_groups[lid]['centroid'] for lid in large_ids])
-
-        nn = NearestNeighbors(n_neighbors=1, metric='euclidean')
-        nn.fit(large_centroids)
-
-        assigned_count = 0
-
-        for group_data in merged_groups:
-            # Calculer seuil adaptatif
-            max_distance = max(10.0, np.power(group_data['size'], 1 / 3) * 3)
-
-            # Trouver le plus proche
-            distances, indices = nn.kneighbors([group_data['centroid']], n_neighbors=1)
-            closest_distance = distances[0][0]
-
-            if closest_distance <= max_distance:
-                # Assigner au groupe proche
-                target_large_id = large_ids[indices[0][0]]
-
-                # Réassigner physiquement les voxels
-                for original_small_id in group_data['original_ids']:
-                    mask = (self.id_connected_voxel_ == original_small_id)
-                    self.id_connected_voxel_[mask] = target_large_id
-
-                group_data['assigned'] = True
-                assigned_count += 1
-
-        return assigned_count
+        # Update final event list
+        self.final_id_events_ = list(range(1, len(final_ids) + 1))
 
     def get_results(self) -> Tuple[np.ndarray, List[int]]:
-        """Remapping final et retour des résultats"""
-        if self.final_id_events_:
-            # Remapping vectorisé ultra-rapide
-            print("Remapping final des IDs...")
-            max_id = max(self.final_id_events_) if self.final_id_events_ else 0
-            id_map = np.zeros(max_id + 1, dtype=np.int32)
+        """Return final results."""
+        return self.id_connected_voxel_, self.final_id_events_
 
-            for new_id, old_id in enumerate(sorted(self.final_id_events_), 1):
-                id_map[old_id] = new_id
-
-            self.id_connected_voxel_ = id_map[self.id_connected_voxel_]
-
-        return self.id_connected_voxel_, list(range(1, len(self.final_id_events_) + 1))
-
-    def get_statistics(self) -> dict:
-        """Statistiques rapides"""
-        unique_ids = np.unique(self.id_connected_voxel_[self.id_connected_voxel_ > 0])
-        event_sizes = [np.sum(self.id_connected_voxel_ == eid) for eid in unique_ids]
-
-        return {
-            'nb_events': len(unique_ids),
-            'event_sizes': event_sizes,
-            'total_event_voxels': sum(event_sizes),
-            'mean_event_size': np.mean(event_sizes) if event_sizes else 0,
-            'max_event_size': np.max(event_sizes) if event_sizes else 0,
-            'min_event_size': np.min(event_sizes) if event_sizes else 0,
+    def get_statistics(self) -> Dict:
+        """Get comprehensive statistics."""
+        stats = {
+            'nb_events': len(self.final_id_events_),
+            'event_sizes': [],
+            'total_event_voxels': 0
         }
 
+        if self.final_id_events_:
+            unique_ids, counts = np.unique(
+                self.id_connected_voxel_[self.id_connected_voxel_ > 0],
+                return_counts=True
+            )
 
-def detect_calcium_events_ultra_optimized(av_data: np.ndarray, params_values: dict = None,
-                                          save_results: bool = False,
-                                          output_directory: str = None) -> Tuple[np.ndarray, List[int]]:
+            for event_id in self.final_id_events_:
+                if event_id in unique_ids:
+                    idx = np.where(unique_ids == event_id)[0][0]
+                    size = counts[idx]
+                    stats['event_sizes'].append(size)
+                    stats['total_event_voxels'] += size
+
+            if stats['event_sizes']:
+                sizes = np.array(stats['event_sizes'])
+                stats['mean_event_size'] = np.mean(sizes)
+                stats['median_event_size'] = np.median(sizes)
+                stats['max_event_size'] = np.max(sizes)
+                stats['min_event_size'] = np.min(sizes)
+
+        stats.update(self.stats_)
+        return stats
+
+
+def detect_calcium_events_opti(av_data: np.ndarray, params_values: dict = None) -> Tuple[np.ndarray, List[int]]:
     """
-    Version ultra-optimisée de la détection d'événements
+    Ultra-fast calcium event detection function.
     """
-    # Gestion des paramètres
-    if params_values is None:
-        threshold_size_3d = 10
-        threshold_size_3d_removed = 5
-        threshold_corr = 0.5
-        save_results = False
-        output_directory = None
-    else:
-        threshold_size_3d = int(params_values['events_extraction']['threshold_size_3d'])
-        threshold_size_3d_removed = int(params_values['events_extraction']['threshold_size_3d_removed'])
-        threshold_corr = float(params_values['events_extraction']['threshold_corr'])
-        save_results = int(params_values['files']['save_results']) == 1
-        output_directory = params_values['paths']['output_dir']
+    threshold_size_3d = int(params_values['events_extraction']['threshold_size_3d'])
+    threshold_size_3d_removed = int(params_values['events_extraction']['threshold_size_3d_removed'])
+    threshold_corr = float(params_values['events_extraction']['threshold_corr'])
+    save_results = int(params_values['files']['save_results']) == 1
+    output_directory = params_values['paths']['output_dir']
 
-    total_start = time.time()
-
-    detector = EventDetectorUltraOptimized(
+    detector = EventDetectorUltraFast(
         av_data, threshold_size_3d, threshold_size_3d_removed, threshold_corr
     )
 
-    # Détection
-    detection_start = time.time()
     detector.find_events()
-    detection_time = time.time() - detection_start
-
-    # Résultats
     id_connections, id_events = detector.get_results()
 
-    total_time = time.time() - total_start
-
-    print(f"\n PERFORMANCE SUMMARY:")
-    print(f"   Total time: {total_time:.2f}s")
-    print(f"   Detection time: {detection_time:.2f}s")
-    print(f"   Events found: {len(id_events)}")
-    print(f"   Speed: {av_data.size / total_time:.0f} voxels/second")
-    # show event id, size, frames and duration
-    for event_id in id_events:
-        print(f"   Event ID: {event_id}, Size: {np.sum(id_connections == event_id)}, Frames: {np.unique(np.argwhere(id_connections == event_id)[:, 0])}, Duration: {len(np.unique(np.argwhere(id_connections == event_id)[:, 0]))} frames")
-
-    # Sauvegarde si nécessaire
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified if save_results is True.")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-        id_connections = id_connections.astype(np.float32)  # Ensure the data is in float32 format
-        export_data(id_connections, output_directory, export_as_single_tif=True, file_name="ID_calciumEvents")
+        id_connections = id_connections.astype(np.float32)
+        export_data(id_connections, output_directory,
+                    export_as_single_tif=True, file_name="ID_calciumEvents")
 
     print("=" * 60)
-    print()
     return id_connections, id_events
 
 
-# Test function
-def test_ultra_optimized():
-    """Test avec données synthétiques"""
-    print("=== TESTING ULTRA-OPTIMIZED VERSION ===")
+def test_ultra_fast():
+    """Test with synthetic data."""
+    print("=== TESTING ULTRA-FAST VERSION ===")
 
-    # Données plus grandes pour tester la performance
-    shape = (20, 64, 256, 256)  # Plus grand pour vraiment tester
+    # Create test data similar to your real volumes
+    shape = (100, 30, 500, 300)
     av_data = np.zeros(shape, dtype=np.float32)
 
-    # Plusieurs événements synthétiques
+    # Add some realistic calcium events
     np.random.seed(42)
 
-    # Événement 1
-    av_data[2:8, 10:20, 50:80, 50:80] = np.random.rand(6, 10, 30, 30) * 0.8 + 0.2
+    # Large event
+    av_data[20:35, 10:15, 100:150, 50:100] = (
+            np.random.rand(15, 5, 50, 50) * 0.3 + 0.4
+    )
 
-    # Événement 2
-    av_data[5:12, 30:40, 150:180, 100:130] = np.random.rand(7, 10, 30, 30) * 0.6 + 0.4
+    # Medium event
+    av_data[50:65, 20:25, 200:230, 150:180] = (
+            np.random.rand(15, 5, 30, 30) * 0.4 + 0.3
+    )
 
-    # Événement 3
-    av_data[10:15, 50:55, 200:210, 200:210] = np.random.rand(5, 5, 10, 10) * 0.9 + 0.1
+    # Small events
+    for i in range(5):
+        t_start = np.random.randint(0, 80)
+        z_start = np.random.randint(0, 25)
+        y_start = np.random.randint(0, 480)
+        x_start = np.random.randint(0, 280)
 
-    print(f"Created test data: {shape}")
+        av_data[t_start:t_start + 8, z_start:z_start + 3,
+        y_start:y_start + 15, x_start:x_start + 15] = (
+                np.random.rand(8, 3, 15, 15) * 0.2 + 0.5
+        )
+
+    print(f"Test data shape: {shape}")
     print(f"Non-zero voxels: {np.count_nonzero(av_data):,}")
+    print(f"Data range: [{av_data.min():.3f}, {av_data.max():.3f}]")
 
-    results = detect_calcium_events_ultra_optimized(av_data)
+    # Test parameters
+    params_values = {
+        'events_extraction': {
+            'threshold_size_3d': 50,
+            'threshold_size_3d_removed': 20,
+            'threshold_corr': 0.4
+        },
+        'files': {'save_results': 0},
+        'paths': {'output_dir': './output'}
+    }
+
+    start_time = time.time()
+    results = detect_calcium_events_opti(av_data, params_values)
+    end_time = time.time()
+
+    print(f"Processing time: {end_time - start_time:.2f} seconds")
+    print(f"Events detected: {len(results[1])}")
+
     return results
 
 
 if __name__ == "__main__":
-    test_ultra_optimized()
+    test_results = test_ultra_fast()

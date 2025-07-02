@@ -77,19 +77,19 @@ class EventDetectorOptimized:
         small_AV_groups = []
         id_small_AV_groups = []
 
-        for t in tqdm(range(self.time_length_), desc="Processing time frames", unit="frame"):
-        # for t in range(self.time_length_):
-            # print(f"\nProcessing time frame {t}, searching seed ...")
+        # for t in tqdm(range(self.time_length_), desc="Processing time frames", unit="frame"):
+        for t in range(self.time_length_):
+            print(f"\nProcessing time frame {t}, searching seed ...")
             frame_time = time.time()
             seed = self._find_seed_point(t)
             while seed is not None:
                 x, y, z = seed
-                # print(f"Found seed at ({x}, {y}, {z}) in frame {t}, identifier {event_id}")
+                print(f"Found seed at ({x}, {y}, {z}) in frame {t}, identifier {event_id}")
 
                 intensity_profile = self.av_[:, z, y, x]
                 pattern = self._detect_pattern_optimized(intensity_profile, t)
                 if pattern is None:
-                    # print(f"No valid pattern found for seed ({x}, {y}, {z})")
+                    print(f"No valid pattern found for seed ({x}, {y}, {z})")
                     break
 
                 # add the seed to the waiting list
@@ -114,11 +114,11 @@ class EventDetectorOptimized:
                         raise ValueError(f"Invalid pattern for voxel ({index[3]}, {index[2]}, {index[1]}, {index[0]})")
                     self._find_connected_AV(index, pattern, event_id, waiting_for_processing)
                     index_waiting_for_processing += 1
-                # print(f"    Size of group ID={event_id} : {len(waiting_for_processing)}")
+                print(f"    Size of group ID={event_id} : {len(waiting_for_processing)}")
 
                 # check if the number of voxels in the group is below the threshold
                 if len(waiting_for_processing) < self.threshold_size_3d_:
-                    # print(f"    Group ID={event_id} is too small ({len(waiting_for_processing)} voxels), adding to small groups")
+                    print(f"    Group ID={event_id} is too small ({len(waiting_for_processing)} voxels), adding to small groups")
                     small_AV_groups.append(waiting_for_processing.copy())
                     id_small_AV_groups.append(event_id)
                 else:
@@ -129,17 +129,17 @@ class EventDetectorOptimized:
                 waiting_for_processing.clear()
                 index_waiting_for_processing = 0
                 seed = self._find_seed_point(t)
-            # print(f"Time for frame {t}: {time.time() - frame_time:.2f} seconds")
+            print(f"Time for frame {t}: {time.time() - frame_time:.2f} seconds")
 
         # if there are small groups, try to merge them with larger groups
         if len(small_AV_groups) > 0:
-            # print(f"\nFound {len(small_AV_groups)} small groups, trying to merge them with larger groups...")
+            print(f"\nFound {len(small_AV_groups)} small groups, trying to merge them with larger groups...")
             self._group_small_neighborhood_regions(small_AV_groups, id_small_AV_groups)
 
             for i, group in enumerate(small_AV_groups):
                 change_id = self._change_id_small_regions(group, id_small_AV_groups)
                 if change_id:
-                    # print(f"Group {id_small_AV_groups[i]} merged into larger group")
+                    print(f"Group {id_small_AV_groups[i]} merged into larger group")
                     self.stats_["events_merged"] += 1
                     small_AV_groups.pop(i)
                     id_small_AV_groups.pop(i)
@@ -150,7 +150,7 @@ class EventDetectorOptimized:
                         # print(f"Group {id_small_AV_groups[i]} is large enough ({len(group)} voxels), adding to final events")
                         self.final_id_events_.append(id_small_AV_groups[i])
                     else:
-                        # print(f"Group {id_small_AV_groups[i]} is isolated and too small ({len(group)} voxels), removing it")
+                        print(f"Group {id_small_AV_groups[i]} is isolated and too small ({len(group)} voxels), removing it")
                         # remove the small group from the id_connected_voxel_
                         for index_point in group:
                             t, z, y, x = index_point

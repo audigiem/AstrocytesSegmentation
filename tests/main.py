@@ -14,10 +14,10 @@ from astroca.parametersNoise.parametersNoise import estimate_std_over_time
 from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
 
 from astroca.events.eventDetector import detect_calcium_events
-from astroca.events.eventDetectorPreCompute import detect_calcium_events_ultra_optimized
-from astroca.events.eventDetectorPreComputeSafe import detect_calcium_events_safe
+from astroca.events.eventDetectorPreCompute import detect_calcium_events_opti
 from astroca.events.eventDetectorScipy import detect_events, show_results
-
+from astroca.events.eventDetectorAccurate import VoxelGroupingAlgorithm
+from astroca.events.eventDetectorCorrected import detect_calcium_events_opti
 from astroca.features.featuresComputation import save_features_from_events
 
 
@@ -58,12 +58,12 @@ def main():
     # active_voxels = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdirFewerTime/AV.tif")
     # === Detect calcium events ===
     # id_connected_voxels, events_ids = detect_calcium_events(active_voxels, params_values=params)
-    # id_connected_voxels, events_ids = detect_calcium_events_ultra_optimized(active_voxels, params_values=params)
-    # id_connected_voxels, events_ids = detect_calcium_events_safe(active_voxels, params_values=params)
-    id_connected_voxels = detect_events(active_voxels, params_values=params)
-    events_ids = list(set(id_connected_voxels.flatten()) - {0})  # Exclude background label (0)
-    show_results(id_connected_voxels)
+    id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
+    # active_voxels_mask = active_voxels > 0  # Create a mask of active voxels
+    # voxels_grouping_algorithm = VoxelGroupingAlgorithm(params)
+    # groups, group_labels = voxels_grouping_algorithm.group_voxels(active_voxels, active_voxels_mask)
     
+                       
     # # === Compute image amplitude ===
     # image_amplitude = compute_image_amplitude(cropped_data, index_xmin, index_xmax, save_results=save_results, output_directory=output_folder)
 
