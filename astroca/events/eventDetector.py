@@ -78,8 +78,9 @@ class EventDetectorOptimized:
         id_small_AV_groups = []
 
         for t in tqdm(range(self.time_length_), desc="Processing time frames", unit="frame"):
+        # for t in range(self.time_length_):
             # print(f"\nProcessing time frame {t}, searching seed ...")
-            # frame_time = time.time()
+            frame_time = time.time()
             seed = self._find_seed_point(t)
             while seed is not None:
                 x, y, z = seed
@@ -88,7 +89,7 @@ class EventDetectorOptimized:
                 intensity_profile = self.av_[:, z, y, x]
                 pattern = self._detect_pattern_optimized(intensity_profile, t)
                 if pattern is None:
-                    print(f"No valid pattern found for seed ({x}, {y}, {z})")
+                    # print(f"No valid pattern found for seed ({x}, {y}, {z})")
                     break
 
                 # add the seed to the waiting list
@@ -160,7 +161,12 @@ class EventDetectorOptimized:
                     i -= 1  # Adjust index after removal
             small_AV_groups.clear()
             id_small_AV_groups.clear()
+
         print(f"\nTotal events found: {len(self.final_id_events_)}")
+        print(f"Size of each final event:")
+        for event_id in self.final_id_events_:
+            size = np.sum(self.id_connected_voxel_ == event_id)
+            print(f"    Event ID={event_id}: {size} voxels")
 
         self._compute_final_id_events()
 

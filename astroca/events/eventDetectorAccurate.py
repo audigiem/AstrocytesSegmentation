@@ -3,6 +3,7 @@ from scipy import ndimage
 from scipy.signal import correlate
 from sklearn.neighbors import NearestNeighbors
 from collections import deque
+import time
 import numba
 from numba import jit, prange
 import warnings
@@ -136,7 +137,9 @@ class VoxelGroupingAlgorithm:
         # Extraire le segment temporel
         pattern = data[start_frame:end_frame + 1, x, y, z].copy()
         
-        return pattern
+        return pattern, start_frame, end_frame
+    
+   
     
     def _get_valid_neighbors_3d(self, coords, spatial_shape):
         """
@@ -163,7 +166,7 @@ class VoxelGroupingAlgorithm:
         Args:
             data: ndarray de forme (T, X, Y, Z) contenant les intensités
             active_voxels_mask: ndarray booléen de même forme que data
-            assigned_voxels: set des coordonnées déjà assignées
+            assigned_voxels: set des coordonnées spatiales (x,y,z) déjà assignées
             frame: indice de la frame à analyser
         
         Returns:
@@ -175,7 +178,7 @@ class VoxelGroupingAlgorithm:
         if len(active_indices[0]) == 0:
             return None
         
-        # 2. Créer un masque des voxels non assignés
+        # 2. Créer un masque des voxels non assignés (coordonnées spatiales)
         coords_list = list(zip(active_indices[0], active_indices[1], active_indices[2]))
         unassigned_mask = np.array([coord not in assigned_voxels for coord in coords_list])
         
@@ -199,43 +202,56 @@ class VoxelGroupingAlgorithm:
     
     def _region_growing(self, data, active_voxels_mask, assigned_voxels, seed_coords, reference_frame):
         """
-        Algorithme de croissance de région basé sur la corrélation
+        Algorithme de croissance de région basé sur la corrélation.
+        Gère maintenant les coordonnées spatio-temporelles.
         """
         group = set()
-        to_investigate = deque([seed_coords])
+        to_investigate = deque()
         investigated = set()
         
         # Pattern de référence du seed (signal temporel complet)
         seed_pattern = self._extract_full_temporal_pattern(data, seed_coords, reference_frame)
-       
         
         if len(seed_pattern) == 0:
             return group
         
-        group.add(seed_coords)
+        # CORRECTION: Ajouter TOUTES les coordonnées spatio-temporelles du seed au groupe
+        temporal_window = self._get_temporal_window(data, seed_coords, reference_frame)
+        if temporal_window is None:
+            return group
+            
+        start_frame, end_frame = temporal_window
+        x, y, z = seed_coords
         
+        # Ajouter toutes les coordonnées spatio-temporelles du seed
+        for t in range(start_frame, end_frame + 1):
+            spatio_temporal_coord = (t, x, y, z)
+            group.add(spatio_temporal_coord)
+            to_investigate.append((x, y, z))  # Pour l'investigation, on garde les coords spatiales
+        
+        # Marquer les coordonnées spatiales comme traitées pour éviter les doublons
+        spatial_investigated = set()
+        spatial_investigated.add(seed_coords)
         
         while to_investigate:
-            current_coords = to_investigate.popleft()
+            current_spatial_coords = to_investigate.popleft()
             
-            if current_coords in investigated:
+            if current_spatial_coords in investigated:
                 continue
                 
-            investigated.add(current_coords)
+            investigated.add(current_spatial_coords)
             
-            # Obtenir les voisins valides en 3D
-            neighbors = self._get_valid_neighbors_3d(current_coords, data.shape[1:])
+            # Obtenir les voisins valides en 3D spatial
+            neighbors = self._get_valid_neighbors_3d(current_spatial_coords, data.shape[1:])
             
             for neighbor_coords in neighbors:
-                # Vérifier si le voisin est un voxel actif quelque part dans le temps
-                # et qu'il n'est pas déjà assigné
+                # Vérifier si le voisin spatial n'est pas déjà assigné et pas déjà dans le groupe
                 if (neighbor_coords not in assigned_voxels and 
-                    neighbor_coords not in group and 
-                    neighbor_coords not in investigated):
+                    neighbor_coords not in spatial_investigated):
                     
                     # Vérifier si ce voxel est actif à un moment donné
-                    x, y, z = neighbor_coords
-                    is_active = np.any(active_voxels_mask[:, x, y, z])
+                    nx, ny, nz = neighbor_coords
+                    is_active = np.any(active_voxels_mask[:, nx, ny, nz])
                     
                     if is_active:
                         # Extraire le pattern temporel complet du voisin
@@ -249,17 +265,29 @@ class VoxelGroupingAlgorithm:
                             seed_pattern, neighbor_pattern
                         )
                         
-                        # Si la corrélation dépasse le seuil, ajouter au groupe
+                        # Si la corrélation dépasse le seuil, ajouter TOUTES ses coordonnées temporelles
                         if np.max(correlation) >= self.correlation_threshold:
-                            group.add(neighbor_coords)
-                            to_investigate.append(neighbor_coords)
+                            # Trouver la fenêtre temporelle active du voisin
+                            neighbor_window = self._get_temporal_window(data, neighbor_coords, reference_frame)
+                            
+                            if neighbor_window is not None:
+                                neighbor_start, neighbor_end = neighbor_window
+                                
+                                # Ajouter toutes les coordonnées spatio-temporelles du voisin
+                                for t in range(neighbor_start, neighbor_end + 1):
+                                    spatio_temporal_coord = (t, nx, ny, nz)
+                                    group.add(spatio_temporal_coord)
+                                
+                                # Ajouter à la queue d'investigation et marquer comme traité
+                                to_investigate.append(neighbor_coords)
+                                spatial_investigated.add(neighbor_coords)
         
         return group
     
-    def _merge_small_groups(self, groups, data):
+    def _merge_small_groups_spatio_temporal(self, groups, data):
         """
-        Fusionne les petits groupes avec leurs voisins les plus proches
-        ou les supprime s'ils sont trop petits
+        Fusionne les petits groupes avec leurs voisins les plus proches.
+        Adaptée pour les coordonnées spatio-temporelles.
         """
         if not groups:
             return groups
@@ -268,7 +296,7 @@ class VoxelGroupingAlgorithm:
         small_groups = []
         large_groups = []
         
-        for i, group in enumerate(groups):
+        for group in groups:
             if len(group) < self.min_group_size:
                 small_groups.append(group)
             else:
@@ -292,17 +320,25 @@ class VoxelGroupingAlgorithm:
             
             if len(small_group) == 0:
                 continue
+            
+            # Calculer le centroïde spatial du petit groupe (ignorer la dimension temporelle)
+            spatial_coords = [(x, y, z) for (t, x, y, z) in small_group]
+            if not spatial_coords:
+                continue
                 
-            # Calculer le centroïde du petit groupe
-            small_centroid = np.mean(list(small_group), axis=0)
+            small_centroid = np.mean(spatial_coords, axis=0)
             
             # Chercher parmi tous les groupes finaux existants
             for idx, large_group in enumerate(final_groups):
                 if len(large_group) == 0:
                     continue
+                
+                # Calculer le centroïde spatial du grand groupe
+                large_spatial_coords = [(x, y, z) for (t, x, y, z) in large_group]
+                if not large_spatial_coords:
+                    continue
                     
-                # Calculer le centroïde du grand groupe
-                large_centroid = np.mean(list(large_group), axis=0)
+                large_centroid = np.mean(large_spatial_coords, axis=0)
                 
                 # Distance euclidienne
                 distance = np.linalg.norm(small_centroid - large_centroid)
@@ -324,39 +360,40 @@ class VoxelGroupingAlgorithm:
     
     def group_voxels(self, data, active_voxels_mask):
         """
-        Fonction principale pour grouper les voxels actifs
+        Fonction principale pour grouper les voxels actifs.
+        Gère maintenant les coordonnées spatio-temporelles.
         
         Paramètres:
         - data: np.ndarray de forme (T, X, Y, Z) contenant les données d'intensité
         - active_voxels_mask: np.ndarray booléen de même forme indiquant les voxels actifs
         
         Retourne:
-        - groups: liste de sets contenant les coordonnées des voxels de chaque groupe
+        - groups: liste de sets contenant les coordonnées spatio-temporelles (t,x,y,z) de chaque groupe
         - group_labels: np.ndarray avec les labels des groupes pour chaque voxel
         """
         print("Démarrage du regroupement de voxels...")
+        start_time = time.time()
         print(f"Forme des données: {data.shape}")
         
         groups = []
-        assigned_voxels = set()
+        assigned_voxels = set()  # Stocke les coordonnées spatiales (x,y,z) déjà assignées
         
         # Traitement frame par frame dans l'ordre chronologique
         for frame in range(data.shape[0]):
             print(f"Traitement de la frame {frame+1}/{data.shape[0]}")
             
             # Continuer à chercher des seed points sur cette frame
-            # jusqu'à ce qu'il n'y en ait plus
             while True:
                 # Trouver le seed point avec l'intensité maximale sur cette frame
                 seed_coords = self._find_seed_point_on_frame(
                     data, active_voxels_mask, assigned_voxels, frame
                 )
                 
-                print(f"  Seed trouvé: {seed_coords}, t={frame}, id={len(groups) + 1}")
-                
                 if seed_coords is None:
                     # Plus de seed points disponibles sur cette frame
                     break
+                
+                print(f"  Seed trouvé: {seed_coords}, t={frame}, id={len(groups) + 1}")
                 
                 # Croissance de région à partir de ce seed
                 group = self._region_growing(
@@ -365,8 +402,12 @@ class VoxelGroupingAlgorithm:
                 
                 if len(group) > 0:
                     groups.append(group)
-                    assigned_voxels.update(group)
-                    print(f"  Nouveau groupe trouvé: {len(group)} voxels")
+                    # Extraire les coordonnées spatiales uniques du groupe pour assigned_voxels
+                    spatial_coords = set()
+                    for t, x, y, z in group:
+                        spatial_coords.add((x, y, z))
+                    assigned_voxels.update(spatial_coords)
+                    print(f"  Nouveau groupe trouvé: {len(group)} voxels spatio-temporels, {len(spatial_coords)} voxels spatiaux")
                 else:
                     # Marquer ce voxel comme assigné même s'il ne forme pas de groupe
                     assigned_voxels.add(seed_coords)
@@ -374,25 +415,25 @@ class VoxelGroupingAlgorithm:
         print(f"Nombre de groupes avant fusion: {len(groups)}")
         
         # Fusionner les petits groupes
-        final_groups = self._merge_small_groups(groups, data)
+        final_groups = self._merge_small_groups_spatio_temporal(groups, data)
         
         print(f"Nombre de groupes après fusion: {len(final_groups)}")
         
-        # Créer les labels
-        group_labels = np.zeros(data.shape[1:], dtype=np.int32)
+        # Créer les labels spatio-temporels
+        group_labels = np.zeros(data.shape, dtype=np.int32)
         
         for group_id, group in enumerate(final_groups, 1):
-            for x, y, z in group:
-                group_labels[x, y, z] = group_id
+            for t, x, y, z in group:
+                group_labels[t, x, y, z] = group_id
         
         # Statistiques finales
         group_sizes = [len(group) for group in final_groups]
         if group_sizes:
             print(f"Tailles des groupes: {group_sizes}")
-            print(f"Groupe le plus grand: {max(group_sizes)} voxels")
-            print(f"Groupe le plus petit: {min(group_sizes)} voxels")
-            print(f"Taille moyenne: {np.mean(group_sizes):.1f} voxels")
-        
+
+        end_time = time.time()
+        print(f"Temps d'exécution: {end_time - start_time:.2f} secondes")
+
         return final_groups, group_labels
 
 # Exemple d'utilisation
@@ -401,7 +442,6 @@ def example_usage():
     Exemple d'utilisation de l'algorithme
     """
     # Créer des données d'exemple (remplacez par vos vraies données)
-    # Forme: (T=100, X=30, Y=500, Z=300)
     print("Création de données d'exemple...")
     
     # Pour l'exemple, créons des données plus petites
@@ -413,9 +453,9 @@ def example_usage():
     
     params = {
         'events_extraction': {
-            'threshold_size_3d': 400,
-            'threshold_size_3d_removed': 20,
-            'threshold_corr': 0.6
+            'threshold_size_3d': 10,  # Réduit pour l'exemple
+            'threshold_size_3d_removed': 5,  # Réduit pour l'exemple
+            'threshold_corr': 0.3  # Réduit pour l'exemple
         }
     }
     
@@ -426,6 +466,7 @@ def example_usage():
     groups, group_labels = algorithm.group_voxels(data, active_voxels_mask)
     
     print(f"Regroupement terminé avec {len(groups)} groupes")
+    print(f"Forme des labels: {group_labels.shape}")
     
     return groups, group_labels
 

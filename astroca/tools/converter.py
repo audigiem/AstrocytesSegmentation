@@ -34,8 +34,12 @@ def convert_single_tif_to_series(input_file: str, output_folder: str) -> None:
 
 
 if __name__ == "__main__":
-    input_folder = "/home/matteo/Bureau/INRIA/assets/20steps"
-    output_path = "/home/matteo/Bureau/INRIA/assets/"
-    output_file_name = "20stepsTimeScene"
+    # input_folder = "/home/matteo/Bureau/INRIA/assets/20steps"
+    # output_path = "/home/matteo/Bureau/INRIA/assets/"
+    # output_file_name = "20stepsTimeScene"
 
-    convert_tif_series_to_single_tif(input_folder, output_path, output_file_name)
+    # convert_tif_series_to_single_tif(input_folder, output_path, output_file_name)
+    input_file = "/home/matteo/Bureau/INRIA/assets/20stepsTimeScene.tif"
+    output_folder = "/home/matteo/Bureau/INRIA/assets/20timeSteps/"
+    
+    convert_single_tif_to_series(input_file, output_folder)
