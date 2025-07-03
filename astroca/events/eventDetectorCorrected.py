@@ -213,6 +213,8 @@ class EventDetectorOptimized:
             "events_removed": 0,
         }
 
+        self.small_av_group_set_ = set()    # Cache pour les ids des petits groupes
+
         # Structures optimisées pour le traitement en batch
         self._batch_size = 1000
         self._reusable_arrays = self._initialize_reusable_arrays()
@@ -488,7 +490,10 @@ class EventDetectorOptimized:
 
     # @profile
     def _process_small_groups(self, small_av_groups: List, id_small_av_groups: List) -> None:
-        """Traitement optimisé des petits groupes."""
+        """Traitement optimisé des petits groupes avec cache set."""
+        # Créer un set pour des lookups O(1)
+        self.small_av_groups_set_ = set(id_small_av_groups)
+
         self._group_small_neighborhood_regions(small_av_groups, id_small_av_groups)
 
         # Traitement en ordre inverse pour les suppressions
@@ -508,12 +513,14 @@ class EventDetectorOptimized:
                     self.id_connected_voxel_[coords[:, 0], coords[:, 1], coords[:, 2], coords[:, 3]] = 0
                     self.stats_["events_removed"] += 1
 
+            # Mettre à jour le set lors de la suppression
+            self.small_av_groups_set_.discard(group_id)
             del small_av_groups[i]
             del id_small_av_groups[i]
 
     # @profile
     def _group_small_neighborhood_regions(self, small_av_groups: List, list_ids_small_av_group: List) -> None:
-        """Groupement optimisé des petites régions."""
+        """Groupement optimisé des petites régions avec set lookup."""
         id_ = 0
         while id_ < len(small_av_groups):
             list_av = small_av_groups[id_]
@@ -533,8 +540,9 @@ class EventDetectorOptimized:
                             0 <= nx < self.width_):
 
                         neighbor_id = self.id_connected_voxel_[nt, nz, ny, nx]
+                        # Optimisation : utiliser le set pour O(1) lookup
                         if (neighbor_id != 0 and
-                                neighbor_id in list_ids_small_av_group and
+                                neighbor_id in self.small_av_groups_set_ and
                                 neighbor_id != group_id):
                             neighbor_id_counts[neighbor_id] = neighbor_id_counts.get(neighbor_id, 0) + 1
 
@@ -548,6 +556,8 @@ class EventDetectorOptimized:
                     self.id_connected_voxel_[coords[:, 0], coords[:, 1], coords[:, 2], coords[:, 3]] = new_id
                     small_av_groups[new_id_index].extend(list_av)
 
+                    # Mettre à jour le set lors de la suppression
+                    self.small_av_groups_set_.discard(group_id)
                     del small_av_groups[id_]
                     del list_ids_small_av_group[id_]
                     continue
@@ -556,7 +566,7 @@ class EventDetectorOptimized:
 
     # @profile
     def _change_id_small_regions(self, list_av: List, list_ids_small_av_group: List) -> bool:
-        """Changement d'ID optimisé pour les petites régions."""
+        """Changement d'ID optimisé pour les petites régions avec set lookup."""
         neighbor_counts = {}
 
         for t, z, y, x in list_av:
@@ -570,7 +580,8 @@ class EventDetectorOptimized:
                         0 <= nx < self.width_):
 
                     neighbor_id = self.id_connected_voxel_[nt, nz, ny, nx]
-                    if neighbor_id != 0 and neighbor_id not in list_ids_small_av_group:
+                    # Optimisation : utiliser le set pour O(1) lookup
+                    if neighbor_id != 0 and neighbor_id not in self.small_av_groups_set_:
                         neighbor_counts[neighbor_id] = neighbor_counts.get(neighbor_id, 0) + 1
 
         if neighbor_counts:
