@@ -338,11 +338,15 @@ class EventDetectorOptimized:
             self._process_small_groups(small_AV_groups, id_small_AV_groups)
 
         print(f"\nTotal events found: {len(self.final_id_events_)}")
-        print(f"Size of each final event:")
-        for event_id in self.final_id_events_:
-            size = np.sum(self.id_connected_voxel_ == event_id)
-            print(f"    Event ID={event_id}: {size} voxels")
+        # print(f"Size of each final event:")
+        # for event_id in self.final_id_events_:
+        #     size = np.sum(self.id_connected_voxel_ == event_id)
+        #     print(f"    Event ID={event_id}: {size} voxels")
         self._compute_final_id_events()
+        # # test pour voir si le renommage fonctionne
+        # for event in range(1,len(self.final_id_events_)+1):
+        #     size = np.sum(self.id_connected_voxel_ == event)
+        #     print(f"    Final Event ID={event}: {size} voxels")
 
         print(f"Total time taken: {time.time() - start_time:.2f} seconds")
 
@@ -673,7 +677,7 @@ def detect_calcium_events_opti(av_data: np.ndarray, params_values: dict = None,
 
     print(60 * "=")
     print()
-    return id_connections, id_events
+    return id_connections, len(id_events)
 
 
 def test_with_synthetic_data():

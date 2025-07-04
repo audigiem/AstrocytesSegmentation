@@ -9,7 +9,7 @@ import os
 from tqdm import tqdm
 
 
-def save_features_from_events(calcium_events: np.ndarray, events_ids: list, image_amplitude: np.ndarray, params_values: dict=None) -> None:
+def save_features_from_events(calcium_events: np.ndarray, events_ids: int, image_amplitude: np.ndarray, params_values: dict=None) -> None:
     """
     @brief Compute features from calcium events in a 3D image sequence with time dimension and save them to an Excel file.
         - duration: nb of frames of the event
@@ -19,7 +19,7 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: list, imag
         - centroïd: coordinates of the center of mass of the event
         - classification: classification of the event (wave, local, etc.)
     @param calcium_events: 4D numpy array of shape (T, Z, Y, X) representing the calcium events.
-    @param events_ids: List of unique event IDs from the calcium events data.
+    @param events_ids: Number of unique event IDs from the calcium events data.
     @param image_amplitude: 4D numpy array of shape (T, Z, Y, X) representing the amplitude of the image.
     @param params_values: Dictionary containing parameters for feature computation:
         - voxel_size_x, voxel_size_y, voxel_size_z: size of a voxel in micrometers.
@@ -49,7 +49,7 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: list, imag
     print(60*"=")
 
 
-def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitude: np.ndarray, params_values: dict=None) -> dict:
+def compute_features(calcium_events: np.ndarray, events_ids: int, image_amplitude: np.ndarray, params_values: dict=None) -> dict:
     """
     @brief Compute features from calcium events in a 3D image sequence with time dimension.
         - duration: nb of frames of the event
@@ -57,10 +57,9 @@ def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitu
         - amplitude: amplitude if the intensity of the event
         - volume: volume of the event in micrometers^3
         - centroïd: coordinates of the center of mass of the event
-        -classification: classification of the event (wave, local, etc.)
-
+        - classification: classification of the event (wave, local, etc.)
     @param calcium_events: 4D numpy array of shape (T, Z, Y, X) representing the calcium events.
-    @param events_ids: List of unique event IDs from the calcium events data.
+    @param events_ids: Number of unique event IDs from the calcium events data.
     @param image_amplitude: 4D numpy array of shape (T, Z, Y, X) representing the amplitude of the image.
     @param params_values: Dictionary containing parameters for feature computation:
         - voxel_size_x, voxel_size_y, voxel_size_z: size of a voxel in micrometers.
@@ -83,7 +82,7 @@ def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitu
 
     features = {}
 
-    for event_id in tqdm(events_ids, desc="Computing features per event"):
+    for event_id in tqdm(range(1, events_ids + 1), desc="Computing features per event"):
         event_mask = (calcium_events == event_id)
         if not np.any(event_mask):
             continue
@@ -93,7 +92,10 @@ def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitu
         t0 = coords[:, 0].min()
         t1 = coords[:, 0].max()
         duration = t1 - t0 + 1
-        centroid = np.mean(coords, axis=0)
+        centroid_x = coords[:, 3].mean().astype(int)
+        centroid_y = coords[:, 2].mean().astype(int)
+        centroid_z = coords[:, 1].mean().astype(int)
+        centroid_t = coords[:, 0].mean().astype(int)
         volume = nb_voxels * np.prod(voxel_size)
         amplitude = np.max(image_amplitude[event_mask])
 
@@ -103,17 +105,20 @@ def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitu
         else:
             if volume <= volume_localized:
                 class_label = "localized"
-                confidence = 1.0
+                confidence = 100
             else:
                 class_label = "localized but not microdomain"
-                confidence = 1.0
+                confidence = 100
 
         features[event_id] = {
             'duration': duration,
             't0': t0,
             'amplitude': amplitude,
             'volume': volume,
-            'centroid': centroid,
+            'centroid_x': centroid_x,
+            'centroid_y': centroid_y,
+            'centroid_z': centroid_z,
+            'centroid_t': centroid_t,
             'classification': class_label,
             'confidence': confidence
         }
@@ -157,7 +162,7 @@ def write_excel_features(features: dict, output_directory: str) -> None:
     @param output_directory: Directory to save the Excel file.
     """
     df = pd.DataFrame.from_dict(features, orient='index')
-    output_file = f"{output_directory}/calcium_events_features.xlsx"
+    output_file = f"{output_directory}calcium_events_features.xlsx"
     df.to_excel(output_file, index_label='Event ID')
     print(f"Features saved to {output_file}")
 
@@ -170,6 +175,6 @@ def write_csv_features(features: dict, output_directory: str) -> None:
     @param output_directory: Directory to save the CSV file.
     """
     df = pd.DataFrame.from_dict(features, orient='index')
-    output_file = f"{output_directory}/calcium_events_features.csv"
+    output_file = f"{output_directory}calcium_events_features.csv"
     df.to_csv(output_file, index_label='Event ID')
     print(f"Features saved to {output_file}")

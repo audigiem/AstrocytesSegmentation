@@ -40,6 +40,7 @@ def compute_variance_stabilization(data: np.ndarray,
     output_directory = params['paths']['output_dir']
     
     T, Z, Y, X = data.shape
+    data = data.astype(np.float32)
 
     for z in tqdm(range(Z), desc="Variance stabilization per Z-slice", unit="slice"):
         x_min, x_max = index_xmin[z], index_xmax[z] + 1
@@ -92,21 +93,26 @@ def anscombe_inverse(data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.nd
     """
     Compute inverse of Anscombe transform to compute the amplitude of the image
         A⁻¹(x) = (x / 2)^2 - 3/8
+
     @param data: 4D numpy array of shape (T, Z, Y, X)
-    @param index_xmin: 1D array of shape (depth,) with left cropping bounds per z
-    @param index_xmax:1D array of shape (depth,) with right cropping bounds per z
+    @param index_xmin: 1D array of shape (Z,) with left cropping bounds per z
+    @param index_xmax: 1D array of shape (Z,) with right cropping bounds per z
     @param param_values: Dictionary containing the parameters:
         - save_results: If True, saves the result to output_directory
         - output_directory: Directory to save the result if save_results is True
-    @return:
+    @return: Transformed image of same shape as input
     """
-    print(" - Applying inverse Anscombe transform...")
+    print(" - Applying inverse Anscombe transform on 3D volume...")
     required_keys = {'files', 'paths'}
     if not required_keys.issubset(param_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - param_values.keys()}")
+
     save_results = int(param_values['files']['save_results']) == 1
     output_directory = param_values['paths']['output_dir']
-    T, Z, Y, X = data.shape
+    _, Z, Y, X = data.shape
+    data = data.astype(np.float32)
+
+    data_out = np.zeros_like(data, dtype=np.float32)
 
     for z in tqdm(range(Z), desc="Inverse Anscombe per Z-slice", unit="slice"):
         x_min = index_xmin[z]
@@ -115,16 +121,19 @@ def anscombe_inverse(data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.nd
         if x_min >= x_max:
             continue
 
-        sub_volume = data[:, z, :, x_min:x_max]
-        sub_volume /= 2.0
-        np.square(sub_volume, out=sub_volume)
-        sub_volume -= 3.0 / 8.0
+        slice_section = data[0, z, :, x_min:x_max]
+        slice_out = data_out[0, z, :, x_min:x_max]
+
+        # Apply A⁻¹(x) = (x/2)^2 - 3/8
+        np.divide(slice_section, 2.0, out=slice_out)
+        np.square(slice_out, out=slice_out)
+        slice_out -= 3.0 / 8.0
 
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_results is True.")
         os.makedirs(output_directory, exist_ok=True)
-        export_data(data, output_directory, export_as_single_tif=True,
-                    file_name="inverse_anscombe_transformed_sequence")
+        export_data(data_out, output_directory, export_as_single_tif=True,
+                    file_name="inverse_anscombe_transformed_volume")
 
-    return data
+    return data_out

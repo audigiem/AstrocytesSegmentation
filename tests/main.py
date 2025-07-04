@@ -5,8 +5,6 @@
 """
 import os
 
-from numba.core.event import end_event
-
 from astroca.tools.loadData import load_data, read_config
 from astroca.croppingBoundaries.cropper import crop_boundaries
 from astroca.croppingBoundaries.computeBoundaries import compute_boundaries
@@ -17,7 +15,6 @@ from astroca.parametersNoise.parametersNoise import estimate_std_over_time
 from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
 
 from astroca.events.eventDetector import detect_calcium_events
-from astroca.events.eventDetectorPreCompute import detect_calcium_events_opti
 from astroca.events.eventDetectorScipy import detect_events, show_results
 from astroca.events.eventDetectorAccurate import VoxelGroupingAlgorithm
 from astroca.events.eventDetectorCorrected import detect_calcium_events_opti
@@ -74,10 +71,10 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
 
     # === Crop + boundaries ===
     cropped_data = run_step("crop_boundaries", crop_boundaries, data, params)
-    index_xmin, index_xmax, _, data = run_step("compute_boundaries", compute_boundaries, cropped_data, params)
+    index_xmin, index_xmax, _, raw_data = run_step("compute_boundaries", compute_boundaries, cropped_data, params)
 
     # === Variance Stabilization ===
-    data = run_step("variance_stabilization", compute_variance_stabilization, data, index_xmin, index_xmax, params)
+    data = run_step("variance_stabilization", compute_variance_stabilization, raw_data, index_xmin, index_xmax, params)
 
     # === Background estimation (F0) ===
     F0 = run_step("background_estimation", background_estimation_single_block, data, index_xmin, index_xmax, params)
@@ -96,7 +93,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
                                           params_values=params)
 
     # === Amplitude ===
-    image_amplitude = run_step("compute_image_amplitude", compute_image_amplitude, cropped_data, index_xmin,
+    image_amplitude = run_step("compute_image_amplitude", compute_image_amplitude, raw_data, F0, index_xmin,
                                index_xmax, params)
 
     # === Features ===
@@ -125,14 +122,14 @@ def run_pipeline():
     data = load_data(params['paths']['input_folder'])  # shape (T, Z, Y, X)
     T, Z, Y, X = data.shape
     print(f"Loaded data of shape: {data.shape}")
-    print()
+    # print()
 
     # === Crop + boundaries ===
     cropped_data = crop_boundaries(data, params)
-    index_xmin, index_xmax, _, data = compute_boundaries(cropped_data, params)
+    index_xmin, index_xmax, _, raw_data = compute_boundaries(cropped_data, params)
 
     # === Variance Stabilization ===
-    data = compute_variance_stabilization(data, index_xmin, index_xmax, params)
+    data = compute_variance_stabilization(raw_data, index_xmin, index_xmax, params)
 
     # === F0 estimation ===
     F0 = background_estimation_single_block(data, index_xmin, index_xmax, params)
@@ -145,16 +142,17 @@ def run_pipeline():
     active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)
 
     # === Detect calcium events ===
+    active_voxels = load_data("/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/activeVoxels.tif")
     id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
 
     # === Compute image amplitude ===
-    image_amplitude = compute_image_amplitude(cropped_data, index_xmin, index_xmax, params)
+    image_amplitude = compute_image_amplitude(raw_data, F0, index_xmin, index_xmax, params)
 
     # === Compute features ===
     save_features_from_events(id_connections, ids_events, image_amplitude, params_values=params)
     end_time = time.time() - time_start
     bool_save_results = int(params['files']['save_results']) == 1
-    print(f"Pipeline completed in {end_time:.2f} seconds with save_results={bool_save_results}")
+    print(f"Pipeline completed in {end_time:.2f} {"while saving results" if bool_save_results else "without saving results"}.")
 
 
 def main():

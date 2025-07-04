@@ -11,8 +11,10 @@ import numpy as np
 from astroca.tools.exportData import export_data, save_numpy_tab 
 import os
 from tqdm import tqdm
+from typing import List, Dict, Tuple, Any
 
-def compute_boundaries(data: np.ndarray, params: dict) -> tuple:
+
+def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
     """
     Compute cropping boundaries in X for each Z slice based on background values.
     Sets boundary pixels to default_value and saves results optionally.

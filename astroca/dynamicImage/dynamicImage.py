@@ -82,11 +82,12 @@ def compute_dynamic_image(data: np.ndarray,
     return dF, mean_noise
 
 
-def compute_image_amplitude(data_cropped, index_xmin: np.ndarray, index_xmax: np.ndarray, param_values: dict) -> np.ndarray:
+def compute_image_amplitude(data_cropped: np.ndarray, F0: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, param_values: dict) -> np.ndarray:
     """
     @brief Compute the amplitude of the image using the Anscombe inverse transform.
     result -> (data_cropped - f0_inv)/f0_inv
     @param data_cropped: 4D numpy array of shape (T, Z, Y, X) representing the cropped raw data.
+    @param F0: 4D numpy array of shape (1, Z, Y, X) representing the background estimation to be inversed.
     @param index_xmin: 1D array of shape (depth,) with left cropping bounds per z
     @param index_xmax: 1D array of shape (depth,) with right cropping bounds per z
     @param param_values: Dictionary containing the parameters:
@@ -101,17 +102,32 @@ def compute_image_amplitude(data_cropped, index_xmin: np.ndarray, index_xmax: np
     save_results = int(param_values['files']['save_results']) == 1
     output_directory = param_values['paths']['output_dir']
 
-    f0_inv = anscombe_inverse(data_cropped.copy(), index_xmin, index_xmax, param_values=param_values)
+    f0_inv = anscombe_inverse(F0, index_xmin, index_xmax, param_values=param_values)
 
-    # prevent division by zero
-    safe_f0_inv = np.where(f0_inv == 0, 1e-10, f0_inv)
-    image_amplitude = (data_cropped - f0_inv) / safe_f0_inv
+    T, Z, Y, X = data_cropped.shape
+    image_amplitude = np.zeros_like(data_cropped, dtype=np.float32)
+
+    for z in tqdm(range(Z), desc="Computing amplitude per Z-slice", unit="slice"):
+        x_min = index_xmin[z]
+        x_max = index_xmax[z] + 1
+
+        if x_min >= x_max:
+            continue
+
+        f0_slice = f0_inv[0, z, :, x_min:x_max]
+        f0_safe = np.where(f0_slice == 0, 1e-10, f0_slice)
+
+        for t in range(T):
+            data_slice = data_cropped[t, z, :, x_min:x_max]
+            result_slice = (data_slice - f0_slice) / f0_safe
+            image_amplitude[t, z, :, x_min:x_max] = result_slice
 
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_results is True.")
         os.makedirs(output_directory, exist_ok=True)
         export_data(image_amplitude, output_directory, export_as_single_tif=True, file_name="image_amplitude")
-    print(60*"=")
+
+    print(60 * "=")
     print()
     return image_amplitude
