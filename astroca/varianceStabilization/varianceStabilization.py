@@ -88,18 +88,24 @@ def check_variance(data: np.ndarray,
     return True
 
 
-def anscombe_inverse(data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, save_results: bool = False, output_directory: str = None) -> np.ndarray:
+def anscombe_inverse(data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, param_values: dict) -> np.ndarray:
     """
     Compute inverse of Anscombe transform to compute the amplitude of the image
         A⁻¹(x) = (x / 2)^2 - 3/8
     @param data: 4D numpy array of shape (T, Z, Y, X)
     @param index_xmin: 1D array of shape (depth,) with left cropping bounds per z
     @param index_xmax:1D array of shape (depth,) with right cropping bounds per z
-    @param save_results: If True, saves the transformed data to the specified output directory
-    @param output_directory: Directory to save the transformed data if save_results is True
+    @param param_values: Dictionary containing the parameters:
+        - save_results: If True, saves the result to output_directory
+        - output_directory: Directory to save the result if save_results is True
     @return:
     """
     print(" - Applying inverse Anscombe transform...")
+    required_keys = {'files', 'paths'}
+    if not required_keys.issubset(param_values.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - param_values.keys()}")
+    save_results = int(param_values['files']['save_results']) == 1
+    output_directory = param_values['paths']['output_dir']
     T, Z, Y, X = data.shape
 
     for z in tqdm(range(Z), desc="Inverse Anscombe per Z-slice", unit="slice"):

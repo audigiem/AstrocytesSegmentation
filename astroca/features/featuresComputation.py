@@ -9,7 +9,7 @@ import os
 from tqdm import tqdm
 
 
-def save_features_from_events(calcium_events: np.ndarray, events_ids: list, image_amplitude: np.ndarray, params_values: dict=None, save_result: bool=False, output_directory: str=None) -> None:
+def save_features_from_events(calcium_events: np.ndarray, events_ids: list, image_amplitude: np.ndarray, params_values: dict=None) -> None:
     """
     @brief Compute features from calcium events in a 3D image sequence with time dimension and save them to an Excel file.
         - duration: nb of frames of the event
@@ -21,13 +21,23 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: list, imag
     @param calcium_events: 4D numpy array of shape (T, Z, Y, X) representing the calcium events.
     @param events_ids: List of unique event IDs from the calcium events data.
     @param image_amplitude: 4D numpy array of shape (T, Z, Y, X) representing the amplitude of the image.
-    @param params_values: Dictionary containing parameters for feature computation.
-    @param save_result: Boolean flag to indicate whether to save the results.
-    @param output_directory: Directory to save the results if save_result is True.
+    @param params_values: Dictionary containing parameters for feature computation:
+        - voxel_size_x, voxel_size_y, voxel_size_z: size of a voxel in micrometers.
+        - threshold_median_localized: threshold for median distance to classify as localized.
+        - threshold_distance_localized: threshold for distance to classify as wave.
+        - volume_localized: threshold for volume to classify as localized.
+        - save_result: Boolean flag to indicate whether to save the results.
+        - output_directory: Directory to save the results if save_result is True.
     @return:
     """
     print("=== Computing features from calcium events ===")
-    features = compute_features(calcium_events, events_ids, image_amplitude, params_values, save_result, output_directory)
+    required_keys = {'paths', 'files', 'features_extraction'}
+    if not required_keys.issubset(params_values.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
+    features = compute_features(calcium_events, events_ids, image_amplitude, params_values)
+
+    save_result = int(params_values['files']['save_results']) == 1
+    output_directory = params_values['paths']['output_dir']
 
     if save_result:
         if output_directory is None:
@@ -39,7 +49,7 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: list, imag
     print(60*"=")
 
 
-def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitude: np.ndarray, params_values: dict=None, save_result: bool=False, output_directory: str=None) -> dict:
+def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitude: np.ndarray, params_values: dict=None) -> dict:
     """
     @brief Compute features from calcium events in a 3D image sequence with time dimension.
         - duration: nb of frames of the event
@@ -52,23 +62,24 @@ def compute_features(calcium_events: np.ndarray, events_ids: list, image_amplitu
     @param calcium_events: 4D numpy array of shape (T, Z, Y, X) representing the calcium events.
     @param events_ids: List of unique event IDs from the calcium events data.
     @param image_amplitude: 4D numpy array of shape (T, Z, Y, X) representing the amplitude of the image.
-    @param params_values: dictionary containing parameters for feature computation.
-    @param save_result: Boolean flag to indicate whether to save the results.
-    @param output_directory: Directory to save the results if save_result is True.
+    @param params_values: Dictionary containing parameters for feature computation:
+        - voxel_size_x, voxel_size_y, voxel_size_z: size of a voxel in micrometers.
+        - threshold_median_localized: threshold for median distance to classify as localized.
+        - threshold_distance_localized: threshold for distance to classify as wave.
+        - volume_localized: threshold for volume to classify as localized.
+        - save_result: Boolean flag to indicate whether to save the results.
+        - output_directory: Directory to save the results if save_result is True.
     @return: Dictionary containing computed features.
     """
     if calcium_events.ndim != 4 or image_amplitude.ndim != 4:
         raise ValueError("Inputs must be 4D arrays (T, Z, Y, X)")
 
-    if params_values is None:
-        raise ValueError("params_values must be provided")
-
     voxel_size = np.array([
-        float(params_values['voxel_size_x']),
-        float(params_values['voxel_size_y']),
-        float(params_values['voxel_size_z']),
+        float(params_values['features_extraction']['voxel_size_x']),
+        float(params_values['features_extraction']['voxel_size_y']),
+        float(params_values['features_extraction']['voxel_size_z']),
     ])
-    volume_localized = float(params_values['volume_localized'])
+    volume_localized = float(params_values['features_extraction']['volume_localized'])
 
     features = {}
 
@@ -114,9 +125,9 @@ def classify_event(coords , t0: int, duration: int, volume: float, params_values
     Classify event as 'Wave', 'Localized', or 'Localized but no microdomain'
     based on centroid dynamics and volume.
     """
-    threshold_dist = float(params_values['threshold_distance_localized'])
-    threshold_med = float(params_values['threshold_median_localized'])
-    volume_localized = float(params_values['volume_localized'])
+    threshold_dist = float(params_values['features_extraction']['threshold_distance_localized'])
+    threshold_med = float(params_values['features_extraction']['threshold_median_localized'])
+    volume_localized = float(params_values['features_extraction']['volume_localized'])
 
     # Compute centroids per time frame
     centroids = np.full((duration, 3), np.nan)
