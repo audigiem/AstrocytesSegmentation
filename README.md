@@ -35,18 +35,27 @@ poetry env list
 poetry env activate
 ```
 
-Exécute le script principal :
+(optionnel) Adapte les paramètres du script principal dans le fichier `config.ini` 
+
+
+Exécute le script principal qui lance toute la chaîne de traitement :
 
 ```bash
 chmod +x tests/main.py
 poetry run ./tests/main.py
 ```
 
-Ou sans activer l'environnement Poetry :
-
+options disponibles pour profilage temporel:
 ```bash
-poetry run python tests/main.py
+poetry run ./tests/main.py --stats
 ```
+
+options disponibles pour profilage mémoire et temporel:
+```bash
+poetry run ./tests/main.py --memstats
+```
+ATTENTION: le profilage mémoire est plus couteux en temps de calcul, prévoir un temps d'execution plus long.
+
 
 ## Générer la documentation
 
