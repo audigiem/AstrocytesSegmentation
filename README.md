@@ -50,6 +50,11 @@ options disponibles pour profilage temporel:
 poetry run ./tests/main.py --stats
 ```
 
+option disponible pour execution sans traces
+```bash
+poetry run ./tests/main.py --quiet
+```
+
 options disponibles pour profilage mémoire et temporel:
 ```bash
 poetry run ./tests/main.py --memstats

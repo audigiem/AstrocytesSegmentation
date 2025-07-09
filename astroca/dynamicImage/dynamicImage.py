@@ -8,11 +8,9 @@ from astroca.tools.scene import ImageSequence3DPlusTime
 
 # from joblib import Parallel, delayed
 from astroca.tools.exportData import export_data
-from numba import njit, prange
 import os
 import numpy as np
 import time
-from numpy.lib.stride_tricks import sliding_window_view
 from astroca.varianceStabilization.varianceStabilization import anscombe_inverse
 from tqdm import tqdm
 

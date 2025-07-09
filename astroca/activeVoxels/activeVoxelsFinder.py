@@ -7,6 +7,7 @@ import numpy as np
 from astroca.activeVoxels.zScore import compute_z_score
 from astroca.activeVoxels.spaceMorphology import *
 from astroca.activeVoxels.testMedianFilter import *
+# from astroca.activeVoxels.debugFile import *
 import os
 from astroca.tools.exportData import export_data
 
@@ -60,7 +61,7 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     # data = apply_median_filter_spherical_numba(data, radius=size_median_filter, border_condition=border_condition)
     # data = median_filter_3d(data, 1.5, border_condition)
     # data = median_3d_for_4d_stack(data, size_median_filter, n_workers=8)
-    data = unified_median_filter_3d(data, size_median_filter)
+    data = unified_median_filter_3d(data, size_median_filter, border_condition)
 
     # data = apply_median_filter_4d(data)   nul
     # data = apply_median_filter_4d_parallel(data)

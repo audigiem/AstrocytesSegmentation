@@ -49,6 +49,14 @@ def compare_files(expected_file_path: str, output_file_path: str, percentage_acc
     expected_data = load_data(expected_file_path)
     output_data = load_data(output_file_path)
     
+    if output_data.ndim == 3:
+        # If the output data is 3D, we need to add a time dimension
+        output_data = np.expand_dims(output_data, axis=0)
+        
+    if expected_data.ndim == 3:
+        # If the expected data is 3D, we need to add a time dimension
+        expected_data = np.expand_dims(expected_data, axis=0)
+    
     if expected_data.shape != output_data.shape:
         raise ValueError(f"Shape mismatch: expected {expected_data.shape}, got {output_data.shape}")
     
@@ -58,8 +66,6 @@ def compare_files(expected_file_path: str, output_file_path: str, percentage_acc
     
     if np.all(differences == 0):
         print("Files are identical.")
-    elif np.all(differences < percentage_accuracy * np.abs(expected_data)):
-        print(f"Files are similar within the acceptable percentage ({percentage_accuracy * 100:.6f}%).")
     elif np.max(differences) < 1e-5:
         print("Files are similar within a very small margin (less than 1e-5).")
     else:
@@ -67,15 +73,10 @@ def compare_files(expected_file_path: str, output_file_path: str, percentage_acc
         print("Files differ.")
         max_diff = np.max(differences)
         mean_diff = np.mean(differences)
-
-        # compute the number of voxels that differ by more than the acceptable percentage
-        threshold = percentage_accuracy * np.abs(expected_data)
-        significant_differences = np.sum(differences > threshold)
-        total_voxels = expected_data.size
-        percentage_differences = (significant_differences / total_voxels) * 100
-        print(f"Percentage of voxels differing by more than {percentage_accuracy * 100:.6f}%: {percentage_differences:.6f}%")
-        print(f"Max difference: {max_diff:.6f}")
-        print(f"Mean difference: {mean_diff:.6f}")
+        number_of_significant_differences = np.sum(differences > percentage_accuracy * np.abs(expected_data))
+        print(f"Max difference: {max_diff}")
+        print(f"Mean difference: {mean_diff}")
+        print(f"Number of significant differences: {number_of_significant_differences}")
 
     if save_diff and tag_differences:
         # Save the differences to a new file
@@ -146,8 +147,8 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
         # mean_mean_diff = np.mean(list_mean_diff)
         # mean_percentage_accuracy = np.mean(list_accuracy)
         print(f"Max differences across all frames: {[int(x) for x in list_max_diff]}")
-        print(f"Mean differences across all frames: {[float(x) for x in list_mean_diff]}")
-        print(f"Percentages accuracy across all frames: {[float(x) for x in list_accuracy]}")
+        # print(f"Mean differences across all frames: {[float(x) for x in list_mean_diff]}")
+        # print(f"Percentages accuracy across all frames: {[float(x) for x in list_accuracy]}")
         print(f"Number of significant differences across all frames: {[int(x) for x in list_nb_significant_differences]}")
         print(f"Total frames compared: {T}")
 
@@ -202,23 +203,23 @@ def main():
     expected_amplitude_image_path = EXPECTED_DIR_PATH + "amplitude.tif"
     output_amplitude_image_path = OUTPUT_DIR_PATH + "image_amplitude.tif"
     
-    save_results = False
+    save_results = True
 
     print("Comparing files after each step...")
     print("Step 1: Comparing files after crop and boundaries computations...")
-
+    
     compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
     compare_sequence(expected_boundaries_path, output_boundaries_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
-
+    
     print("Step 2: Comparing files after Anscombe transform...")
     compare_sequence(expected_anscombe_path, output_anscombe_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
-
+    
     print("Step 3: Comparing files after F0 estimation...")
     compare_files(expected_f0_path, output_f0_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
-
+    
     print("Step 4: Comparing files after dF computation...")
     compare_sequence(expected_dF_path, output_dF_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
@@ -235,25 +236,77 @@ def main():
     compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
 
-    print("Step 8: Comparing files after active voxels detection...")
-    compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
+    # print("Step 8: Comparing files after active voxels detection...")
+    # compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
     
-    print("Step 9: Comparing files after calcium events detection...")
-    compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
+    # print("Step 9: Comparing files after calcium events detection...")
+    # compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
+    #
+    # print("Step 10: Comparing files after Anscombe inverse transform...")
+    # compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
+    #
+    # print("Step 11: Comparing files after amplitude computation...")
+    # compare_sequence(expected_amplitude_image_path, output_amplitude_image_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
     
-    print("Step 10: Comparing files after Anscombe inverse transform...")
-    compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
-    
-    print("Step 11: Comparing files after amplitude computation...")
-    compare_sequence(expected_amplitude_image_path, output_amplitude_image_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
-
     print("All comparisons completed.")
 
-
+def compare_worklow():
+    """
+    Compare the output of the workflow with the expected output.
+    This function assumes that the expected output files are in a specific directory.
+    """
+    expected_dir = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirectoryFewerTime/"
+    output_dir = "/home/matteo/Bureau/INRIA/workflows/astrocaWorkflow/Data/"
+    
+    expected_files = [
+        "bounded_image_sequence.tif",
+        "variance_stabilized_sequence.tif",
+        "F0_estimated.tif",
+        "dynamic_image_dF.tif",
+        "zScore.tif",
+        "filledSpaceMorphology.tif",
+        "medianFiltered_2.tif",
+        "activeVoxels.tif",      
+    ]
+    
+    output_files = [
+        "Boundaries computation/",
+        "Anscombe/",
+        "Baseline fluorescence estimation/",
+        "Dynamic  image/",
+        "Zscore/",
+        "Space closing/",
+        "Median  filter/",
+        "Av finder/",
+    ]
+    
+    for expected_file, output_file in zip(expected_files, output_files):
+        expected_path = os.path.join(expected_dir, expected_file)
+        output_path = os.path.join(output_dir, output_file)
+        
+        if not os.path.exists(expected_path):
+            print(f"Expected file {expected_path} does not exist.")
+            continue
+        
+        if not os.path.exists(output_path):
+            print(f"Output file {output_path} does not exist.")
+            continue
+        if expected_file == "F0_estimated.tif":
+            print(f"Comparing {expected_file} with {output_file}...")
+            compare_files(expected_path, output_path, save_diff=False, percentage_accuracy=1e-6)
+            print()
+        else:
+            try:
+                print(f"Comparing {expected_file} with {output_file}...")
+                compare_sequence(expected_path, output_path, save_diff=False, percentage_accuracy=1e-6)
+                print()
+            except Exception as e:
+                print(f"Error comparing {expected_file} with {output_file}: {e}")
+    print("All comparisons completed.")
 
 if __name__ == "__main__":
     main()

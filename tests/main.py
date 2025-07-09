@@ -141,15 +141,14 @@ def run_pipeline():
     # === Compute Z-score, closing morphology, median filter ===
     active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)
 
-    # === Detect calcium events ===
-    active_voxels = load_data("/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/activeVoxels.tif")
-    id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
-
-    # === Compute image amplitude ===
-    image_amplitude = compute_image_amplitude(raw_data, F0, index_xmin, index_xmax, params)
-
-    # === Compute features ===
-    save_features_from_events(id_connections, ids_events, image_amplitude, params_values=params)
+    # # === Detect calcium events ===
+    # id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
+    
+    # # === Compute image amplitude ===
+    # image_amplitude = compute_image_amplitude(raw_data, F0, index_xmin, index_xmax, params)
+    
+    # # === Compute features ===
+    # save_features_from_events(id_connections, ids_events, image_amplitude, params_values=params)
     end_time = time.time() - time_start
     bool_save_results = int(params['files']['save_results']) == 1
     print(f"Pipeline completed in {end_time:.2f} {"while saving results" if bool_save_results else "without saving results"}.")
@@ -170,8 +169,25 @@ def main():
         if arg == "--stats":
             profile_time = True
         elif arg == "--memstats":
+            print("WARNING: Memory profiling is enabled, this may slow down the pipeline execution.")
             profile_time = True
             profile_memory = True
+        elif arg == "--quiet":
+            profile_time = False
+            profile_memory = False
+            print("Running pipeline in quiet mode, no statistics nor execution trace will be printed.")
+            with open(os.devnull, 'w') as devnull:
+                sys.stdout = devnull 
+                run_pipeline()
+                return
+            
+        elif arg == "--help":
+            print(f"Usage: {sys.argv[0]} [--stats | --memstats | --quiet | --help]")
+            print("  --stats: Run pipeline with time statistics")
+            print("  --memstats: Run pipeline with memory and time statistics")
+            print("  --quiet: Run pipeline without statistics and without execution trace")
+            print("  --help: Show this help message")
+            return       
         else:
             raise ValueError(f"Invalid argument '{arg}'. Usage: {sys.argv[0]} [--stats | --memstats]")
 

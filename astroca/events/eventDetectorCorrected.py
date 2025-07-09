@@ -4,7 +4,7 @@ from numba import njit, prange
 from typing import List, Tuple, Optional, Any, Dict
 import time
 from scipy import ndimage
-from skimage.measure import label
+# from skimage.measure import label
 import matplotlib.pyplot as plt
 import os
 from astroca.tools.exportData import export_data
@@ -172,7 +172,7 @@ class EventDetectorOptimized:
         """Initialize the EventDetector with optimizations."""
         print("=== Finding events in 4D data ===")
         print(f"Input data range: [{av_data.min():.3f}, {av_data.max():.3f}]")
-        print(f"Non-zero voxels: {np.count_nonzero(av_data)}/{av_data.size}")
+        print(f"Non-zero voxels density: {np.count_nonzero(av_data) / av_data.size:.5f}")
 
         # Convertir en float32 pour économiser la mémoire et améliorer les performances
         self.av_ = av_data.astype(np.float32)
@@ -649,17 +649,18 @@ class EventDetectorOptimized:
         return stats
 
 
-def detect_calcium_events_opti(av_data: np.ndarray, params_values: dict = None,
-                               save_results: bool = False,
-                               output_directory: str = None) -> Tuple[np.ndarray, List[int]]:
+def detect_calcium_events_opti(av_data: np.ndarray, params_values: dict = None) -> Tuple[np.ndarray, List[int]]:
     """
     Fonction optimisée pour détecter les événements calcium dans des données 4D.
     """
+    required_keys = {'events_extraction', 'files', 'paths'}
+    if not required_keys.issubset(params_values.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
     threshold_size_3d = int(params_values['events_extraction']['threshold_size_3d'])
     threshold_size_3d_removed = int(params_values['events_extraction']['threshold_size_3d_removed'])
     threshold_corr = float(params_values['events_extraction']['threshold_corr'])
     save_results = int(params_values['files']['save_results']) == 1
-    output_directory = params_values['paths']['output_dir'] if output_directory is None else output_directory
+    output_directory = params_values['paths']['output_dir']
 
     detector = EventDetectorOptimized(av_data, threshold_size_3d,
                                       threshold_size_3d_removed, threshold_corr)

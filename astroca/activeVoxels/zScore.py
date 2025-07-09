@@ -7,7 +7,6 @@
 
 import numpy as np
 from tqdm import tqdm
-from astroca.tools.scene import ImageSequence3DPlusTime
 
 def compute_z_score(data: np.ndarray, std_noise: float, gaussian_noise_mean: float, threshold: float, index_xmin: list, index_xmax: list) -> np.ndarray:
     """
