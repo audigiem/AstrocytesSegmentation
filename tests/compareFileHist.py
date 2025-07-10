@@ -72,8 +72,8 @@ def plot_slice_comparison(vol1, vol2, diff, frame=0, z_slice=0):
 
 if __name__ == "__main__":
     # Remplace par tes fichiers .tif
-    expected_closing_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/anscombeTransform.tif"
-    output_closing_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/variance_stabilized_sequence.tif"
+    expected_closing_path = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/Zscore.tif"
+    output_closing_path = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/zScore.tif"
 
     vol1 = load_data(expected_closing_path)
     vol2 = load_data(output_closing_path)

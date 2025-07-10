@@ -141,14 +141,14 @@ def run_pipeline():
     # === Compute Z-score, closing morphology, median filter ===
     active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)
 
-    # # === Detect calcium events ===
-    # id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
+    # === Detect calcium events ===
+    id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
     
-    # # === Compute image amplitude ===
-    # image_amplitude = compute_image_amplitude(raw_data, F0, index_xmin, index_xmax, params)
+    # === Compute image amplitude ===
+    image_amplitude = compute_image_amplitude(raw_data, F0, index_xmin, index_xmax, params)
     
-    # # === Compute features ===
-    # save_features_from_events(id_connections, ids_events, image_amplitude, params_values=params)
+    # === Compute features ===
+    save_features_from_events(id_connections, ids_events, image_amplitude, params_values=params)
     end_time = time.time() - time_start
     bool_save_results = int(params['files']['save_results']) == 1
     print(f"Pipeline completed in {end_time:.2f} {"while saving results" if bool_save_results else "without saving results"}.")

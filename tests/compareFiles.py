@@ -160,6 +160,33 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
             print(f"Differences saved to {diff_file_path}")
     elif not differences_exist:
         print("No differences found in any frame.")
+    return differences
+
+def show_offset_voxels_diff(differences: np.ndarray, expected_sequence_path: str = None, output_sequence_path: str = None):
+    """
+    Display the coordinates of the voxels that differ between the expected and output data.
+
+    @param differences: A 4D numpy array containing the differences between the expected and output data.
+    """
+    if differences.ndim != 4:
+        raise ValueError("Differences array must be 4D (T, Z, Y, X).")
+
+    expected_vol = load_data(expected_sequence_path)
+
+    output_vol = load_data(output_sequence_path)
+
+    T, Z, Y, X = differences.shape
+    diff_coords = np.argwhere(differences > 0)
+    
+    if diff_coords.size == 0:
+        print("No differences found.")
+    else:
+        print(f"Found {len(diff_coords)} differing voxels:")
+        for coord in diff_coords:
+            t, z, y, x = coord
+            print(f"Time: {t}, Z: {z}, Y: {y}, X: {x}")
+            print(f"Expected value: {expected_vol[t, z, y, x]}, Output value: {output_vol[t, z, y, x]}")
+
 
 
 def main():
@@ -233,24 +260,25 @@ def main():
     print()
 
     print("Step 7: Comparing files after median filtering...")
-    compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
+    diff = compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # show_offset_voxels_diff(diff, expected_sequence_path=expected_median_path, output_sequence_path=output_median_path)
     print()
 
-    # print("Step 8: Comparing files after active voxels detection...")
-    # compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
+    print("Step 8: Comparing files after active voxels detection...")
+    compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
     
-    # print("Step 9: Comparing files after calcium events detection...")
-    # compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
-    #
-    # print("Step 10: Comparing files after Anscombe inverse transform...")
-    # compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
-    #
-    # print("Step 11: Comparing files after amplitude computation...")
-    # compare_sequence(expected_amplitude_image_path, output_amplitude_image_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
+    print("Step 9: Comparing files after calcium events detection...")
+    compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
+
+    print("Step 10: Comparing files after Anscombe inverse transform...")
+    compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
+
+    print("Step 11: Comparing files after amplitude computation...")
+    compare_sequence(expected_amplitude_image_path, output_amplitude_image_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
     
     print("All comparisons completed.")
 

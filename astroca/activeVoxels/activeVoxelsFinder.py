@@ -6,8 +6,7 @@
 import numpy as np
 from astroca.activeVoxels.zScore import compute_z_score
 from astroca.activeVoxels.spaceMorphology import *
-from astroca.activeVoxels.testMedianFilter import *
-# from astroca.activeVoxels.debugFile import *
+from astroca.activeVoxels.medianFilter import *
 import os
 from astroca.tools.exportData import export_data
 
@@ -57,20 +56,12 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     if save_results:
         export_data(data, output_directory, export_as_single_tif=True, file_name="filledSpaceMorphology")
     print()
-    # data = apply_median_filter_3d_per_time(data, size=size_median_filter)
-    # data = apply_median_filter_spherical_numba(data, radius=size_median_filter, border_condition=border_condition)
-    # data = median_filter_3d(data, 1.5, border_condition)
-    # data = median_3d_for_4d_stack(data, size_median_filter, n_workers=8)
-    data = unified_median_filter_3d(data, size_median_filter, border_condition)
 
-    # data = apply_median_filter_4d(data)   nul
-    # data = apply_median_filter_4d_parallel(data)
+    data = unified_median_filter_3d(data, size_median_filter, border_condition)
     if save_results:
         export_data(data, output_directory, export_as_single_tif=True, file_name="medianFiltered_2")
     print()
-    # vox(x,t) > 0 -> active_vox(x,t) = dF(x,t)
-    # vox(x,t) = 0 -> active_vox(x,t) = 0
-    # vox(x,t) < 0 -> active_vox(x,t) = std_noise
+
     active_voxels = voxels_finder(data, dF, std_noise, index_xmin, index_xmax)
     if save_results:
         export_data(active_voxels, output_directory, export_as_single_tif=True, file_name="activeVoxels")
@@ -116,3 +107,4 @@ def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, i
         active_voxels[:, z, :, index_xmin[z]:index_xmax[z]] = active_voxels[:, z, :, index_xmin[z]:index_xmax[z]]
 
     return active_voxels
+
