@@ -8,8 +8,6 @@ import numpy as np
 import time
 from tqdm import tqdm
 
-from astroca.tools.scene import ImageSequence3DPlusTime
-
 
 # import tifffile or np.save for optional saving
 

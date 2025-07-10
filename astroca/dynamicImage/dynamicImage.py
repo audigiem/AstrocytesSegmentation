@@ -4,8 +4,6 @@
 """
 from email.contentmanager import raw_data_manager
 
-from astroca.tools.scene import ImageSequence3DPlusTime
-
 # from joblib import Parallel, delayed
 from astroca.tools.exportData import export_data
 import os

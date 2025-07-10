@@ -6,7 +6,6 @@
 
 import os
 import numpy as np
-from astroca.tools.scene import ImageSequence3DPlusTime
 from tifffile import imwrite
 
 def export_data(data: np.ndarray,
