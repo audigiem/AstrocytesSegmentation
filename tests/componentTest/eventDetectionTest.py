@@ -6,7 +6,6 @@
 import unittest
 from astroca.tools.loadData import load_data
 from astroca.tools.exportData import export_data
-from astroca.events.eventDetectorScipy import detect_events, show_results
 
 class EventDetectionTest(unittest.TestCase):
     """ 

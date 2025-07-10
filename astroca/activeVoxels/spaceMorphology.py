@@ -1,26 +1,24 @@
 """
 @file spaceMorphology.py
-@brief This module provides functionality to fill/connect the structure in space, with a ball-like morphology of radius 1.
+@brief This module provides functions to fill/connect structures in space using a ball-shaped morphology of radius 1.
 """
 from scipy.ndimage import binary_closing
 import numpy as np
 from skimage.morphology import ball
-from numba import njit, prange, config
+from numba import njit, prange
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from astroca.activeVoxels.medianFilter import generate_spherical_offsets
 
 def closing_morphology_in_space(data: np.ndarray, radius: int, border_mode: str = 'constant') -> np.ndarray:
     """
-    Apply 3D morphological closing with a spherical structuring element
-    to each time frame of a 4D sequence (T, Z, Y, X).
-
-    @param data: 4D numpy array (T, Z, Y, X), binary (0/255 or 0/1)
-    @param radius: Radius of the spherical structuring element
-    @param border_mode: 'constant', 'reflect', etc. OR 'ignore' to skip voxels near borders
-    @return: 4D numpy array (T, Z, Y, X) after closing
+    @fn closing_morphology_in_space
+    @brief Apply 3D morphological closing with a spherical structuring element to each time frame of a 4D sequence (T, Z, Y, X).
+    @param data 4D numpy array (T, Z, Y, X), binary (0/255 or 0/1)
+    @param radius Radius of the spherical structuring element
+    @param border_mode 'constant', 'reflect', etc. OR 'ignore' to skip voxels near borders
+    @return 4D numpy array (T, Z, Y, X) after closing
     """
-
     if border_mode == 'ignore':
         return closing_morphology_in_space_ignore_border(data, radius)
 
@@ -32,7 +30,7 @@ def closing_morphology_in_space(data: np.ndarray, radius: int, border_mode: str 
     # Ensure binary input
     binary = (data > 0)
 
-    for t in tqdm(range(binary.shape[0]), desc=f"Morphological closing", unit="frame"):
+    for t in tqdm(range(binary.shape[0]), desc="Morphological closing", unit="frame"):
         pad_width = ((radius, radius), (radius, radius), (radius, radius))
         padded = np.pad(binary[t], pad_width=pad_width, mode=border_mode)
         closed = binary_closing(padded, structure=struct_elem)
@@ -44,8 +42,11 @@ def closing_morphology_in_space(data: np.ndarray, radius: int, border_mode: str 
 @njit(parallel=True)
 def morphological_erosion_ignore_border(frame: np.ndarray, offsets: np.ndarray) -> np.ndarray:
     """
-    Erosion morphologique : prendre le minimum dans le voisinage sphérique
-    Ne considère que les voxels valides (dans le volume)
+    @fn morphological_erosion_ignore_border
+    @brief Morphological erosion: take the minimum in the spherical neighborhood. Only considers valid voxels (inside the volume).
+    @param frame 3D numpy array (Z, Y, X), binary
+    @param offsets Array of spherical offsets
+    @return 3D numpy array (Z, Y, X) after erosion
     """
     Z, Y, X = frame.shape
     eroded = np.zeros((Z, Y, X), dtype=np.uint8)
@@ -53,25 +54,28 @@ def morphological_erosion_ignore_border(frame: np.ndarray, offsets: np.ndarray) 
     for z in prange(Z):
         for y in range(Y):
             for x in range(X):
-                min_val = 1  # Valeur max possible
-                
+                min_val = 1  # Maximum possible value
+
                 for i in range(offsets.shape[0]):
                     dz, dy, dx = offsets[i]
                     zz, yy, xx = z + dz, y + dy, x + dx
-                    
+
                     if 0 <= zz < Z and 0 <= yy < Y and 0 <= xx < X:
                         if frame[zz, yy, xx] < min_val:
                             min_val = frame[zz, yy, xx]
-                    # Les voxels hors du volume sont ignorés
-                
+                    # Voxels outside the volume are ignored
+
                 eroded[z, y, x] = min_val
     return eroded
 
 @njit(parallel=True)
 def morphological_dilation_ignore_border(frame: np.ndarray, offsets: np.ndarray) -> np.ndarray:
     """
-    Dilatation morphologique : prendre le maximum dans le voisinage sphérique
-    Ne considère que les voxels valides (dans le volume)
+    @fn morphological_dilation_ignore_border
+    @brief Morphological dilation: take the maximum in the spherical neighborhood. Only considers valid voxels (inside the volume).
+    @param frame 3D numpy array (Z, Y, X), binary
+    @param offsets Array of spherical offsets
+    @return 3D numpy array (Z, Y, X) after dilation
     """
     Z, Y, X = frame.shape
     dilated = np.zeros((Z, Y, X), dtype=np.uint8)
@@ -79,20 +83,19 @@ def morphological_dilation_ignore_border(frame: np.ndarray, offsets: np.ndarray)
     for z in prange(Z):
         for y in range(Y):
             for x in range(X):
-                max_val = 0  # Valeur min possible
-                
+                max_val = 0  # Minimum possible value
+
                 for i in range(offsets.shape[0]):
                     dz, dy, dx = offsets[i]
                     zz, yy, xx = z + dz, y + dy, x + dx
-                    
+
                     if 0 <= zz < Z and 0 <= yy < Y and 0 <= xx < X:
                         if frame[zz, yy, xx] > max_val:
                             max_val = frame[zz, yy, xx]
-                    # Les voxels hors du volume sont ignorés
-                
+                    # Voxels outside the volume are ignored
+
                 dilated[z, y, x] = max_val
     return dilated
-
 
 def closing_morphology_in_space_ignore_border(
     data: np.ndarray,
@@ -100,13 +103,18 @@ def closing_morphology_in_space_ignore_border(
     n_workers: int = None
 ) -> np.ndarray:
     """
-    Fast 3D morphological closing on a 4D binary array (T,Z,Y,X), with border_mode='ignore'.
+    @fn closing_morphology_in_space_ignore_border
+    @brief Fast 3D morphological closing on a 4D binary array (T, Z, Y, X), with border_mode='ignore'.
+    @param data 4D numpy array (T, Z, Y, X), binary (0/255 or 0/1)
+    @param radius Radius of the spherical structuring element
+    @param n_workers Number of parallel workers (default: None)
+    @return 4D numpy array (T, Z, Y, X) after closing
     """
     print(f" - Fast morphological closing with radius={radius} and border mode='ignore'")
 
     binary = (data > 0).astype(np.uint8)
     T, Z, Y, X = binary.shape
-    
+
     result = np.empty((T, Z, Y, X), dtype=np.uint8)
     offsets = generate_spherical_offsets(radius)
 
@@ -119,14 +127,13 @@ def closing_morphology_in_space_ignore_border(
 
         result[t] = eroded.astype(np.uint8) * 255  # Convert to binary (0/255)
 
-    # Traiter les autres frames
+    # Process all frames
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
         list(tqdm(
             executor.map(process, range(T)),
-            total=T-1,
+            total=T,
             desc="Morphological closing (ignore border)",
             unit="frame"
         ))
 
     return result
-

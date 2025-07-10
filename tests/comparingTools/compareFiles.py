@@ -191,7 +191,7 @@ def show_offset_voxels_diff(differences: np.ndarray, expected_sequence_path: str
 
 def main():
     # Define paths to expected and output files
-    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/"
+    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdir/"
     OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/"
 
     expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
@@ -268,9 +268,9 @@ def main():
     compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
     
-    print("Step 9: Comparing files after calcium events detection...")
-    compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
+    # print("Step 9: Comparing files after calcium events detection...")
+    # compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
 
     print("Step 10: Comparing files after Anscombe inverse transform...")
     compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)

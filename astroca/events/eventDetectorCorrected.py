@@ -1,175 +1,37 @@
+"""
+@file eventDetectorCorrected.py
+@brief Optimized event detector for calcium events in 4D data.
+"""
+
 import numpy as np
-import numba as nb
-from numba import njit, prange
-from typing import List, Tuple, Optional, Any, Dict
+from typing import List, Tuple, Optional, Dict
 import time
-from scipy import ndimage
-# from skimage.measure import label
-import matplotlib.pyplot as plt
 import os
 from astroca.tools.exportData import export_data
+from astroca.events.tools import find_seed_fast, get_valid_neighbors, batch_check_conditions, compute_max_ncc_fast, find_nonzero_pattern_bounds
 from tqdm import tqdm
-from collections import deque
 
-
-# Fonctions numba optimisées
-@njit
-def _find_nonzero_pattern_bounds(intensity_profile: np.ndarray, t: int) -> Tuple[int, int]:
-    """Find start and end indices of non-zero pattern around time t."""
-    start = t
-    while start > 0 and intensity_profile[start - 1] != 0:
-        start -= 1
-
-    end = t
-    while end < len(intensity_profile) and intensity_profile[end] != 0:
-        end += 1
-
-    return start, end
-
-
-@njit
-def _compute_ncc_fast(pattern1: np.ndarray, pattern2: np.ndarray) -> np.ndarray:
-    """Optimized normalized cross-correlation computation."""
-    vout = np.correlate(pattern1, pattern2, 'full')
-
-    auto_corr_v1 = np.dot(pattern1, pattern1)
-    auto_corr_v2 = np.dot(pattern2, pattern2)
-
-    den = np.sqrt(auto_corr_v1 * auto_corr_v2)
-    if den == 0:
-        return np.zeros_like(vout)
-
-    return vout / den
-
-
-@njit
-def _compute_max_ncc_fast(pattern1: np.ndarray, pattern2: np.ndarray) -> float:
-    """Optimized computation of ONLY the maximum correlation - much faster."""
-    if len(pattern1) == 0 or len(pattern2) == 0:
-        return 0.0
-
-    # Pre-compute norms
-    norm1 = np.sqrt(np.dot(pattern1, pattern1))
-    norm2 = np.sqrt(np.dot(pattern2, pattern2))
-
-    if norm1 == 0 or norm2 == 0:
-        return 0.0
-
-    # Only compute correlations that could be maximum
-    max_corr = 0.0
-    min_len = min(len(pattern1), len(pattern2))
-
-    # Check correlation at key positions only
-    for offset in range(min_len):
-        if offset < len(pattern2):
-            # Forward correlation
-            end_idx = min(len(pattern1), len(pattern2) - offset)
-            if end_idx > 0:
-                corr = np.dot(pattern1[:end_idx], pattern2[offset:offset + end_idx])
-                corr = corr / (norm1 * norm2)
-                if corr > max_corr:
-                    max_corr = corr
-
-        if offset > 0 and offset < len(pattern1):
-            # Backward correlation
-            end_idx = min(len(pattern1) - offset, len(pattern2))
-            if end_idx > 0:
-                corr = np.dot(pattern1[offset:offset + end_idx], pattern2[:end_idx])
-                corr = corr / (norm1 * norm2)
-                if corr > max_corr:
-                    max_corr = corr
-
-    return max_corr
-
-
-@njit
-def _batch_check_conditions(av_frame: np.ndarray, id_frame: np.ndarray,
-                            coords: np.ndarray) -> np.ndarray:
-    """Batch check of conditions for multiple coordinates."""
-    valid_mask = np.zeros(len(coords), dtype=nb.boolean)
-
-    for i in range(len(coords)):
-        z, y, x = coords[i]
-        if av_frame[z, y, x] != 0 and id_frame[z, y, x] == 0:
-            valid_mask[i] = True
-
-    return valid_mask
-
-
-@njit
-def _find_seed_fast(frame_data: np.ndarray, id_mask: np.ndarray) -> Tuple[int, int, int, float]:
-    """Fast seed finding using numba."""
-    max_val = 0.0
-    best_x, best_y, best_z = -1, -1, -1
-
-    depth, height, width = frame_data.shape
-
-    for z in range(depth):
-        for y in range(height):
-            for x in range(width):
-                val = frame_data[z, y, x]
-                if val > max_val and id_mask[z, y, x] == 0:
-                    max_val = val
-                    best_x, best_y, best_z = x, y, z
-
-    return best_x, best_y, best_z, max_val
-
-
-@njit
-def _process_neighbors_batch(av_data: np.ndarray, id_mask: np.ndarray,
-                             neighbor_coords: np.ndarray, t: int,
-                             pattern: np.ndarray, threshold_corr: float) -> np.ndarray:
-    """Process multiple neighbors in batch for better performance."""
-    valid_neighbors = []
-
-    for i in range(neighbor_coords.shape[0]):
-        z, y, x = neighbor_coords[i]
-
-        if av_data[t, z, y, x] != 0 and id_mask[t, z, y, x] == 0:
-            # Extract intensity profile
-            intensity_profile = av_data[:, z, y, x]
-
-            # Find pattern bounds
-            start, end = _find_nonzero_pattern_bounds(intensity_profile, t)
-            if start < end:
-                neighbor_pattern = intensity_profile[start:end]
-
-                # Compute correlation
-                correlation = _compute_ncc_fast(pattern, neighbor_pattern)
-                max_corr = np.max(correlation)
-
-                if max_corr > threshold_corr:
-                    valid_neighbors.append((z, y, x, start, end))
-
-    return np.array(valid_neighbors)
-
-
-@njit
-def _get_valid_neighbors(z: int, y: int, x: int, depth: int, height: int, width: int,
-                         neighbor_offsets: np.ndarray) -> np.ndarray:
-    """Get valid neighbor coordinates using pre-computed offsets."""
-    valid_coords = []
-
-    for i in range(neighbor_offsets.shape[0]):
-        dz, dy, dx = neighbor_offsets[i]
-        nz, ny, nx = z + dz, y + dy, x + dx
-
-        if (0 <= nz < depth and 0 <= ny < height and 0 <= nx < width):
-            valid_coords.append((nz, ny, nx))
-
-    return np.array(valid_coords)
 
 
 class EventDetectorOptimized:
     """
-    Event Detector optimisé pour les événements calcium dans des données 4D.
+    @class EventDetectorOptimized
+    @brief Optimized event detector for calcium events in 4D data.
     """
 
     # @profile
     def __init__(self, av_data: np.ndarray, threshold_size_3d: int = 10,
                  threshold_size_3d_removed: int = 5, threshold_corr: float = 0.5,
                  plot: bool = False):
-        """Initialize the EventDetector with optimizations."""
+        """
+        @fn __init__
+        @brief Initialize the EventDetector with optimizations.
+        @param av_data 4D numpy array of input data
+        @param threshold_size_3d Minimum size for event retention
+        @param threshold_size_3d_removed Minimum size for not removing small events
+        @param threshold_corr Correlation threshold
+        @param plot Enable plotting (default: False)
+        """
         print("=== Finding events in 4D data ===")
         print(f"Input data range: [{av_data.min():.3f}, {av_data.max():.3f}]")
         print(f"Non-zero voxels density: {np.count_nonzero(av_data) / av_data.size:.5f}")
@@ -219,18 +81,24 @@ class EventDetectorOptimized:
         self._batch_size = 1000
         self._reusable_arrays = self._initialize_reusable_arrays()
 
-    # @profile
     def _initialize_reusable_arrays(self) -> Dict[str, np.ndarray]:
-        """Initialize reusable arrays to avoid repeated allocations."""
+        """
+        @fn _initialize_reusable_arrays
+        @brief Initialize reusable arrays to avoid repeated allocations.
+        @return Dictionary of reusable arrays
+        """
         return {
             'temp_coords': np.zeros((self._batch_size, 3), dtype=np.int32),
             'temp_patterns': np.zeros((self._batch_size, 50), dtype=np.float32),  # Assume max pattern length 50
             'temp_correlations': np.zeros(self._batch_size, dtype=np.float32)
         }
 
-    # @profile
     def _generate_neighbor_offsets(self) -> np.ndarray:
-        """Pre-generate 26-neighbor offsets for 3D spatial connectivity."""
+        """
+        @fn _generate_neighbor_offsets
+        @brief Pre-generate 26-neighbor offsets for 3D spatial connectivity.
+        @return Array of neighbor offsets (N, 3)
+        """
         offsets = []
         for dz in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
@@ -240,9 +108,12 @@ class EventDetectorOptimized:
                     offsets.append([dz, dy, dx])
         return np.array(offsets, dtype=np.int32)
 
-    # @profile
     def _generate_neighbor_offsets_4d(self) -> np.ndarray:
-        """Pre-generate neighbor offsets for 4D connectivity."""
+        """
+        @fn _generate_neighbor_offsets_4d
+        @brief Pre-generate neighbor offsets for 4D connectivity.
+        @return Array of neighbor offsets (N, 4)
+        """
         offsets = []
         for dt in [-1, 0, 1]:
             for dz in [-1, 0, 1]:
@@ -255,7 +126,11 @@ class EventDetectorOptimized:
 
     # @profile
     def find_events(self) -> None:
-        """Main optimized event finding method."""
+        """
+        @fn find_events
+        @brief Main optimized event finding method.
+        @return None
+        """
         print(
             f"Thresholds -> size: {self.threshold_size_3d_}, removed: {self.threshold_size_3d_removed_}, corr: {self.threshold_corr_}")
         start_time = time.time()
@@ -352,7 +227,11 @@ class EventDetectorOptimized:
 
     # @profile
     def _cleanup_pattern_cache(self) -> None:
-        """Clean up pattern cache to prevent memory overflow."""
+        """
+        @fn _cleanup_pattern_cache
+        @brief Clean up pattern cache to prevent memory overflow.
+        @return None
+        """
         # Garder seulement les 50% les plus récents
         items = list(self.pattern_.items())
         keep_count = len(items) // 2
@@ -360,7 +239,12 @@ class EventDetectorOptimized:
 
     # @profile
     def _get_frame_cache(self, t: int) -> Tuple[np.ndarray, np.ndarray]:
-        """Get cached frames or cache them if not present."""
+        """
+        @fn _get_frame_cache
+        @brief Get cached frames or cache them if not present.
+        @param t Time index
+        @return Tuple of (av_frame, id_frame)
+        """
         if t not in self._frame_cache:
             # Nettoyage du cache si trop plein
             if len(self._frame_cache) >= self.frame_cache_limit:
@@ -375,7 +259,13 @@ class EventDetectorOptimized:
 
     # @profile
     def _grow_region_optimized(self, waiting_for_processing: List, event_id: int) -> None:
-        """Croissance de région optimisée avec traitement en batch."""
+        """
+        @fn _grow_region_optimized
+        @brief Optimized region growing with batch processing.
+        @param waiting_for_processing List of voxels to process
+        @param event_id Current event ID
+        @return None
+        """
         index_waiting = 0
 
         while index_waiting < len(waiting_for_processing):
@@ -395,21 +285,28 @@ class EventDetectorOptimized:
     # @profile
     def _find_connected_AV_optimized(self, seed: List[int], pattern: np.ndarray,
                                      event_id: int, waiting_list: List[List[int]]) -> None:
-        """Recherche de voisins connectés ultra-optimisée."""
+        """
+        @fn _find_connected_AV_optimized
+        @brief Ultra-optimized search for connected neighbors.
+        @param seed Seed voxel [t, z, y, x]
+        @param pattern Reference pattern
+        @param event_id Current event ID
+        @param waiting_list List of voxels to process
+        @return None
+        """
         t, z, y, x = seed
 
         # Utiliser le cache de frames pour éviter les accès répétés
         av_frame, id_frame = self._get_frame_cache(t)
 
         # Obtenir les coordonnées des voisins valides
-        valid_coords = _get_valid_neighbors(z, y, x, self.depth_, self.height_, self.width_,
-                                            self._neighbor_offsets)
+        valid_coords = get_valid_neighbors(z, y, x, self.depth_, self.height_, self.width_, self._neighbor_offsets)
 
         if len(valid_coords) == 0:
             return
 
         # Batch check des conditions - évite les accès mémoire répétés
-        valid_mask = _batch_check_conditions(av_frame, id_frame, valid_coords)
+        valid_mask = batch_check_conditions(av_frame, id_frame, valid_coords)
 
         # Filtrer uniquement les voisins valides
         valid_neighbors = valid_coords[valid_mask]
@@ -437,7 +334,7 @@ class EventDetectorOptimized:
             nz, ny, nx = neighbor_coords_filtered[i]
 
             # Calcul de corrélation optimisé - SEULEMENT le maximum
-            max_corr = _compute_max_ncc_fast(pattern, neighbor_pattern)
+            max_corr = compute_max_ncc_fast(pattern, neighbor_pattern)
 
             if max_corr > self.threshold_corr_:
                 self.id_connected_voxel_[t, nz, ny, nx] = event_id
@@ -470,11 +367,13 @@ class EventDetectorOptimized:
 
     # @profile
     def _find_seed_point_fast(self, t0: int) -> Optional[Tuple[int, int, int]]:
-        """Recherche de seed optimisée."""
-        x, y, z, max_val = _find_seed_fast(
-            self.av_[t0],
-            self.id_connected_voxel_[t0]
-        )
+        """
+        @fn _find_seed_point_fast
+        @brief Optimized seed search.
+        @param t0 Time index
+        @return Tuple (x, y, z) or None if not found
+        """
+        x, y, z, max_val = find_seed_fast(self.av_[t0], self.id_connected_voxel_[t0])
 
         if x == -1:
             return None
@@ -482,11 +381,17 @@ class EventDetectorOptimized:
 
     # @profile
     def _detect_pattern_optimized(self, intensity_profile: np.ndarray, t: int) -> Optional[np.ndarray]:
-        """Détection de pattern optimisée."""
+        """
+        @fn _detect_pattern_optimized
+        @brief Optimized pattern detection.
+        @param intensity_profile 1D numpy array of intensity values
+        @param t Time index
+        @return Pattern as 1D numpy array or None
+        """
         if intensity_profile[t] == 0:
             return None
 
-        start, end = _find_nonzero_pattern_bounds(intensity_profile, t)
+        start, end = find_nonzero_pattern_bounds(intensity_profile, t)
         pattern = intensity_profile[start:end].copy()
 
         self.stats_["patterns_computed"] += 1
@@ -494,7 +399,13 @@ class EventDetectorOptimized:
 
     # @profile
     def _process_small_groups(self, small_av_groups: List, id_small_av_groups: List) -> None:
-        """Traitement optimisé des petits groupes avec cache set."""
+        """
+        @fn _process_small_groups
+        @brief Optimized processing of small groups with set cache.
+        @param small_av_groups List of small groups
+        @param id_small_av_groups List of group IDs
+        @return None
+        """
         # Créer un set pour des lookups O(1)
         self.small_av_groups_set_ = set(id_small_av_groups)
 
@@ -524,7 +435,13 @@ class EventDetectorOptimized:
 
     # @profile
     def _group_small_neighborhood_regions(self, small_av_groups: List, list_ids_small_av_group: List) -> None:
-        """Groupement optimisé des petites régions avec set lookup."""
+        """
+        @fn _group_small_neighborhood_regions
+        @brief Optimized grouping of small regions with set lookup.
+        @param small_av_groups List of small groups
+        @param list_ids_small_av_group List of group IDs
+        @return None
+        """
         id_ = 0
         while id_ < len(small_av_groups):
             list_av = small_av_groups[id_]
@@ -570,7 +487,13 @@ class EventDetectorOptimized:
 
     # @profile
     def _change_id_small_regions(self, list_av: List, list_ids_small_av_group: List) -> bool:
-        """Changement d'ID optimisé pour les petites régions avec set lookup."""
+        """
+        @fn _change_id_small_regions
+        @brief Optimized ID change for small regions with set lookup.
+        @param list_av List of voxels in the region
+        @param list_ids_small_av_group List of group IDs
+        @return True if ID changed, False otherwise
+        """
         neighbor_counts = {}
 
         for t, z, y, x in list_av:
@@ -680,34 +603,3 @@ def detect_calcium_events_opti(av_data: np.ndarray, params_values: dict = None) 
     print()
     return id_connections, len(id_events)
 
-
-def test_with_synthetic_data():
-    """Test function with synthetic data generation."""
-    print("=== TESTING WITH SYNTHETIC DATA ===")
-
-    shape = (8, 32, 512, 320)
-    av_data = np.zeros(shape, dtype=np.float32)
-
-    av_data[2:5, 10:15, 100:120, 50:70] = np.random.rand(3, 5, 20, 20) * 0.5 + 0.5
-    av_data[1:4, 20:25, 200:230, 100:130] = np.random.rand(3, 5, 30, 30) * 0.3 + 0.7
-    av_data[5:7, 5:8, 400:405, 200:205] = np.random.rand(2, 3, 5, 5) * 0.8 + 0.2
-
-    print(f"Created synthetic data with shape {shape}")
-    print(f"Non-zero voxels: {np.count_nonzero(av_data)}")
-
-    params_values = {
-        'events_extraction': {
-            'threshold_size_3d': 10,
-            'threshold_size_3d_removed': 5,
-            'threshold_corr': 0.5
-        },
-        'files': {'save_results': 0},
-        'paths': {'output_dir': './output'}
-    }
-
-    results = detect_calcium_events_opti(av_data, params_values)
-    return results
-
-
-if __name__ == "__main__":
-    test_results = test_with_synthetic_data()

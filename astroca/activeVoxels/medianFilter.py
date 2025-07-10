@@ -1,10 +1,12 @@
+"""
+@file medianFilter.py
+@brief 3D median filter for 4D stacks (T,Z,Y,X) with spherical neighborhood and border handling
+"""
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from scipy.ndimage import median_filter
 from numba import njit, prange
-
-
 
 
 def unified_median_filter_3d(
@@ -14,18 +16,22 @@ def unified_median_filter_3d(
         n_workers: int = None
 ) -> np.ndarray:
     """
-    Median filter 3D unifié pour stacks 4D (T,Z,Y,X)
+    @brief Unified 3D median filter for 4D stacks (T,Z,Y,X)
 
-    Args:
-        data: Input stack (T,Z,Y,X)
-        radius: Rayon de la sphère (1.5 → voisinage 3×3×7)
-        border_mode: 'reflect', 'nearest', 'constant', etc.
-        n_workers: Nombre de threads
+    @details Applies a 3D median filter to each frame of a 4D stack using spherical neighborhood.
+    Supports multi-threading for improved performance on large datasets.
+
+    @param data: Input 4D stack (T,Z,Y,X)
+    @param radius: Radius of the spherical neighborhood (1.5 → 3×3×7 neighborhood)
+    @param border_mode: Border handling mode: 'reflect', 'nearest', 'constant', 'ignore', etc.
+    @param n_workers: Number of threads to use (None for automatic)
+
+    @return Filtered 4D stack with same dimensions as input
     """
     print(f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'")
     if border_mode == 'ignore':
         T, Z, Y, X = data.shape
-        data_3D = data.reshape(T * Z, Y, X)  # Reshape pour traiter comme 3D
+        data_3D = data.reshape(T * Z, Y, X)  # Reshape to treat as 3D
         offsets = generate_spherical_offsets(radius)
         median_filtered = apply_median_filter_3d_ignore_border(data_3D, offsets)
         data_filtered_4D = median_filtered.reshape(T, Z, Y, X)
@@ -33,7 +39,7 @@ def unified_median_filter_3d(
     print(f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'")
     r = int(np.ceil(radius))
 
-    # Créer le masque sphérique
+    # Create spherical mask
     shape = (2 * r + 1, 2 * r + 1, 2 * r + 1)
     mask = np.zeros(shape, dtype=bool)
     center = np.array([r, r, r])
@@ -41,17 +47,22 @@ def unified_median_filter_3d(
         if np.linalg.norm(np.array(idx) - center) <= radius:
             mask[idx] = True
 
-    # Padding manuel : seulement sur les axes Z, Y, X
+    # Manual padding: only on Z, Y, X axes
     pad_width = [(0, 0), (r, r), (r, r), (r, r)]
     padded = np.pad(data, pad_width=pad_width, mode=border_mode)
 
     filtered = np.empty_like(data)
 
     def process_frame(t):
+        """
+        @brief Process a single frame with median filter
+
+        @param t Frame index to process
+        """
         result = median_filter(
             padded[t], footprint=mask, mode=border_mode
         )
-        # Enlever le padding
+        # Remove padding
         filtered[t] = result[r:-r, r:-r, r:-r]
 
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
@@ -67,17 +78,24 @@ def unified_median_filter_3d(
 @njit
 def quickselect_median(arr, n):
     """
-    Calcul optimisé de la médiane pour de petits tableaux
-    Utilise quickselect pour trouver l'élément médian sans tri complet
+    @brief Optimized median calculation for small arrays
+
+    @details Uses quickselect to find median element without full sorting.
+    Falls back to insertion sort for very small arrays (n ≤ 20).
+
+    @param arr Input array (will be modified)
+    @param n Number of elements to consider in array
+
+    @return Median value
     """
     if n == 0:
         return 0
     if n == 1:
         return arr[0]
 
-    # Pour les petits tableaux, tri par insertion est plus rapide
+    # For small arrays, insertion sort is faster
     if n <= 20:
-        # Tri par insertion
+        # Insertion sort
         for i in range(1, n):
             key = arr[i]
             j = i - 1
@@ -91,15 +109,21 @@ def quickselect_median(arr, n):
         else:
             return (arr[n // 2 - 1] + arr[n // 2]) / 2.0
 
-    # Pour les tableaux plus grands, utiliser quickselect
-    # Mais en pratique, nos voisinages sphériques sont petits
+    # For larger arrays, use quickselect
+    # But in practice, our spherical neighborhoods are small
     return quickselect_kth(arr, n, n // 2)
 
 
 @njit
 def quickselect_kth(arr, n, k):
     """
-    Trouve le k-ième élément le plus petit (0-indexé)
+    @brief Finds the k-th smallest element (0-indexed)
+
+    @param arr Input array (will be modified)
+    @param n Number of elements to consider
+    @param k Index of desired element (0 = smallest)
+
+    @return The k-th smallest element
     """
     left = 0
     right = n - 1
@@ -119,7 +143,13 @@ def quickselect_kth(arr, n, k):
 @njit
 def partition(arr, left, right):
     """
-    Partition pour quickselect
+    @brief Partition function for quickselect
+
+    @param arr Array to partition
+    @param left Left index
+    @param right Right index (pivot position)
+
+    @return Final pivot position
     """
     pivot = arr[right]
     i = left - 1
@@ -136,8 +166,15 @@ def partition(arr, left, right):
 @njit(parallel=True)
 def apply_median_filter_3d_ignore_border(frame: np.ndarray, offsets: np.ndarray) -> np.ndarray:
     """
-    Applique un filtre médian 3D en ignorant les bords
-    Version optimisée avec Numba
+    @brief Applies 3D median filter while ignoring borders
+
+    @details Optimized version using Numba parallel processing. Only considers valid
+    neighbors within image bounds when computing median.
+
+    @param frame Input 3D frame (Z,Y,X)
+    @param offsets Array of (dz,dy,dx) offsets defining spherical neighborhood
+
+    @return Filtered 3D frame
     """
     Z, Y, X = frame.shape
     result = np.empty((Z, Y, X), dtype=frame.dtype)
@@ -147,11 +184,11 @@ def apply_median_filter_3d_ignore_border(frame: np.ndarray, offsets: np.ndarray)
     for z in prange(Z):
         for y in range(Y):
             for x in range(X):
-                # Tableau temporaire pour chaque thread
+                # Temporary array for each thread
                 tmp_values = np.empty(max_neighbors, dtype=frame.dtype)
                 count = 0
 
-                # Collecter les valeurs valides dans le voisinage sphérique
+                # Collect valid values in spherical neighborhood
                 for i in range(offsets.shape[0]):
                     dz, dy, dx = offsets[i]
                     zz, yy, xx = z + dz, y + dy, x + dx
@@ -160,11 +197,11 @@ def apply_median_filter_3d_ignore_border(frame: np.ndarray, offsets: np.ndarray)
                         tmp_values[count] = frame[zz, yy, xx]
                         count += 1
 
-                # Calculer la médiane sur les valeurs valides
+                # Compute median over valid values
                 if count > 0:
                     result[z, y, x] = quickselect_median(tmp_values, count)
                 else:
-                    # Fallback : garder la valeur originale si aucun voisin valide
+                    # Fallback: keep original value if no valid neighbors
                     result[z, y, x] = frame[z, y, x]
 
     return result
@@ -172,35 +209,41 @@ def apply_median_filter_3d_ignore_border(frame: np.ndarray, offsets: np.ndarray)
 
 def generate_spherical_offsets(radius: float):
     """
-    Génère les offsets pour une sphère de rayon donné
-    Utilise l'algorithme exact du code Java avec ellipsoïde normalisée
+    @brief Generates offsets for spherical neighborhood of given radius
+
+    @details Uses exact algorithm from Java code with normalized ellipsoid.
+    Returns array of (dz,dy,dx) offsets where distance ≤ radius.
+
+    @param radius Filter radius (spherical)
+
+    @return Array of integer offsets defining spherical neighborhood
     """
-    radx = rady = radz = radius  # Sphère = ellipsoïde avec rayons égaux
+    radx = rady = radz = radius  # Sphere = ellipsoid with equal radii
 
     vx = int(np.ceil(radx))
     vy = int(np.ceil(rady))
     vz = int(np.ceil(radz))
 
-    # Calcul des inverses des rayons au carré (comme dans le Java)
+    # Calculate inverse squared radii (as in Java)
     rx2 = 1.0 / (radx * radx) if radx != 0.0 else 0.0
     ry2 = 1.0 / (rady * rady) if rady != 0.0 else 0.0
     rz2 = 1.0 / (radz * radz) if radz != 0.0 else 0.0
 
     offsets = []
 
-    # Boucles dans le même ordre que Java : k(z), j(y), i(x)
+    # Loops in same order as Java: k(z), j(y), i(x)
     for k in range(-vz, vz + 1):  # dz
         for j in range(-vy, vy + 1):  # dy
             for i in range(-vx, vx + 1):  # dx
-                # Distance normalisée exacte du Java
+                # Normalized distance from Java
                 dist = (i * i) * rx2 + (j * j) * ry2 + (k * k) * rz2
 
-                if dist <= 1.0:  # Condition exacte du Java
+                if dist <= 1.0:  # Exact condition from Java
                     offsets.append((k, j, i))  # (dz, dy, dx)
 
     offsets_array = np.array(offsets, dtype=np.int32)
     # print(f"Generated {len(offsets)} offsets for radius {radius}")
     # print(f"Integer bounds: vx={vx}, vy={vy}, vz={vz}")
     # print(f"Normalization factors: rx2={rx2:.6f}, ry2={ry2:.6f}, rz2={rz2:.6f}")
-    # print(f"Some offsets: {offsets_array[:10]}")  # Afficher les premiers offsets
+    # print(f"Some offsets: {offsets_array[:10]}")  # Show first few offsets
     return offsets_array
