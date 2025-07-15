@@ -140,31 +140,36 @@ def compute_boundaries_GPU(data: cp.ndarray, params: dict) -> Tuple[cp.ndarray, 
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
     pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    save_results = int(params['files']['save_results']) == 1
-    output_directory = params['paths']['output_dir']
-    
+    save_results  = int(params['files']['save_results']) == 1
+    out_dir       = params['paths']['output_dir']
+
     T, Z, Y, X = data.shape
-    t0 = 0  # analyse première frame
-    default_val = float(data[t0, 0, 0, X - 1])
+    default_val = float(data[0, 0, 0, X-1])
+
     xmin = cp.full(Z, -1, dtype=cp.int32)
-    xmax = cp.full(Z, X - 1, dtype=cp.int32)
-    threads = 128
-    blocks = (Z + threads - 1) // threads
-    _find_bounds[blocks, threads](data[t0], default_val, xmin, xmax, pixel_cropped)
+    xmax = cp.full(Z,  X-1, dtype=cp.int32)
+    threads, blocks = 128, (Z + 127)//128
+    _find_bounds[blocks, threads](data[0], default_val, xmin, xmax, pixel_cropped)
     cuda.synchronize()
-    print(f"    index_xmin = {xmin}\n     index_xmax = {xmax}\n     default_value = {default_val}")
+
+    arange_x = cp.arange(X)                          # shape (X,)
+    # Broadcasting : (Z,1)  vs  (1,X)  → (Z,X)
+    mask_left  = arange_x[None, :] <  (xmin + pixel_cropped)[:, None]
+    mask_right = arange_x[None, :] >= (xmax - pixel_cropped + 1)[:, None]
+    mask_zx    = cp.logical_or(mask_left, mask_right)           # shape (Z,X)
+
+    # Diffusion paresseuse : (1,Z,1,X) se propage sur T et Y
+    mask_4d = mask_zx[None, :, None, :]              # shape (1,Z,1,X)
+    data[mask_4d] = default_val                      # remplissage GPU
 
     if save_results:
-        if output_directory is None:
-            raise ValueError("output_directory must be specified if save_results is True.")
-        os.makedirs(output_directory, exist_ok=True)
-        export_data(data, output_directory, export_as_single_tif=True, file_name="bounded_image_sequence")
-        save_numpy_tab(xmin, output_directory, file_name="index_Xmin.npy")
-        save_numpy_tab(xmax, output_directory, file_name="index_Xmax.npy")
+        os.makedirs(out_dir, exist_ok=True)
+        export_data(data, out_dir, export_as_single_tif=True,
+                    file_name="bounded_image_sequence")
+        save_numpy_tab(xmin, out_dir, file_name="index_Xmin.npy")
+        save_numpy_tab(xmax, out_dir, file_name="index_Xmax.npy")
 
-    print(60*"=")
-    print()
-    return xmin, xmax, default_val
+    return xmin, xmax, default_val, data
 
 
 def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
