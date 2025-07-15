@@ -18,6 +18,7 @@ def crop_boundaries(data: np.ndarray, params: dict) -> np.ndarray:
         - x_max: Maximum x-coordinate for cropping.
         - save_results: Boolean indicating whether to save the cropped data.
         - output_directory: Directory to save the cropped data if save_results is True.
+        - GPU_AVAILABLE: Boolean indicating if GPU is available for computation.
     @return 4D numpy array of shape (T, Z, Y', X') representing the cropped image sequence,
     where Y' = Y - pixel_cropped and X' = x_max - x_min
     """
@@ -25,7 +26,7 @@ def crop_boundaries(data: np.ndarray, params: dict) -> np.ndarray:
     print(" - Cropping the boundaries of the image sequence...")
     
     # extract necessary parameters
-    required_keys = {'preprocessing', 'files', 'paths'}
+    required_keys = {'preprocessing', 'files', 'paths', 'GPU_AVAILABLE'}
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
     x_min = int(params['preprocessing']['x_min'])
@@ -33,6 +34,7 @@ def crop_boundaries(data: np.ndarray, params: dict) -> np.ndarray:
     pixel_cropped = int(params['preprocessing']['pixel_cropped'])
     save_results = int(params['files']['save_results']) == 1  # Convert to boolean
     output_directory = params['paths']['output_dir']
+    _GPU_AVAILABLE = int(params['GPU_AVAILABLE']) == 1  # Convert to boolean
     
     
     if len(data.shape) != 4 and len(data.shape) != 3:

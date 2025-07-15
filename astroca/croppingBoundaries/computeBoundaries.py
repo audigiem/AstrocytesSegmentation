@@ -12,9 +12,12 @@ from astroca.tools.exportData import export_data, save_numpy_tab
 import os
 from tqdm import tqdm
 from typing import List, Dict, Tuple, Any
+import cupy as cp
+from numba import cuda
 
 
-def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+
+def compute_boundaries_CPU(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
     """
     Compute cropping boundaries in X for each Z slice based on background values.
     Sets boundary pixels to default_value and saves results optionally.
@@ -26,7 +29,7 @@ def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.n
         - output_directory: Directory to save the results if save_results is True.
     @return: (index_xmin, index_xmax, default_value)
     """
-    print(" - Computing cropping boundaries in X for each Z slice...")
+    print(" - Computing cropping boundaries in X for each Z slice (CPU version)...")
     
     # extract necessary parameters
     required_keys = {'preprocessing', 'files', 'paths'}
@@ -89,3 +92,98 @@ def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.n
     print(60*"=")
     print()
     return index_xmin, index_xmax, default_value, data
+
+
+@cuda.jit
+def _find_bounds(frame, default_val, xmin, xmax, pixel_cropped):
+    """Kernel par Z pour détecter xmin / xmax."""
+    z = cuda.grid(1)
+    Z, Y, X = frame.shape
+    if z >= Z:
+        return
+    found = False
+    for x in range(X):
+        # échantillonner 10% des Y (heuristique simplifiée)
+        step = max(1, Y // 10)
+        all_default = True
+        y = 0
+        while y < Y:
+            if frame[z, y, x] != default_val:
+                all_default = False
+                break
+            y += step
+        if not all_default and not found:
+            xmin[z] = x
+            found = True
+        elif all_default and found:
+            xmax[z] = x - 1
+            break
+    # post‑traitement (padding)
+    xmin[z] += pixel_cropped
+    xmax[z] -= pixel_cropped
+
+def compute_boundaries_GPU(data: cp.ndarray, params: dict) -> Tuple[cp.ndarray, cp.ndarray, float, cp.ndarray]:
+    """
+    Compute cropping boundaries in X for each Z slice based on background values using GPU.
+
+    @param data: 4D data (T, Z, Y, X) as a cupy array
+    @param params: Dictionary containing the parameters:
+        - pixel_cropped: Number of pixels to crop from the height dimension.
+        - save_results: Boolean indicating whether to save the results.
+        - output_directory: Directory to save the results if save_results is True.
+    @return: (index_xmin, index_xmax, default_value, data)
+    """
+    print(" - Computing cropping boundaries in X for each Z slice (GPU)...")
+    
+    # extract necessary parameters
+    required_keys = {'preprocessing', 'files', 'paths'}
+    if not required_keys.issubset(params.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+    pixel_cropped = int(params['preprocessing']['pixel_cropped'])
+    save_results = int(params['files']['save_results']) == 1
+    output_directory = params['paths']['output_dir']
+    
+    T, Z, Y, X = data.shape
+    t0 = 0  # analyse première frame
+    default_val = float(data[t0, 0, 0, X - 1])
+    xmin = cp.full(Z, -1, dtype=cp.int32)
+    xmax = cp.full(Z, X - 1, dtype=cp.int32)
+    threads = 128
+    blocks = (Z + threads - 1) // threads
+    _find_bounds[blocks, threads](data[t0], default_val, xmin, xmax, pixel_cropped)
+    cuda.synchronize()
+    print(f"    index_xmin = {xmin}\n     index_xmax = {xmax}\n     default_value = {default_val}")
+
+    if save_results:
+        if output_directory is None:
+            raise ValueError("output_directory must be specified if save_results is True.")
+        os.makedirs(output_directory, exist_ok=True)
+        export_data(data, output_directory, export_as_single_tif=True, file_name="bounded_image_sequence")
+        save_numpy_tab(xmin, output_directory, file_name="index_Xmin.npy")
+        save_numpy_tab(xmax, output_directory, file_name="index_Xmax.npy")
+
+    print(60*"=")
+    print()
+    return xmin, xmax, default_val
+
+
+def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+    """
+    Compute cropping boundaries in X for each Z slice based on background values.
+    Sets boundary pixels to default_value and saves results optionally.
+
+    @param data: 4D data (T, Z, Y, X)
+    @param params: Dictionary containing the parameters:
+        - pixel_cropped: Number of pixels to crop from the height dimension.
+        - save_results: Boolean indicating whether to save the results.
+        - output_directory: Directory to save the results if save_results is True.
+    @return: (index_xmin, index_xmax, default_value, data)
+    """
+    required_keys = {'GPU_AVAILABLE'}
+    if not required_keys.issubset(params.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+    _GPU_AVAILABLE = int(params['GPU_AVAILABLE']) == 1  # Convert to boolean
+    if _GPU_AVAILABLE:
+        return compute_boundaries_GPU(data, params)
+    else:
+        return compute_boundaries_CPU(data, params)

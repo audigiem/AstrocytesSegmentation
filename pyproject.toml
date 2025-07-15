@@ -7,7 +7,7 @@ authors = [
 ]
 license = {text = "MIT"}
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11,<3.13"  
 dependencies = [
     "numpy (>=1.24,<2.0)",
     "tifffile (>=2025.6.11,<2026.0.0)",
@@ -21,7 +21,8 @@ dependencies = [
     "pandas (>=2.3.0,<3.0.0)",
     "tqdm (>=4.67.1,<5.0.0)",
     "scikit-learn (>=1.7.0,<2.0.0)",
-    "napari[all] (>=0.6.1,<0.7.0)"
+    "napari[all] (>=0.6.1,<0.7.0)",
+    "cupy-cuda12x (>=13.5.1,<14.0.0)"
 ]
 
 
