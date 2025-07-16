@@ -6,6 +6,7 @@
 import unittest
 from astroca.tools.loadData import load_data
 from astroca.tools.exportData import export_data
+from astroca.events.eventDetectorCorrected import detect_calcium_events_opti
 
 class EventDetectionTest(unittest.TestCase):
     """ 
@@ -16,21 +17,27 @@ class EventDetectionTest(unittest.TestCase):
         """ 
         @brief Set up the test case with synthetic data.
         """
-        self.data = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdirFewerTime/AV.tif")
+        self.data = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir20/AV.tif")
         self.params_values = {
             'events_extraction' : {
                 'threshold_size_3d' : 400,
                 'threshold_size_3d_removed' : 20,
                 'threshold_corr' : 0.6
+            },
+            'paths': {
+                'output_dir':None 
+            },
+            'files': {
+                'save_results': 0
             }
         }
-    
+
     def test_event_detection(self):
         """ 
         @brief Test the event detection functionality.
         """
         print("Starting event detection test...")
-        # active_voxels = detect_events(self.data, params_values=self.params_values)
+        id_connections, ids_events = detect_calcium_events_opti(self.data, params_values=self.params_values)
         # events_ids = list(set(active_voxels.flatten()) - {0})  # Exclude background label (0)
         
         # self.assertGreater(len(events_ids), 0, "No events detected.")

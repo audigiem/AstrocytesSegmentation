@@ -8,7 +8,7 @@ from typing import List, Tuple, Optional, Dict
 import time
 import os
 from astroca.tools.exportData import export_data
-from astroca.events.tools import find_seed_fast, get_valid_neighbors, batch_check_conditions, compute_max_ncc_fast, find_nonzero_pattern_bounds
+from astroca.events.tools import find_seed_fast, get_valid_neighbors, batch_check_conditions, compute_max_ncc_fast, find_nonzero_pattern_bounds, compute_max_ncc_strict
 from tqdm import tqdm
 
 
@@ -146,17 +146,8 @@ class EventDetectorOptimized:
         small_AV_groups = []
         id_small_AV_groups = []
 
-        # Pré-calculer les indices non-zéro par frame pour éviter les recherches répétées
-        nonzero_by_frame = {}
         for t in range(self.time_length_):
-            nonzero_indices = np.where(self.nonzero_mask_[t] & (self.id_connected_voxel_[t] == 0))
-            if len(nonzero_indices[0]) > 0:
-                nonzero_by_frame[t] = (nonzero_indices[0], nonzero_indices[1])
-
-        for t in tqdm(range(self.time_length_), desc="Processing time frames", unit="frame"):
-            if t not in nonzero_by_frame:
-                continue
-
+        # for t in tqdm(range(self.time_length_), desc="Processing time frames", unit="frame"):
             # Traitement optimisé des seeds
             while True:
                 seed = self._find_seed_point_fast(t)
@@ -198,7 +189,9 @@ class EventDetectorOptimized:
                 if group_size < self.threshold_size_3d_:
                     small_AV_groups.append(waiting_for_processing.copy())
                     id_small_AV_groups.append(event_id)
+                    # print(f"Small {event_id} {group_size}")
                 else:
+                    # print(f"Large {event_id} {group_size}")
                     self.final_id_events_.append(event_id)
                     self.stats_["events_retained"] += 1
 
@@ -334,7 +327,8 @@ class EventDetectorOptimized:
             nz, ny, nx = neighbor_coords_filtered[i]
 
             # Calcul de corrélation optimisé - SEULEMENT le maximum
-            max_corr = compute_max_ncc_fast(pattern, neighbor_pattern)
+            # max_corr = compute_max_ncc_fast(pattern, neighbor_pattern)
+            max_corr = compute_max_ncc_strict(pattern, neighbor_pattern)
 
             if max_corr > self.threshold_corr_:
                 self.id_connected_voxel_[t, nz, ny, nx] = event_id

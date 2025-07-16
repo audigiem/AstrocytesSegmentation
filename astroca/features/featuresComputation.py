@@ -104,23 +104,23 @@ def compute_features(calcium_events: np.ndarray, events_ids: int, image_amplitud
             class_label, confidence = classify_event(coords, t0, duration, volume, params_values)
         else:
             if volume <= volume_localized:
-                class_label = "localized"
+                class_label = "Localized"
                 confidence = 100
             else:
-                class_label = "localized but not microdomain"
+                class_label = "Localized but no microdomain"
                 confidence = 100
 
         features[event_id] = {
-            'duration': duration,
-            't0': t0,
-            'amplitude': amplitude,
-            'volume': volume,
-            'centroid_x': centroid_x,
-            'centroid_y': centroid_y,
-            'centroid_z': centroid_z,
-            'centroid_t': centroid_t,
-            'classification': class_label,
-            'confidence': confidence
+            'T0': t0,
+            'Duration': duration,
+            'CentroidX': centroid_x,
+            'CentroidY': centroid_y,
+            'CentroidZ': centroid_z,
+            'CentroidT': centroid_t,
+            'Volume': volume,
+            'Amplitude': amplitude,
+            'Class': class_label,
+            'Class confidence [%]': confidence
         }
 
     return features
@@ -176,5 +176,5 @@ def write_csv_features(features: dict, output_directory: str) -> None:
     """
     df = pd.DataFrame.from_dict(features, orient='index')
     output_file = f"{output_directory}calcium_events_features.csv"
-    df.to_csv(output_file, index_label='Event ID')
+    df.to_csv(output_file, index_label='Label')
     print(f"Features saved to {output_file}")
