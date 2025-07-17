@@ -15,19 +15,28 @@ def compare_files(file1_path, file2_path):
         parts1 = line1.strip().split()
         parts2 = line2.strip().split()
 
-        if len(parts1) != 3 or len(parts2) != 3:
+        if len(parts1) != len(parts2):
             print(f"Ligne {i} mal formée :\n  {line1}\n  {line2}")
             all_match = False
             continue
+        
+        if len(parts1) == 3:
+            cat1, id1, val1 = parts1
+            cat2, id2, val2 = parts2
 
-        cat1, id1, val1 = parts1
-        cat2, id2, val2 = parts2
-
-        if (cat1 != cat2) or (id1 != id2) or (val1 != val2):
-            print(f"Différence à la ligne {i} :")
-            print(f"  Cible Java : {cat1} {id1} {val1}")
-            print(f"  Mon résultat : {cat2} {id2} {val2}")
-            all_match = False
+            if (cat1 != cat2) or (id1 != id2) or (val1 != val2):
+                print(f"Différence à la ligne {i} :")
+                print(f"  Cible Java : {cat1} {id1} {val1}")
+                print(f"  Mon résultat : {cat2} {id2} {val2}")
+                all_match = False
+                continue
+        elif len(parts1) == 1:
+            if parts1[0] != parts2[0]:
+                print(f"Différence à la ligne {i} :")
+                print(f"  Cible Java : {parts1[0]}")
+                print(f"  Mon résultat : {parts2[0]}")
+                all_match = False
+            continue
 
     if all_match:
         print("Les fichiers sont identiques ligne par ligne.")
