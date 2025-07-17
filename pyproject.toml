@@ -1,6 +1,6 @@
 [project]
 name = "astroca"
-version = "0.1.0"
+version = "1.0.0"
 description = "Segmentation and analysis of 3D + time images to extract the calcium events (variation of calcium concentration with respect to time and space)"
 authors = [
     {name = "Matteo AUDIGIER"}
