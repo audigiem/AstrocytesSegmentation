@@ -91,9 +91,9 @@ def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, i
     active_voxels = np.zeros_like(dF)
 
     # positive_mask: dF(x,t) > 0 and filtered_data(x,t) > 0
-    positive_mask = (filtered_data != 0) & (dF >= 0)
+    positive_mask = (filtered_data != 0) & (dF > 0)
     # negative_mask: dF(x,t) < 0 and filtered_data(x,t) > 0
-    negative_mask = (filtered_data != 0) & (dF < 0)
+    negative_mask = (filtered_data != 0) & (dF <= 0)
     # null_mask: remaining voxels where filtered_data(x,t) <= 0
 
     T, Z, Y, X = dF.shape
@@ -103,6 +103,6 @@ def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, i
     # Cropping the active voxels based on index_xmin and index_xmax
     for z in tqdm(range(Z), desc="Cropping active voxels", unit="slice"):
         active_voxels[:, z, :, :index_xmin[z]] = 0
-        active_voxels[:, z, :, index_xmax[z]:] = 0
+        active_voxels[:, z, :, index_xmax[z]+1:] = 0
     return active_voxels
 

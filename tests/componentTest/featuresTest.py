@@ -6,7 +6,7 @@
 import unittest
 from astroca.tools.loadData import load_data
 from astroca.features.featuresComputation import save_features_from_events
-from tests.comparingTools import compareCSVFiles
+from tests.comparingTools.compareCSVFiles import compare_csv_files
 
 class FeaturesTest(unittest.TestCase):
     """ 
@@ -17,7 +17,7 @@ class FeaturesTest(unittest.TestCase):
         """ 
         @brief Set up the test case with synthetic data.
         """
-        self.amplitude = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir20/image_amplitude.tif")
+        self.amplitude = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir20/amplitude.tif")
         self.calcium_events = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir20/ID_calciumEvents.tif")
         
         self.params_values = {
@@ -29,7 +29,7 @@ class FeaturesTest(unittest.TestCase):
                 'volume_localized': 0.0434
             },
             'paths': {
-                'output_dir': "/home/matteo/Bureau/INRIA/codeJava/outputdir20/"
+                'output_dir': "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/"
             },
             'files': {
                 'save_results': 1
@@ -41,9 +41,9 @@ class FeaturesTest(unittest.TestCase):
         @brief Test the event detection functionality.
         """
         print("Starting features computation test...")
-        save_features_from_events(self.calcium_events, self.amplitude, params_values=self.params_values)
+        save_features_from_events(self.calcium_events, 73, self.amplitude, params_values=self.params_values)
         # Here we would typically check if the features were saved correctly,
-        compareCSVFiles(
+        compare_csv_files(
             "/home/matteo/Bureau/INRIA/codeJava/outputdir20/Features.csv",
             "/home/matteo/Bureau/INRIA/codeJava/outputdir20/Features.csv"
         )

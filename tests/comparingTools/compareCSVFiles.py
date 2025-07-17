@@ -49,7 +49,11 @@ def compare_csv_files(file1: str, file2: str, float_precision: int = 5) -> None:
     else:
         print(f"Found {len(diffs)} differing rows:")
         for i, r1, r2 in diffs:
-            print(f"Line {i + 1} differs:\n  Target file: {r1}\n  Output file: {r2}")
+            print(f"Line {i + 1} differs:")
+            # show the columns that differ
+            for col, val1, val2 in zip(df1.columns, r1, r2):
+                if val1 != val2:
+                    print(f"  Column '{col}': Target file: {val1}, Output file: {val2}")
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:

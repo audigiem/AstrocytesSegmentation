@@ -25,10 +25,10 @@ class EventDetectionTest(unittest.TestCase):
                 'threshold_corr' : 0.6
             },
             'paths': {
-                'output_dir':None 
+                'output_dir': "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/", 
             },
             'files': {
-                'save_results': 0
+                'save_results': 1
             }
         }
 
