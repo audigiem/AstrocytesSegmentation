@@ -124,7 +124,7 @@ class EventDetectorOptimized:
                         offsets.append([dt, dz, dy, dx])
         return np.array(offsets, dtype=np.int32)
 
-    # @profile
+  # @profile 
     def find_events(self) -> None:
         """
         @fn find_events
@@ -255,7 +255,7 @@ class EventDetectorOptimized:
 
         return self._frame_cache[t]
 
-    # @profile
+  # @profile 
     def _grow_region_optimized(self, waiting_for_processing: List, event_id: int) -> None:
         """
         @fn _grow_region_optimized
@@ -280,7 +280,7 @@ class EventDetectorOptimized:
             self._find_connected_AV_optimized(seed, pattern, event_id, waiting_for_processing)
             index_waiting += 1
 
-    # @profile
+  # @profile 
     def _find_connected_AV_optimized(self, seed: List[int], pattern: np.ndarray,
                                      event_id: int, waiting_list: List[List[int]]) -> None:
         """
@@ -468,7 +468,7 @@ class EventDetectorOptimized:
             
             id_ += 1
 
-    # @profile
+  # @profile 
     def _change_id_small_regions(self, list_av: List, list_ids_small_av_group: List) -> bool:
         neighbor_counts = {}
 
@@ -493,7 +493,7 @@ class EventDetectorOptimized:
 
         return False
 
-    # @profile
+  # @profile 
     def _compute_final_id_events(self) -> None:
         """Calcul optimisé des IDs finaux."""
         if not self.final_id_events_:
@@ -530,12 +530,6 @@ class EventDetectorOptimized:
             stats['event_sizes'].append(size)
             stats['total_event_voxels'] += size
 
-        if stats['event_sizes']:
-            event_sizes = np.array(stats['event_sizes'])
-            stats['mean_event_size'] = np.mean(event_sizes)
-            stats['median_event_size'] = np.median(event_sizes)
-            stats['max_event_size'] = np.max(event_sizes)
-            stats['min_event_size'] = np.min(event_sizes)
 
         stats.update(self.stats_)
         return stats

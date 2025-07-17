@@ -25,7 +25,7 @@ def normalize_dataframe(df: pd.DataFrame, float_precision: int = 5) -> pd.DataFr
             df[col] = df[col].astype(str)
     return df
 
-def compare_csv_files(file1: str, file2: str, float_precision: int = 3) -> None:
+def compare_csv_files(file1: str, file2: str, float_precision: int = 5) -> None:
     sep1 = detect_separator(file1)
     sep2 = detect_separator(file2)
 
@@ -49,12 +49,12 @@ def compare_csv_files(file1: str, file2: str, float_precision: int = 3) -> None:
     else:
         print(f"Found {len(diffs)} differing rows:")
         for i, r1, r2 in diffs:
-            print(f"Line {i + 1} differs:\n  File1: {r1}\n  File2: {r2}")
+            print(f"Line {i + 1} differs:\n  Target file: {r1}\n  Output file: {r2}")
 
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         expected_CSV = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/Features.csv"
-        actual_CSV = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/calcium_events_features.csv"
+        actual_CSV = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/Features.csv"
         compare_csv_files(expected_CSV, actual_CSV)
     
     elif len(sys.argv) != 3:

@@ -9,6 +9,7 @@ import os
 import numpy as np
 from astroca.tools.loadData import load_data
 from tifffile import imwrite
+from tests.comparingTools.compareCSVFiles import compare_csv_files
 
 
 def compute_frame_accuracy(expected_frame: np.ndarray, differences: np.ndarray, percentage_accuracy: float) -> float:
@@ -230,6 +231,9 @@ def main():
     expected_amplitude_image_path = EXPECTED_DIR_PATH + "amplitude.tif"
     output_amplitude_image_path = OUTPUT_DIR_PATH + "image_amplitude.tif"
     
+    expected_csv_path = EXPECTED_DIR_PATH + "Features.csv"
+    output_csv_path = OUTPUT_DIR_PATH + "Features.csv"
+
     save_results = True
 
     print("Comparing files after each step...")
@@ -268,9 +272,9 @@ def main():
     compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
     
-    # print("Step 9: Comparing files after calcium events detection...")
-    # compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
+    print("Step 9: Comparing files after calcium events detection...")
+    compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
 
     print("Step 10: Comparing files after Anscombe inverse transform...")
     compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
@@ -278,6 +282,10 @@ def main():
 
     print("Step 11: Comparing files after amplitude computation...")
     compare_sequence(expected_amplitude_image_path, output_amplitude_image_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
+    
+    print("Step 12: Comparing CSV files for features...")
+    compare_csv_files(expected_csv_path, output_csv_path, float_precision=3)
     print()
     
     print("All comparisons completed.")
