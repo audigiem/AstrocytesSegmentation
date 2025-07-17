@@ -58,7 +58,6 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
 
     # === Configuration ===
     params = run_step("read_config", read_config)
-    bool_save_results = int(params['files']['save_results']) == 1
 
     # === Loading ===
     data = run_step("load_data", load_data, params['paths']['input_folder'])
@@ -99,7 +98,6 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     print("\n=== Pipeline completed ===")
     total_time = sum(time_stats.values())
     print(f"Total time: {total_time:.2f} seconds")
-    print(f"Save results: {bool_save_results}")
     if enable_memory_profiling:
         for step in time_stats:
             print(f"{step}: {time_stats[step]:.2f} seconds | Peak Memory: {memory_stats[step]:.2f} MB")
@@ -146,8 +144,7 @@ def run_pipeline():
     # === Compute features ===
     save_features_from_events(id_connections, ids_events, image_amplitude, params_values=params)
     end_time = time.time() - time_start
-    bool_save_results = int(params['files']['save_results']) == 1
-    print(f"Pipeline completed in {end_time:.2f} {"while saving results" if bool_save_results else "without saving results"}.")
+    print(f"Pipeline completed in {end_time:.2f} seconds.")
 
 
 def main():

@@ -30,12 +30,12 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: int, image
     @return:
     """
     print("=== Computing features from calcium events ===")
-    required_keys = {'paths', 'files', 'features_extraction'}
+    required_keys = {'paths', 'save', 'features_extraction'}
     if not required_keys.issubset(params_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
     features = compute_features(calcium_events, events_ids, image_amplitude, params_values)
 
-    save_result = int(params_values['files']['save_results']) == 1
+    save_result = int(params_values['save']['save_features']) == 1
     output_directory = params_values['paths']['output_dir']
 
     if save_result:

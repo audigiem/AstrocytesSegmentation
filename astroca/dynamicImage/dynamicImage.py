@@ -36,10 +36,10 @@ def compute_dynamic_image(data: np.ndarray,
     print(" - Computing dynamic image...")
 
     # Extract necessary parameters
-    required_keys = {'files', 'paths'}
+    required_keys = {'save', 'paths'}
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
-    save_results = int(params['files']['save_results']) == 1
+    save_results = int(params['save']['save_df']) == 1
     output_directory = params['paths']['output_dir']
     
     T, Z, Y, X = data.shape
@@ -92,10 +92,10 @@ def compute_image_amplitude(data_cropped: np.ndarray, F0: np.ndarray, index_xmin
     @return: 4D numpy array of shape (T, Z, Y, X) with the amplitude values.
     """
     print("=== Computing image amplitude... ===")
-    required_keys = {'files', 'paths'}
+    required_keys = {'save', 'paths'}
     if not required_keys.issubset(param_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - param_values.keys()}")
-    save_results = int(param_values['files']['save_results']) == 1
+    save_results_amplitude = int(param_values['save']['save_amplitude']) == 1
     output_directory = param_values['paths']['output_dir']
 
     f0_inv = anscombe_inverse(F0, index_xmin, index_xmax, param_values=param_values)
@@ -118,7 +118,7 @@ def compute_image_amplitude(data_cropped: np.ndarray, F0: np.ndarray, index_xmin
             result_slice = (data_slice - f0_slice) / f0_safe
             image_amplitude[t, z, :, x_min:x_max] = result_slice
 
-    if save_results:
+    if save_results_amplitude:
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_results is True.")
         os.makedirs(output_directory, exist_ok=True)

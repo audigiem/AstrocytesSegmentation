@@ -29,11 +29,11 @@ def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.n
     print(" - Computing cropping boundaries in X for each Z slice...")
     
     # extract necessary parameters
-    required_keys = {'preprocessing', 'files', 'paths'}
+    required_keys = {'preprocessing', 'save', 'paths'}
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
     pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    save_results = int(params['files']['save_results']) == 1
+    save_results = int(params['save']['save_boundaries']) == 1
     output_directory = params['paths']['output_dir']
     
     T, Z, Y, X = data.shape

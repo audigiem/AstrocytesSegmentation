@@ -36,7 +36,7 @@ def background_estimation_single_block(data: np.ndarray,
     @return: Background array of shape (1, Z, Y, X)
     """
     print("=== Fluorescence baseline F0 estimation ===")
-    required_keys = {'background_estimation', 'files', 'paths'}
+    required_keys = {'background_estimation', 'save', 'paths'}
     if not required_keys.issubset(params_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
 
@@ -44,7 +44,7 @@ def background_estimation_single_block(data: np.ndarray,
     method = params_values['background_estimation']['method']
     method2 = params_values['background_estimation']['method2']
     percentile = float(params_values['background_estimation']['percentile'])
-    save_results = int(params_values['files']['save_results']) == 1
+    save_results = int(params_values['save']['save_background_estimation']) == 1
     output_directory = params_values['paths']['output_dir']
 
     if method not in {'min', 'percentile'}:

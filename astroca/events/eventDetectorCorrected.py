@@ -670,13 +670,13 @@ def detect_calcium_events_opti(av_data: np.ndarray, params_values: dict = None) 
     """
     Fonction optimisée pour détecter les événements calcium dans des données 4D.
     """
-    required_keys = {'events_extraction', 'files', 'paths'}
+    required_keys = {'events_extraction', 'save', 'paths'}
     if not required_keys.issubset(params_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
     threshold_size_3d = int(params_values['events_extraction']['threshold_size_3d'])
     threshold_size_3d_removed = int(params_values['events_extraction']['threshold_size_3d_removed'])
     threshold_corr = float(params_values['events_extraction']['threshold_corr'])
-    save_results = int(params_values['files']['save_results']) == 1
+    save_results = int(params_values['save']['save_events']) == 1
     output_directory = params_values['paths']['output_dir']
 
     detector = EventDetectorOptimized(av_data, threshold_size_3d,

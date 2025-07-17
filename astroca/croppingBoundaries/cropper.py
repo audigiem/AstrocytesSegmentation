@@ -25,13 +25,13 @@ def crop_boundaries(data: np.ndarray, params: dict) -> np.ndarray:
     print(" - Cropping the boundaries of the image sequence...")
     
     # extract necessary parameters
-    required_keys = {'preprocessing', 'files', 'paths'}
+    required_keys = {'preprocessing', 'save', 'paths'}
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
     x_min = int(params['preprocessing']['x_min'])
     x_max = int(params['preprocessing']['x_max'])
     pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    save_results = int(params['files']['save_results']) == 1  # Convert to boolean
+    save_results = int(params['save']['save_cropp_boundaries']) == 1  # Convert to boolean
     output_directory = params['paths']['output_dir']
     
     

@@ -27,8 +27,8 @@ class EventDetectionTest(unittest.TestCase):
             'paths': {
                 'output_dir': "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/", 
             },
-            'files': {
-                'save_results': 1
+            'save': {
+                'save_events': 1
             }
         }
 

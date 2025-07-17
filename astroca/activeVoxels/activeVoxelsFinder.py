@@ -33,10 +33,10 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     if dF.ndim != 4:
         raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
 
-    required_keys = {'active_voxels', 'files', 'paths'}
+    required_keys = {'active_voxels', 'save', 'paths'}
     if not required_keys.issubset(params_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
-    save_results = int(params_values['files']['save_results']) == 1
+    save_results = int(params_values['save']['save_av']) == 1
     output_directory = params_values['paths']['output_dir']
     threshold = float(params_values['active_voxels']['threshold_zscore'])
     radius = int(params_values['active_voxels']['radius_closing_morphology'])
