@@ -17,7 +17,9 @@ class EventDetectionTest(unittest.TestCase):
         """ 
         @brief Set up the test case with synthetic data.
         """
-        self.data = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir20/AV.tif")
+        self.dataPython = load_data("/home/matteo/Bureau/INRIA/assets/Matteo/Matteo/activeVoxels.tif")
+        self.dataJava = load_data("/home/matteo/Bureau/INRIA/assets/Matteo/Matteo/AV.tif")
+
         self.params_values = {
             'events_extraction' : {
                 'threshold_size_3d' : 400,
@@ -25,10 +27,10 @@ class EventDetectionTest(unittest.TestCase):
                 'threshold_corr' : 0.6
             },
             'paths': {
-                'output_dir': "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/", 
+                'output_dir': None 
             },
             'save': {
-                'save_events': 1
+                'save_events': 0
             }
         }
 
@@ -37,15 +39,9 @@ class EventDetectionTest(unittest.TestCase):
         @brief Test the event detection functionality.
         """
         print("Starting event detection test...")
-        id_connections, ids_events = detect_calcium_events_opti(self.data, params_values=self.params_values)
-        # events_ids = list(set(active_voxels.flatten()) - {0})  # Exclude background label (0)
+        id_connections, nb_events = detect_calcium_events_opti(self.dataPython, params_values=self.params_values)
         
-        # self.assertGreater(len(events_ids), 0, "No events detected.")
         
-        # show_results(active_voxels)
-        # active_voxels = active_voxels.astype('uint16')
-        # # Optionally save results
-        # export_data(active_voxels, "/home/matteo/Bureau/INRIA/codePython/AstrocytesSegmentation/tests/assets/eventDetectionResults/", export_as_single_tif=True, file_name="detected_events")
         
     def tearDown(self):
         """ 
