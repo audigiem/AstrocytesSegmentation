@@ -14,22 +14,16 @@ import cupy as cp
 
 
 
-def load_data(params: dict) -> np.ndarray:
+def load_data(file_path: str, GPU_AVAILABLE: bool = False) -> np.ndarray:
     """
     Load 3D image sequence data from a .tif file or a directory containing .tif files.
 
-    @param params: Dictionary containing parameters
-    - 'paths': Dictionary with 'input_folder' key pointing to the .tif file or directory.
-    - 'GPU_AVAILABLE': Boolean indicating if GPU is available for computation.
+    @param file_path: Path to the .tif file or directory containing .tif files.
+    @param GPU_AVAILABLE: Boolean indicating whether to use GPU for processing. If True, data will be loaded as a cupy array.
     @raises ValueError: If the input path is invalid or if no .tif files are found in the directory.
     @return: 4D numpy array of shape (T, Z, Y, X) representing the image sequence.
     """
-    
-    required_keys = {'paths', 'GPU_AVAILABLE'}
-    if not required_keys.issubset(params.keys()):
-        raise ValueError(f"Missing required keys in params: {required_keys - set(params.keys())}")
-    file_path = params['paths']['input_folder']
-    _GPU_AVAILABLE = int(params['GPU_AVAILABLE']) == 1  # Convert to boolean
+
     if os.path.isdir(file_path):
         # Load all .tif files in the directory
         file_list = sorted(glob.glob(os.path.join(file_path, '*.tif')))
@@ -47,7 +41,7 @@ def load_data(params: dict) -> np.ndarray:
 
     else:
         raise ValueError(f"Invalid file path: {file_path}. Must be a .tif file or a directory containing .tif files.")
-    if _GPU_AVAILABLE:
+    if GPU_AVAILABLE:
         # Convert to cupy array for GPU processing
         data = cp.asarray(data)
     else:
