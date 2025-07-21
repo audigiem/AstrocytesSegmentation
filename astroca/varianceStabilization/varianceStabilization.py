@@ -32,11 +32,11 @@ def compute_variance_stabilization(data: np.ndarray,
     print("=== Applying variance stabilization using Anscombe transform... ===")
     
     # extract necessary parameters
-    required_keys = {'files', 'paths'}
+    required_keys = {'save', 'paths'}
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
     
-    save_results = int(params['files']['save_results']) == 1
+    save_results = int(params['save']['save_variance_stabilization']) == 1
     output_directory = params['paths']['output_dir']
     
     T, Z, Y, X = data.shape
@@ -103,11 +103,11 @@ def anscombe_inverse(data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.nd
     @return: Transformed image of same shape as input
     """
     print(" - Applying inverse Anscombe transform on 3D volume...")
-    required_keys = {'files', 'paths'}
+    required_keys = {'save', 'paths'}
     if not required_keys.issubset(param_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - param_values.keys()}")
 
-    save_results = int(param_values['files']['save_results']) == 1
+    save_results = int(param_values['save']['save_anscombe_inverse']) == 1
     output_directory = param_values['paths']['output_dir']
     _, Z, Y, X = data.shape
     data = data.astype(np.float32)

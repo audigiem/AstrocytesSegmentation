@@ -21,11 +21,10 @@ from typing import List, Dict, Tuple, Any
 import sys
 
 
-def run_pipeline_with_statistics(enable_memory_profiling: bool = False, _GPU_AVAILABLE: bool = False) -> None:
+def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     """
     @brief Run the pipeline with memory and time statistics.
     @param enable_memory_profiling: If True, enables memory profiling using tracemalloc.
-    @param _GPU_AVAILABLE: If True, indicates that a GPU is available for computation.
     """
     def run_step(name, func, *args, **kwargs) -> Any:
         """
@@ -59,8 +58,6 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False, _GPU_AVA
 
     # === Configuration ===
     params = run_step("read_config", read_config)
-    bool_save_results = int(params['files']['save_results']) == 1
-    params['GPU_AVAILABLE'] = _GPU_AVAILABLE
 
     # === Loading ===
     data = run_step("load_data", load_data, params['paths']['input_folder'])
@@ -101,7 +98,6 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False, _GPU_AVA
     print("\n=== Pipeline completed ===")
     total_time = sum(time_stats.values())
     print(f"Total time: {total_time:.2f} seconds")
-    print(f"Save results: {bool_save_results}")
     if enable_memory_profiling:
         for step in time_stats:
             print(f"{step}: {time_stats[step]:.2f} seconds | Peak Memory: {memory_stats[step]:.2f} MB")
@@ -109,16 +105,15 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False, _GPU_AVA
         for step in time_stats:
             print(f"{step}: {time_stats[step]:.2f} seconds")
 
-def run_pipeline(_GPU_AVAILABLE: bool = False):
+def run_pipeline():
     # loading parameters from config file
     time_start = time.time()
     params = read_config()
-    params['GPU_AVAILABLE'] = 1 if _GPU_AVAILABLE else 0
 
     print("Parameters loaded successfully")
 
     # === Loading ===
-    data = load_data(params)  # shape (T, Z, Y, X)
+    data = load_data(params['paths']['input_folder'])  # shape (T, Z, Y, X)
     T, Z, Y, X = data.shape
     print(f"Loaded data of shape: {data.shape}")
     # print()
@@ -127,30 +122,29 @@ def run_pipeline(_GPU_AVAILABLE: bool = False):
     cropped_data = crop_boundaries(data, params)
     index_xmin, index_xmax, _, raw_data = compute_boundaries(cropped_data, params)
 
-    # # === Variance Stabilization ===
-    # data = compute_variance_stabilization(raw_data, index_xmin, index_xmax, params)
+    # === Variance Stabilization ===
+    data = compute_variance_stabilization(raw_data, index_xmin, index_xmax, params)
 
-    # # === F0 estimation ===
-    # F0 = background_estimation_single_block(data, index_xmin, index_xmax, params)
+    # === F0 estimation ===
+    F0 = background_estimation_single_block(data, index_xmin, index_xmax, params)
 
-    # # === Compute dF and background noise estimation ===
-    # dF, mean_noise = compute_dynamic_image(data, F0, index_xmin, index_xmax, T, params)
-    # std_noise = estimate_std_over_time(dF, index_xmin, index_xmax)
+    # === Compute dF and background noise estimation ===
+    dF, mean_noise = compute_dynamic_image(data, F0, index_xmin, index_xmax, T, params)
+    std_noise = estimate_std_over_time(dF, index_xmin, index_xmax)
 
-    # # === Compute Z-score, closing morphology, median filter ===
-    # active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)
+    # === Compute Z-score, closing morphology, median filter ===
+    active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)
 
-    # # === Detect calcium events ===
-    # id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
-
-    # # === Compute image amplitude ===
-    # image_amplitude = compute_image_amplitude(raw_data, F0, index_xmin, index_xmax, params)
-
-    # # === Compute features ===
-    # save_features_from_events(id_connections, ids_events, image_amplitude, params_values=params)
+    # === Detect calcium events ===
+    id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
+    
+    # === Compute image amplitude ===
+    image_amplitude = compute_image_amplitude(raw_data, F0, index_xmin, index_xmax, params)
+    
+    # === Compute features ===
+    save_features_from_events(id_connections, ids_events, image_amplitude, params_values=params)
     end_time = time.time() - time_start
-    bool_save_results = int(params['files']['save_results']) == 1
-    print(f"Pipeline completed in {end_time:.2f}, {'while saving results' if bool_save_results else 'without saving results'}.")
+    print(f"Pipeline completed in {end_time:.2f} seconds.")
 
 
 def main():
@@ -159,11 +153,10 @@ def main():
     """
     profile_memory = False
     profile_time = False
-    quiet = False
 
     if len(sys.argv) > 2:
         raise ValueError(f"Too many arguments. Usage: {sys.argv[0]} [--stats | --memstats]")
-    
+
     if len(sys.argv) == 2:
         arg = sys.argv[1]
         if arg == "--stats":
@@ -173,9 +166,13 @@ def main():
             profile_time = True
             profile_memory = True
         elif arg == "--quiet":
-            quiet = True
             profile_time = False
             profile_memory = False
+            print("Running pipeline in quiet mode, no statistics nor execution trace will be printed.")
+            with open(os.devnull, 'w') as devnull:
+                sys.stdout = devnull 
+                run_pipeline()
+                return
             
         elif arg == "--help":
             print(f"Usage: {sys.argv[0]} [--stats | --memstats | --quiet | --help]")
@@ -183,35 +180,16 @@ def main():
             print("  --memstats: Run pipeline with memory and time statistics")
             print("  --quiet: Run pipeline without statistics and without execution trace")
             print("  --help: Show this help message")
-            return
+            return       
         else:
             raise ValueError(f"Invalid argument '{arg}'. Usage: {sys.argv[0]} [--stats | --memstats]")
 
-    try:
-        import cupy as cp
-        _GPU_AVAILABLE = cp.cuda.runtime.getDeviceCount() > 0
-    except Exception:  # aucun GPU ou CuPy non installé
-        _GPU_AVAILABLE = False
-
-    if _GPU_AVAILABLE:
-        print("[INFO] CuPy trouvé → calculs sur GPU")
-    
-    else:
-        print("[WARN] GPU indisponible, calculs sur CPU (NumPy)")
-
     if profile_time:
         print(f"Running pipeline with {'memory and time' if profile_memory else 'time'} statistics...")
-        run_pipeline_with_statistics(enable_memory_profiling=profile_memory, _GPU_AVAILABLE=_GPU_AVAILABLE)
-
-    elif quiet:
-        print("Running pipeline in quiet mode, no statistics nor execution trace will be printed.")
-        with open(os.devnull, 'w') as devnull:
-            sys.stdout = devnull
-            run_pipeline(_GPU_AVAILABLE)
-            return
+        run_pipeline_with_statistics(enable_memory_profiling=profile_memory)
     else:
         print("Running pipeline without statistics...")
-        run_pipeline(_GPU_AVAILABLE)
+        run_pipeline()
 
 if __name__ == "__main__":
     main()

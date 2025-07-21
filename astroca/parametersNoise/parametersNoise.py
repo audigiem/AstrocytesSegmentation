@@ -3,14 +3,8 @@
 @brief Estimate the standard deviation of the noise in a 3D+time image sequence.
 @detail Computes a per-voxel STD over time and estimates the global noise level as the median of non-zero voxels in the map.
 """
-
 import numpy as np
-import time
 from tqdm import tqdm
-
-
-# import tifffile or np.save for optional saving
-
 
 def compute_pseudo_residuals(data: np.ndarray) -> np.ndarray:
     """
@@ -18,7 +12,7 @@ def compute_pseudo_residuals(data: np.ndarray) -> np.ndarray:
     """
     return (np.diff(data, axis=0) / np.sqrt(2)).astype(np.float32)
 
-def mad_with_pseudo_residual(residuals: np.ndarray) -> float:
+def mad_with_pseudo_residual(residuals: np.ndarray) -> np.ndarray:
     """
     Robust noise estimation: sigma = 1.4826 * median(|residuals|),
     excluding residuals that are zero.
@@ -37,17 +31,15 @@ def estimate_std_map_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndar
     """
     T, Z, Y, X = data.shape
     residuals = compute_pseudo_residuals(data)  # Shape: (T-1, Z, Y, X)
-
-    # Initial std map with NaNs (to exclude out-of-ROI voxels)
     std_map = np.full((Z, Y, X), np.nan, dtype=np.float32)
-
+    
     for z in tqdm(range(Z), desc="Estimating std over time", unit="slice"):
         x0, x1 = xmin[z], xmax[z] + 1
-        if x0 >= x1: continue
-        roi = (slice(z, z + 1), slice(None), slice(x0, x1))  # Shape: (1, Y, xmax-xmin)
-        res_slice = residuals[:, roi[0], roi[1], roi[2]]  # (T-1, 1, Y, Xroi)
-        std_map[z, :, x0:x1] = mad_with_pseudo_residual(res_slice[:, 0, :, :])
-
+        if x0 >= x1: 
+            continue
+        res_slice = residuals[:, z, :, x0:x1]  # (T-1, Y, Xroi)
+        std_map[z, :, x0:x1] = mad_with_pseudo_residual(res_slice)
+    
     return std_map
 
 def estimate_std_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray) -> float:
@@ -62,9 +54,7 @@ def estimate_std_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray)
     std_map = estimate_std_map_over_time(data, xmin, xmax)
     valid = std_map[~np.isnan(std_map) & (std_map > 0)]
     std = float(np.median(valid)) if valid.size else 0.0
-    print(f"    std_noise = {std:.7f}")
+    print(f" std_noise = {std:.7f}")
     print(60*"=")
     print()
     return std
-
-

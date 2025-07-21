@@ -99,6 +99,45 @@ def compute_max_ncc_fast(pattern1: np.ndarray, pattern2: np.ndarray) -> float:
 
     return max_corr
 
+@njit
+def correlation_zero_boundary_conditions(v1, v2):
+    nV1 = len(v1)
+    nV2 = len(v2)
+    size = nV1 + nV2 - 1
+    vout = np.zeros(size, dtype=np.float32)
+
+    for n in range(-nV2 + 1, nV1):
+        sum_val = 0.0
+        for m in range(nV1):
+            idx = m - n
+            if 0 <= idx < nV2:
+                sum_val += v2[idx] * v1[m]
+        vout[n + nV2 - 1] = sum_val
+
+    return vout
+
+@njit
+def compute_max_ncc_strict(v1, v2):
+    # Cross-correlation
+    vout = correlation_zero_boundary_conditions(v1, v2)
+
+    # Auto-correlations at t = 0
+    auto1 = correlation_zero_boundary_conditions(v1, v1)[len(v1) - 1]
+    auto2 = correlation_zero_boundary_conditions(v2, v2)[len(v2) - 1]
+
+    if auto1 == 0.0 or auto2 == 0.0:
+        return 0.0
+
+    den = np.sqrt(auto1 * auto2)
+
+    max_corr = 0.0
+    for i in range(len(vout)):
+        norm_corr = vout[i] / den
+        if norm_corr > max_corr:
+            max_corr = norm_corr
+
+    return max_corr
+
 
 @njit
 def batch_check_conditions(av_frame: np.ndarray, id_frame: np.ndarray, coords: np.ndarray) -> np.ndarray:

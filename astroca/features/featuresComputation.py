@@ -8,7 +8,7 @@ import pandas as pd
 import os
 from tqdm import tqdm
 
-
+# @profile
 def save_features_from_events(calcium_events: np.ndarray, events_ids: int, image_amplitude: np.ndarray, params_values: dict=None) -> None:
     """
     @brief Compute features from calcium events in a 3D image sequence with time dimension and save them to an Excel file.
@@ -24,19 +24,18 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: int, image
     @param params_values: Dictionary containing parameters for feature computation:
         - voxel_size_x, voxel_size_y, voxel_size_z: size of a voxel in micrometers.
         - threshold_median_localized: threshold for median distance to classify as localized.
-        - threshold_distance_localized: threshold for distance to classify as wave.
         - volume_localized: threshold for volume to classify as localized.
         - save_result: Boolean flag to indicate whether to save the results.
         - output_directory: Directory to save the results if save_result is True.
     @return:
     """
     print("=== Computing features from calcium events ===")
-    required_keys = {'paths', 'files', 'features_extraction'}
+    required_keys = {'paths', 'save', 'features_extraction'}
     if not required_keys.issubset(params_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
     features = compute_features(calcium_events, events_ids, image_amplitude, params_values)
 
-    save_result = int(params_values['files']['save_results']) == 1
+    save_result = int(params_values['save']['save_features']) == 1
     output_directory = params_values['paths']['output_dir']
 
     if save_result:
@@ -44,11 +43,23 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: int, image
             raise ValueError("Output directory must be specified when save_result is True.")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-        write_excel_features(features, output_directory)
+        # write_excel_features(features, output_directory)
         write_csv_features(features, output_directory)
     print(60*"=")
+    
+# @profile
+def precompute_event_voxel_indices(calcium_events):
+    """
+    Precompute indices and event_ids for all non-zero voxels in the 4D calcium_events array.
+    Returns:
+        coords: ndarray of shape (N, 4), with each row being (t, z, y, x)
+        event_ids: ndarray of shape (N,), corresponding to the event ID at each coord
+    """
+    coords = np.argwhere(calcium_events > 0)
+    event_ids = calcium_events[calcium_events > 0]
+    return coords, event_ids
 
-
+# @profile
 def compute_features(calcium_events: np.ndarray, events_ids: int, image_amplitude: np.ndarray, params_values: dict=None) -> dict:
     """
     @brief Compute features from calcium events in a 3D image sequence with time dimension.
@@ -64,7 +75,6 @@ def compute_features(calcium_events: np.ndarray, events_ids: int, image_amplitud
     @param params_values: Dictionary containing parameters for feature computation:
         - voxel_size_x, voxel_size_y, voxel_size_z: size of a voxel in micrometers.
         - threshold_median_localized: threshold for median distance to classify as localized.
-        - threshold_distance_localized: threshold for distance to classify as wave.
         - volume_localized: threshold for volume to classify as localized.
         - save_result: Boolean flag to indicate whether to save the results.
         - output_directory: Directory to save the results if save_result is True.
@@ -73,87 +83,134 @@ def compute_features(calcium_events: np.ndarray, events_ids: int, image_amplitud
     if calcium_events.ndim != 4 or image_amplitude.ndim != 4:
         raise ValueError("Inputs must be 4D arrays (T, Z, Y, X)")
 
-    voxel_size = np.array([
-        float(params_values['features_extraction']['voxel_size_x']),
-        float(params_values['features_extraction']['voxel_size_y']),
-        float(params_values['features_extraction']['voxel_size_z']),
-    ])
+    voxel_size_x = float(params_values['features_extraction']['voxel_size_x'])
+    voxel_size_y = float(params_values['features_extraction']['voxel_size_y'])
+    voxel_size_z = float(params_values['features_extraction']['voxel_size_z'])
+    voxel_size = voxel_size_x * voxel_size_y * voxel_size_z
+    
+    threshold_median_localized = float(params_values['features_extraction']['threshold_median_localized'])
     volume_localized = float(params_values['features_extraction']['volume_localized'])
 
     features = {}
+    coords_all, event_ids_all = precompute_event_voxel_indices(calcium_events)
 
     for event_id in tqdm(range(1, events_ids + 1), desc="Computing features per event"):
-        event_mask = (calcium_events == event_id)
-        if not np.any(event_mask):
+        mask = (event_ids_all == event_id)
+        if not np.any(mask):
             continue
 
-        coords = np.argwhere(event_mask)
-        nb_voxels = coords.shape[0]
-        t0 = coords[:, 0].min()
-        t1 = coords[:, 0].max()
+        coords = coords_all[mask]
+        t, z, y, x = coords[:, 0], coords[:, 1], coords[:, 2], coords[:, 3]
+        nb_voxels = len(t)
+        if nb_voxels == 0:
+            continue
+
+        # Centroid
+        centroid_x = int(np.mean(x))
+        centroid_y = int(np.mean(y))
+        centroid_z = int(np.mean(z))
+        centroid_t = int(np.mean(t))
+
+        t0, t1 = t.min(), t.max()
         duration = t1 - t0 + 1
-        centroid_x = coords[:, 3].mean().astype(int)
-        centroid_y = coords[:, 2].mean().astype(int)
-        centroid_z = coords[:, 1].mean().astype(int)
-        centroid_t = coords[:, 0].mean().astype(int)
-        volume = nb_voxels * np.prod(voxel_size)
-        amplitude = np.max(image_amplitude[event_mask])
+        volume = nb_voxels * voxel_size
+
+        # Event amplitude
+        amplitude = np.max(image_amplitude[t, z, y, x])
 
         # Classification
         if duration > 1:
-            class_label, confidence = classify_event(coords, t0, duration, volume, params_values)
+            coords_stacked = np.column_stack((t, z, y, x))
+            class_result = is_localized(coords_stacked, t0, duration, volume,
+                                        voxel_size_x, voxel_size_y, voxel_size_z,
+                                        threshold_median_localized, volume_localized)
+            class_label = class_result['class']
+            confidence = class_result['confidence']
+            mean_displacement = class_result['mean_displacement']
+            median_displacement = class_result['median_displacement']
         else:
             if volume <= volume_localized:
-                class_label = "localized"
-                confidence = 100
+                class_label = "Localized"
             else:
-                class_label = "localized but not microdomain"
-                confidence = 100
+                class_label = "Localized but not in a microdomain"
+            confidence = 0.0
+            mean_displacement = 0.0
+            median_displacement = 0.0
 
         features[event_id] = {
-            'duration': duration,
-            't0': t0,
-            'amplitude': amplitude,
-            'volume': volume,
-            'centroid_x': centroid_x,
-            'centroid_y': centroid_y,
-            'centroid_z': centroid_z,
-            'centroid_t': centroid_t,
-            'classification': class_label,
-            'confidence': confidence
+            'T0': t0,
+            'Duration': duration,
+            'CentroidX': centroid_x,
+            'CentroidY': centroid_y,
+            'CentroidZ': centroid_z,
+            'CentroidT': centroid_t,
+            'Volume': volume,
+            'Amplitude': amplitude,
+            'Class': class_label,
+            'STD displacement': confidence,
+            'Mean displacement': mean_displacement,
+            'Median displacement': median_displacement
         }
 
     return features
 
-def classify_event(coords , t0: int, duration: int, volume: float, params_values: dict) -> tuple:
-    """
-    Classify event as 'Wave', 'Localized', or 'Localized but no microdomain'
-    based on centroid dynamics and volume.
-    """
-    threshold_dist = float(params_values['features_extraction']['threshold_distance_localized'])
-    threshold_med = float(params_values['features_extraction']['threshold_median_localized'])
-    volume_localized = float(params_values['features_extraction']['volume_localized'])
 
-    # Compute centroids per time frame
-    centroids = np.full((duration, 3), np.nan)
+# @profile
+def is_localized(coords, t0: int, duration: int, volume: float, 
+                voxel_size_x: float, voxel_size_y: float, voxel_size_z: float,
+                threshold_median_localized: float, volume_localized: float) -> dict:
+    """
+    Classify event as 'Wave', 'Localized', or 'Localized but not in a microdomain'
+    based on centroid dynamics and volume - following Java logic exactly.
+    """
+    
+    # Compute centroids per time frame (like Java)
+    centroids_x = np.zeros(duration)
+    centroids_y = np.zeros(duration)
+    centroids_z = np.zeros(duration)
+    
     for i, t in enumerate(range(t0, t0 + duration)):
         frame_coords = coords[coords[:, 0] == t]
-        if frame_coords.size > 0:
-            centroids[i] = frame_coords[:, 1:4].mean(axis=0)
-
-    dists = np.linalg.norm(np.diff(centroids, axis=0), axis=1)
-    if np.any(dists > threshold_dist):
-        idx = np.argmax(dists > threshold_dist)
-        confidence = min(100, dists[idx] * 80 / threshold_dist)
-        return "Wave", confidence
-    else:
-        median_val = np.nanmedian(dists)
-        confidence = min(100, median_val * 50 / threshold_med)
+        if len(frame_coords) > 0:
+            centroids_x[i] = np.mean(frame_coords[:, 3]) * voxel_size_x
+            centroids_y[i] = np.mean(frame_coords[:, 2]) * voxel_size_y
+            centroids_z[i] = np.mean(frame_coords[:, 1]) * voxel_size_z
+    
+    # Compute distances like Java (all tau combinations)
+    distances = []
+    for tau in range(1, duration):
+        for i in range(duration - tau):
+            x_dist = centroids_x[i + tau] - centroids_x[i]
+            y_dist = centroids_y[i + tau] - centroids_y[i]
+            z_dist = centroids_z[i + tau] - centroids_z[i]
+            
+            distance = np.sqrt(x_dist**2 + y_dist**2 + z_dist**2)
+            distances.append(distance)
+    
+    distances = np.array(distances)
+    median_displacement = np.median(distances)
+    mean_displacement = np.mean(distances)
+    std_displacement = np.std(distances)
+    
+    # Classification logic like Java
+    localized = median_displacement <= threshold_median_localized
+    
+    if localized:
         if volume <= volume_localized:
-            return "Localized", confidence
+            class_label = "Localized"
         else:
-            return "Localized but no microdomain", confidence
+            class_label = "Localized but not in a microdomain"
+    else:
+        class_label = "Wave"
+    
+    return {
+        'class': class_label,
+        'confidence': std_displacement,
+        'mean_displacement': mean_displacement,
+        'median_displacement': median_displacement
+    }
 
+# @profile
 def write_excel_features(features: dict, output_directory: str) -> None:
     """
     Write the computed features to an Excel file.
@@ -162,11 +219,16 @@ def write_excel_features(features: dict, output_directory: str) -> None:
     @param output_directory: Directory to save the Excel file.
     """
     df = pd.DataFrame.from_dict(features, orient='index')
-    output_file = f"{output_directory}calcium_events_features.xlsx"
-    df.to_excel(output_file, index_label='Event ID')
+    # Réorganiser les colonnes pour correspondre à l'ordre Java
+    columns_order = ['T0', 'Duration', 'CentroidX', 'CentroidY', 'CentroidZ', 'CentroidT', 
+                    'Volume', 'Amplitude', 'Class', 'STD displacement', 'Mean displacement', 'Median displacement']
+    df = df[columns_order]
+    
+    output_file = os.path.join(output_directory, "Features.xlsx")
+    df.to_excel(output_file, index_label='Label')
     print(f"Features saved to {output_file}")
 
-
+# @profile
 def write_csv_features(features: dict, output_directory: str) -> None:
     """
     Write the computed features to a CSV file.
@@ -175,6 +237,11 @@ def write_csv_features(features: dict, output_directory: str) -> None:
     @param output_directory: Directory to save the CSV file.
     """
     df = pd.DataFrame.from_dict(features, orient='index')
-    output_file = f"{output_directory}calcium_events_features.csv"
-    df.to_csv(output_file, index_label='Event ID')
+    # Réorganiser les colonnes pour correspondre à l'ordre Java
+    columns_order = ['T0', 'Duration', 'CentroidX', 'CentroidY', 'CentroidZ', 'CentroidT', 
+                    'Volume', 'Amplitude', 'Class', 'STD displacement', 'Mean displacement', 'Median displacement']
+    df = df[columns_order]
+    
+    output_file = os.path.join(output_directory, "Features.csv")
+    df.to_csv(output_file, index_label='Label', sep=';')
     print(f"Features saved to {output_file}")

@@ -6,6 +6,7 @@
 import unittest
 from astroca.tools.loadData import load_data
 from astroca.tools.exportData import export_data
+from astroca.events.eventDetectorCorrected import detect_calcium_events_opti
 
 class EventDetectionTest(unittest.TestCase):
     """ 
@@ -16,29 +17,31 @@ class EventDetectionTest(unittest.TestCase):
         """ 
         @brief Set up the test case with synthetic data.
         """
-        self.data = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdirFewerTime/AV.tif")
+        self.dataPython = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir20/AV.tif")
+        # self.dataJava = load_data("/home/matteo/Bureau/INRIA/assets/Matteo/Matteo/AV.tif")
+
         self.params_values = {
             'events_extraction' : {
                 'threshold_size_3d' : 400,
                 'threshold_size_3d_removed' : 20,
                 'threshold_corr' : 0.6
+            },
+            'paths': {
+                'output_dir': None 
+            },
+            'save': {
+                'save_events': 0
             }
         }
-    
+
     def test_event_detection(self):
         """ 
         @brief Test the event detection functionality.
         """
         print("Starting event detection test...")
-        # active_voxels = detect_events(self.data, params_values=self.params_values)
-        # events_ids = list(set(active_voxels.flatten()) - {0})  # Exclude background label (0)
+        id_connections, nb_events = detect_calcium_events_opti(self.dataPython, params_values=self.params_values)
         
-        # self.assertGreater(len(events_ids), 0, "No events detected.")
         
-        # show_results(active_voxels)
-        # active_voxels = active_voxels.astype('uint16')
-        # # Optionally save results
-        # export_data(active_voxels, "/home/matteo/Bureau/INRIA/codePython/AstrocytesSegmentation/tests/assets/eventDetectionResults/", export_as_single_tif=True, file_name="detected_events")
         
     def tearDown(self):
         """ 
@@ -51,3 +54,18 @@ class EventDetectionTest(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 # To run the test, use the command: python -m unittest eventDetectionTest
+    # data = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir20/AV.tif")
+    # param = {
+    #     'events_extraction' : {
+    #         'threshold_size_3d' : 400,
+    #         'threshold_size_3d_removed' : 20,
+    #         'threshold_corr' : 0.6
+    #     },
+    #     'paths': {
+    #         'output_dir': None
+    #     },
+    #     'save': {
+    #         'save_events': 0
+    #     }
+    # }
+    # id_connections, nb_events = detect_calcium_events_opti(data, params_values=param)

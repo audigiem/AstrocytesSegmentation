@@ -9,6 +9,7 @@ import os
 import numpy as np
 from astroca.tools.loadData import load_data
 from tifffile import imwrite
+from tests.comparingTools.compareCSVFiles import compare_csv_files
 
 
 def compute_frame_accuracy(expected_frame: np.ndarray, differences: np.ndarray, percentage_accuracy: float) -> float:
@@ -116,6 +117,8 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
     list_mean_diff = []
     list_accuracy = []
     list_nb_significant_differences = []
+    list_diff_frames = []
+    list_acceptable_frames = []
     for t in range(T):
         expected_frame = expected_data[t]
         output_frame = output_data[t]
@@ -125,13 +128,17 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
         differences[t] = frame_differences
 
         if np.all(frame_differences == 0):
-            print(f"Frame {t}: Files are identical.")
+            # print(f"Frame {t}: Files are identical.")
+            continue
         elif np.max(frame_differences) < 1e-5:
-            print(f"Frame {t}: Files are similar within a very small margin (less than 1e-5).")
+            # print(f"Frame {t}: Files are similar within a very small margin (less than 1e-5).")
+            list_acceptable_frames.append(t)
+            continue
         else:
             differences_exist = True
             nb_significant_differences = np.sum(frame_differences > percentage_accuracy * np.abs(expected_frame))
-            print(f"Frame {t}: Files differ.")
+            # print(f"Frame {t}: Files differ.")
+            list_diff_frames.append(t)
             max_diff = np.max(frame_differences)
             mean_diff = np.mean(frame_differences)
             list_max_diff.append(max_diff)
@@ -141,6 +148,7 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
 
     if differences_exist:
         # display global statistics for the differences
+        print(f"Time frames where differences were found: {list_diff_frames}")
         print("\nGlobal statistics for differences across all frames:")
         # max_diff = np.max(list_max_diff)
         # mean_max_diff = np.mean(list_max_diff)
@@ -158,8 +166,11 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
             diff_file_path = os.path.join(os.path.dirname(output_sequence_path), diff_file_name)
             imwrite(diff_file_path, differences.astype(np.float32))
             print(f"Differences saved to {diff_file_path}")
-    elif not differences_exist:
-        print("No differences found in any frame.")
+    else:
+        if len(list_acceptable_frames) > 0:
+            print(f"Frames are either identical or within the acceptable margin of 1e-5: {list_acceptable_frames}")
+        else:
+            print("All frames are identical.")
     return differences
 
 def show_offset_voxels_diff(differences: np.ndarray, expected_sequence_path: str = None, output_sequence_path: str = None):
@@ -176,7 +187,7 @@ def show_offset_voxels_diff(differences: np.ndarray, expected_sequence_path: str
     output_vol = load_data(output_sequence_path)
 
     T, Z, Y, X = differences.shape
-    diff_coords = np.argwhere(differences > 0)
+    diff_coords = np.argwhere(differences > 0.0001)
     
     if diff_coords.size == 0:
         print("No differences found.")
@@ -191,7 +202,7 @@ def show_offset_voxels_diff(differences: np.ndarray, expected_sequence_path: str
 
 def main():
     # Define paths to expected and output files
-    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdir/"
+    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/"
     OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/"
 
     expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
@@ -230,7 +241,11 @@ def main():
     expected_amplitude_image_path = EXPECTED_DIR_PATH + "amplitude.tif"
     output_amplitude_image_path = OUTPUT_DIR_PATH + "image_amplitude.tif"
     
-    save_results = True
+    expected_csv_path = EXPECTED_DIR_PATH + "Features.csv"
+    output_csv_path = OUTPUT_DIR_PATH + "Features.csv"
+
+    save_results = False
+    features_float_precision = 3
 
     print("Comparing files after each step...")
     print("Step 1: Comparing files after crop and boundaries computations...")
@@ -260,17 +275,16 @@ def main():
     print()
 
     print("Step 7: Comparing files after median filtering...")
-    diff = compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # show_offset_voxels_diff(diff, expected_sequence_path=expected_median_path, output_sequence_path=output_median_path)
+    compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
 
     print("Step 8: Comparing files after active voxels detection...")
     compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
     
-    # print("Step 9: Comparing files after calcium events detection...")
-    # compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
+    print("Step 9: Comparing files after calcium events detection...")
+    compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
 
     print("Step 10: Comparing files after Anscombe inverse transform...")
     compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
@@ -278,6 +292,10 @@ def main():
 
     print("Step 11: Comparing files after amplitude computation...")
     compare_sequence(expected_amplitude_image_path, output_amplitude_image_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
+    
+    print(f"Step 12: Comparing CSV files for features with a float precision of {10 ** -features_float_precision}...")
+    compare_csv_files(expected_csv_path, output_csv_path, float_precision=features_float_precision)
     print()
     
     print("All comparisons completed.")

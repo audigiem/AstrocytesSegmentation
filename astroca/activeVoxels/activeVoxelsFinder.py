@@ -33,10 +33,10 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     if dF.ndim != 4:
         raise ValueError("Input must be a 4D numpy array of shape (T, Z, Y, X).")
 
-    required_keys = {'active_voxels', 'files', 'paths'}
+    required_keys = {'active_voxels', 'save', 'paths'}
     if not required_keys.issubset(params_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
-    save_results = int(params_values['files']['save_results']) == 1
+    save_results = int(params_values['save']['save_av']) == 1
     output_directory = params_values['paths']['output_dir']
     threshold = float(params_values['active_voxels']['threshold_zscore'])
     radius = int(params_values['active_voxels']['radius_closing_morphology'])
@@ -91,20 +91,18 @@ def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, i
     active_voxels = np.zeros_like(dF)
 
     # positive_mask: dF(x,t) > 0 and filtered_data(x,t) > 0
-    positive_mask = (filtered_data > 0) & (dF >= 0)
+    positive_mask = (filtered_data != 0) & (dF > 0)
     # negative_mask: dF(x,t) < 0 and filtered_data(x,t) > 0
-    negative_mask = (filtered_data > 0) & (dF < 0)
+    negative_mask = (filtered_data != 0) & (dF <= 0)
     # null_mask: remaining voxels where filtered_data(x,t) <= 0
-    null_mask = filtered_data <= 0
 
     T, Z, Y, X = dF.shape
 
     active_voxels[positive_mask] = dF[positive_mask]
     active_voxels[negative_mask] = std_noise
-    active_voxels[null_mask] = 0
     # Cropping the active voxels based on index_xmin and index_xmax
     for z in tqdm(range(Z), desc="Cropping active voxels", unit="slice"):
-        active_voxels[:, z, :, index_xmin[z]:index_xmax[z]] = active_voxels[:, z, :, index_xmin[z]:index_xmax[z]]
-
+        active_voxels[:, z, :, :index_xmin[z]] = 0
+        active_voxels[:, z, :, index_xmax[z]+1:] = 0
     return active_voxels
 
