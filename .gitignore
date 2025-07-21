@@ -8,3 +8,8 @@ __init__.py
 docs/html/
 docs/latex/
 astroca.egg-info/
+*.lprof
+*.out
+*.txt
+*.pyc
+.idea/

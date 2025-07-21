@@ -2,6 +2,64 @@
 
 3D+time fluorescence image astrocyte segmentation.
 
+## Architecture
+
+The project structure is organized as follows:
+- `astroca/`: Contains the main processing modules for analyzing astrocyte signals.
+- `config.ini`: Configuration file for setting parameters for the main script.
+- `docs/`: Documentation files.
+- `Doxyfile`: Configuration file for Doxygen to generate documentation.
+- `poetry.lock`: Lock file for Poetry dependencies.
+- `pyproject.toml`: Poetry project file defining dependencies and project metadata.
+- `README.md`: This file, providing an overview of the project.
+- `tests/`: Contains test scripts and component tests for verifying the functionality of the modules.
+```
+.
+├── ./astroca
+│   ├── ./astroca/activeVoxels
+│   │   ├── ./astroca/activeVoxels/activeVoxelsFinder.py
+│   │   ├── ./astroca/activeVoxels/medianFilter.py
+│   │   ├── ./astroca/activeVoxels/spaceMorphology.py
+│   │   └── ./astroca/activeVoxels/zScore.py
+│   ├── ./astroca/croppingBoundaries
+│   │   ├── ./astroca/croppingBoundaries/computeBoundaries.py
+│   │   ├── ./astroca/croppingBoundaries/cropper.py
+│   ├── ./astroca/dynamicImage
+│   │   ├── ./astroca/dynamicImage/backgroundEstimator.py
+│   │   ├── ./astroca/dynamicImage/dynamicImage.py
+│   ├── ./astroca/events
+│   │   ├── ./astroca/events/eventDetectorCorrected.py
+│   │   └── ./astroca/events/tools.py
+│   ├── ./astroca/features
+│   │   ├── ./astroca/features/featuresComputation.py
+│   ├── ./astroca/parametersNoise
+│   │   ├── ./astroca/parametersNoise/parametersNoise.py
+│   ├── ./astroca/tools
+│   │   ├── ./astroca/tools/converter.py
+│   │   ├── ./astroca/tools/exportData.py
+│   │   ├── ./astroca/tools/loadData.py
+│   └── ./astroca/varianceStabilization
+│       └── ./astroca/varianceStabilization/varianceStabilization.py
+├── ./config.ini
+├── ./docs
+├── ./Doxyfile
+├── ./poetry.lock
+├── ./pyproject.toml
+├── ./README.md
+└── ./tests
+    ├── ./tests/comparingTools
+    │   ├── ./tests/comparingTools/compareCSVFiles.py
+    │   ├── ./tests/comparingTools/compareFileHist.py
+    │   ├── ./tests/comparingTools/compareFiles.py
+    │   ├── ./tests/comparingTools/comparetextFile.py
+    ├── ./tests/componentTest
+    │   ├── ./tests/componentTest/eventDetectionTest.py
+    │   ├── ./tests/componentTest/featuresTest.py
+    │   ├── ./tests/componentTest/medianFilterTest.py
+    │   ├── ./tests/componentTest/morphologyClosing.py
+    └── ./tests/main.py
+```
+
 ## Installation
 
 Clone the repository:
