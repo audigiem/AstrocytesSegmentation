@@ -17,8 +17,8 @@ class EventDetectionTest(unittest.TestCase):
         """ 
         @brief Set up the test case with synthetic data.
         """
-        self.dataPython = load_data("/home/matteo/Bureau/INRIA/assets/Matteo/Matteo/activeVoxels.tif")
-        self.dataJava = load_data("/home/matteo/Bureau/INRIA/assets/Matteo/Matteo/AV.tif")
+        self.dataPython = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir20/AV.tif")
+        # self.dataJava = load_data("/home/matteo/Bureau/INRIA/assets/Matteo/Matteo/AV.tif")
 
         self.params_values = {
             'events_extraction' : {
@@ -54,3 +54,18 @@ class EventDetectionTest(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 # To run the test, use the command: python -m unittest eventDetectionTest
+    # data = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir20/AV.tif")
+    # param = {
+    #     'events_extraction' : {
+    #         'threshold_size_3d' : 400,
+    #         'threshold_size_3d_removed' : 20,
+    #         'threshold_corr' : 0.6
+    #     },
+    #     'paths': {
+    #         'output_dir': None
+    #     },
+    #     'save': {
+    #         'save_events': 0
+    #     }
+    # }
+    # id_connections, nb_events = detect_calcium_events_opti(data, params_values=param)

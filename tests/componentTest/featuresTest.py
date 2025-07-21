@@ -60,3 +60,4 @@ class FeaturesTest(unittest.TestCase):
 if __name__ == "__main__":
     unittest.main()
 # To run the test, use the command: python -m unittest eventDetectionTest
+    

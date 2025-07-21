@@ -43,10 +43,11 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: int, image
             raise ValueError("Output directory must be specified when save_result is True.")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-        write_excel_features(features, output_directory)
+        # write_excel_features(features, output_directory)
         write_csv_features(features, output_directory)
     print(60*"=")
     
+# @profile
 def precompute_event_voxel_indices(calcium_events):
     """
     Precompute indices and event_ids for all non-zero voxels in the 4D calcium_events array.
