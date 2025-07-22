@@ -195,7 +195,7 @@ def background_estimation_GPU(data: torch.Tensor,
             sorted_vals, _ = torch.sort(moving_vals, dim=0)
             result = sorted_vals[k - 1]  # kth smallest (Y, X)
 
-        F0[0, z, :, x_min:x_max + 1] = result
+        F0[0, z, :, x_min:x_max + 1] = result.permute(1, 0)  # (Y, X) -> (1, Z, Y, X)
 
     if save_results:
         if output_directory is None:
