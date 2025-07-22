@@ -178,6 +178,10 @@ def background_estimation_GPU(data: torch.Tensor,
         roi = data[:, z, :, x_min:x_max + 1]  # shape: (T, Y, X_roi)
         T_roi, Y_roi, X_roi = roi.shape
 
+        if Y_roi != Y or X_roi != (x_max - x_min + 1):
+            raise RuntimeError(
+                f"[Z={z}] ROI shape mismatch: expected Y={Y}, got Y_roi={Y_roi}; X_roi={X_roi}, expected {x_max - x_min + 1}")
+
         # Unfold over time (dim 0): (T - w + 1, w, Y, X)
         windowed = roi.unfold(0, moving_window, 1)  # (num_iter, moving_window, Y, X)
         windowed = windowed.permute(1, 0, 2, 3)  # shape: (moving_window, num_iter, Y, X_roi)
@@ -195,7 +199,10 @@ def background_estimation_GPU(data: torch.Tensor,
             sorted_vals, _ = torch.sort(moving_vals, dim=0)
             result = sorted_vals[k - 1]  # kth smallest (Y, X)
 
-        F0[0, z, :, x_min:x_max + 1] = result.permute(1, 0)  # (Y, X) -> (1, Z, Y, X)
+        print(f"result shape: {result.shape}")
+        print(f"result.permute(1, 0) shape: {result.permute(1, 0).shape}")
+        print(f"Target slice shape: {F0[0, z, :, x_min:x_max + 1].shape}")
+        F0[0, z, :, x_min:x_max + 1] = result
 
     if save_results:
         if output_directory is None:
