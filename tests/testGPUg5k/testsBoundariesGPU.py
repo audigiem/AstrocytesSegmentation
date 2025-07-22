@@ -15,7 +15,7 @@ def test_boundariesGPU(file_path: str = "home/maudigie/data/inputData/20stepsTim
     # Load configuration parameters
     data = load_data(file_path, GPU_AVAILABLE=GPU_AVAILABLE)
     params = read_config()
-    params["GPU_AVAILABLE"] = GPU_AVAILABLE
+    params["GPU_AVAILABLE"] = 1 if GPU_AVAILABLE else 0
     index_xmin, index_xmax, default_value, data = compute_boundaries(crop_boundaries(data, params), params)
 
 if __name__ == "__main__":
