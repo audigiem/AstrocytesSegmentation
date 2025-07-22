@@ -14,6 +14,7 @@ def test_boundariesGPU(file_path: str = "/home/maudigie/data/inputData/20stepsTi
     print(f"GPU available: {GPU_AVAILABLE}")
     # Load configuration parameters
     data = load_data(file_path, GPU_AVAILABLE=GPU_AVAILABLE)
+    print(f"Data is None ? {data is None}")
     params = read_config()
     params["GPU_AVAILABLE"] = 1 if GPU_AVAILABLE else 0
     cropped_data = crop_boundaries(data, params)
