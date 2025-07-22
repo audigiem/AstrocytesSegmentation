@@ -49,6 +49,7 @@ def load_data(file_path: str, GPU_AVAILABLE: bool = False) -> np.ndarray:
         # Ensure data is a numpy array for CPU processing
         print(f"Reading data on CPU...")
         data = np.asarray(data)
+    return data
     
     
 def read_config(config_file: str | None = None) -> dict:
