@@ -1,4 +1,6 @@
 from astroca.varianceStabilization.varianceStabilization import compute_variance_stabilization
+from astroca.dynamicImage.backgroundEstimator import background_estimation_single_block
+from astroca.dynamicImage.dynamicImage import compute_dynamic_image
 from astroca.tools.loadData import load_data, read_config
 import numpy as np
 import torch
@@ -25,6 +27,11 @@ def test_boundariesGPU(file_path: str = "/home/maudigie/data/outputData/testGPU/
     params["GPU_AVAILABLE"] = 1 if GPU_AVAILABLE else 0
 
     anscombe_data = compute_variance_stabilization(data, index_xmin, index_xmax, params)
+
+    T, Z, Y, X = anscombe_data.shape
+
+    F0 = background_estimation_single_block(anscombe_data, index_xmin, index_xmax, params)
+    dF, mean_noise = compute_dynamic_image(anscombe_data, F0, index_xmin, index_xmax, T, params)
 
 
 if __name__ == "__main__":

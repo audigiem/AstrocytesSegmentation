@@ -11,9 +11,22 @@ import numpy as np
 import time
 from astroca.varianceStabilization.varianceStabilization import anscombe_inverse
 from tqdm import tqdm
+import torch
+from typing import Union, Tuple
+
+def compute_dynamic_image(data: Union[np.ndarray, torch.Tensor], F0: Union[np.ndarray, torch.Tensor],
+                            index_xmin: np.ndarray, index_xmax: np.ndarray,
+                            time_window: int, params: dict) -> Tuple[Union[np.ndarray, torch.Tensor], float]:
+    """
+    Wrapper function to compute the dynamic image (dF = F - F0) and estimate the noise level.
+    """
+    if params.get("GPU_AVAILABLE", 0) == 1:
+        return compute_dynamic_image_GPU(data, F0, index_xmin, index_xmax, time_window, params)
+    else:
+        return compute_dynamic_image_CPU(data, F0, index_xmin, index_xmax, time_window, params)
 
 
-def compute_dynamic_image(data: np.ndarray,
+def compute_dynamic_image_CPU(data: np.ndarray,
                           F0: np.ndarray,
                           index_xmin: np.ndarray,
                           index_xmax: np.ndarray,
@@ -74,6 +87,62 @@ def compute_dynamic_image(data: np.ndarray,
         os.makedirs(output_directory, exist_ok=True)
         export_data(dF, output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
 
+    print()
+    return dF, mean_noise
+
+def compute_dynamic_image_GPU(data: torch.Tensor, F0: torch.Tensor, index_xmin: np.ndarray, index_xmax: np.ndarray, time_window: int, params: dict) -> tuple[torch.Tensor, float]:
+    """
+    Compute ΔF = F - F0 and estimate the noise level as the median of ΔF using PyTorch on GPU.
+
+    @param data: 4D image sequence (T, Z, Y, X) as a PyTorch tensor
+    @param F0: Background array of shape (nbF0, Z, Y, X) as a PyTorch tensor
+    @param index_xmin: cropping bounds in X for each Z
+    @param index_xmax: cropping bounds in X for each Z
+    @param time_window: the duration of each background block
+    @param params: Dictionary containing the parameters:
+        - save_results: If True, saves the result to output_directory
+        - output_directory: Directory to save the result if save_results is True
+    @return: (dF: tensor of shape (T, Z, Y, X), mean_noise: float)
+    """
+    print("=== Computing dynamic image (dF = F - F0) and estimating noise on GPU... ===")
+    print(" - Computing dynamic image...")
+
+    # Extract necessary parameters
+    required_keys = {'save', 'paths'}
+    if not required_keys.issubset(params.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+    save_results = int(params['save']['save_df']) == 1
+    output_directory = params['paths']['output_dir']
+
+    T, Z, Y, X = data.shape
+    nbF0 = F0.shape[0]
+
+    dF = torch.empty_like(data)
+
+    # Préallocation avec estimation maximale
+    width_without_zeros = sum(max(0, index_xmax[z] - index_xmin[z] + 1) for z in range(Z))
+    flattened_dF = torch.empty(T * Y * width_without_zeros, dtype=torch.float32, device=data.device)
+    k = 0
+
+    for t in tqdm(range(T), desc="Computing ΔF over time", unit="frame"):
+        it = min(t // time_window, nbF0 - 1)
+        for z in range(Z):
+            x_min, x_max = index_xmin[z], index_xmax[z] + 1
+            if x_min >= x_max:
+                continue
+            # Vectorisé sur Y
+            delta = data[t, z, :, x_min:x_max] - F0[it, z, :, x_min:x_max]
+            dF[t, z, :, x_min:x_max] = delta
+            n = x_max - x_min
+            flattened_dF[k:k + Y * n] = delta.view(-1)
+            k += Y * n
+    mean_noise = float(torch.median(flattened_dF[:k]))
+    print(f"    mean_Noise = {mean_noise:.6f}")
+    if save_results:
+        if output_directory is None:
+            raise ValueError("Output directory must be specified when save_results is True.")
+        os.makedirs(output_directory, exist_ok=True)
+        export_data(dF.cpu().numpy(), output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
     print()
     return dF, mean_noise
 
