@@ -155,6 +155,8 @@ def compute_boundaries_GPU(data: torch.Tensor, params: dict) -> Tuple[np.ndarray
     data_result = data.cpu().numpy()
 
     if save_results:
+        if out_dir is None:
+            raise ValueError("output_directory must be specified if save_results is True.")
         os.makedirs(out_dir, exist_ok=True)
         export_data(data_result, out_dir, export_as_single_tif=True, file_name="bounded_image_sequence")
         save_numpy_tab(index_xmin, out_dir, file_name="index_Xmin.npy")
