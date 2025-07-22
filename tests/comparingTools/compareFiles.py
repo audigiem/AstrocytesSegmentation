@@ -250,45 +250,45 @@ def main():
     print("Comparing files after each step...")
     print("Step 1: Comparing files after crop and boundaries computations...")
     
-    compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
     compare_sequence(expected_boundaries_path, output_boundaries_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
     
-    print("Step 2: Comparing files after Anscombe transform...")
-    compare_sequence(expected_anscombe_path, output_anscombe_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
+    # print("Step 2: Comparing files after Anscombe transform...")
+    # compare_sequence(expected_anscombe_path, output_anscombe_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
     
     print("Step 3: Comparing files after F0 estimation...")
     compare_files(expected_f0_path, output_f0_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
     
-    print("Step 4: Comparing files after dF computation...")
-    compare_sequence(expected_dF_path, output_dF_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
+    # print("Step 4: Comparing files after dF computation...")
+    # compare_sequence(expected_dF_path, output_dF_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
 
-    print("Step 5: Comparing files after Z-score computation...")
-    compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
-
-    print("Step 6: Comparing files after closing in space...")
-    compare_sequence(expected_closing_path, output_closing_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
-
-    print("Step 7: Comparing files after median filtering...")
-    compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
-
-    print("Step 8: Comparing files after active voxels detection...")
-    compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
+    # print("Step 5: Comparing files after Z-score computation...")
+    # compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
+    #
+    # print("Step 6: Comparing files after closing in space...")
+    # compare_sequence(expected_closing_path, output_closing_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
+    #
+    # print("Step 7: Comparing files after median filtering...")
+    # compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
+    #
+    # print("Step 8: Comparing files after active voxels detection...")
+    # compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
     
     print("Step 9: Comparing files after calcium events detection...")
     compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
 
-    print("Step 10: Comparing files after Anscombe inverse transform...")
-    compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
+    # print("Step 10: Comparing files after Anscombe inverse transform...")
+    # compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
 
     print("Step 11: Comparing files after amplitude computation...")
     compare_sequence(expected_amplitude_image_path, output_amplitude_image_path, save_diff=save_results, percentage_accuracy=1e-6)

@@ -40,11 +40,11 @@ def load_data(file_path: str, GPU_AVAILABLE: bool = False) -> torch.Tensor | np.
         raise ValueError(f"Invalid file path: {file_path}. Must be a .tif file or a directory containing .tif files.")
 
     if GPU_AVAILABLE:
-        print("Reading data on GPU...")
+        # print("Reading data on GPU...")
         tensor = torch.tensor(data, dtype=torch.float32, device='cuda')
         return tensor
     else:
-        print("Reading data on CPU...")
+        # print("Reading data on CPU...")
         return np.asarray(data)
 
 

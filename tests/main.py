@@ -19,6 +19,7 @@ import time
 import tracemalloc
 from typing import List, Dict, Tuple, Any
 import sys
+import torch
 
 
 def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
@@ -54,10 +55,14 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     time_stats = {}
     memory_stats = {}
 
-    print("=== Starting pipeline with statistics ===")
+    GPU_AVAILABLE = torch.cuda.is_available()
+
+    print(f"=== Starting pipeline with statistics, using {'GPU' if GPU_AVAILABLE else 'CPU'} ===\n")
 
     # === Configuration ===
     params = run_step("read_config", read_config)
+    params['GPU_AVAILABLE'] = 1 if GPU_AVAILABLE else 0
+
 
     # === Loading ===
     data = run_step("load_data", load_data, params['paths']['input_folder'])
@@ -109,6 +114,8 @@ def run_pipeline():
     # loading parameters from config file
     time_start = time.time()
     params = read_config()
+    GPU_AVAILABLE = torch.cuda.is_available()
+    params['GPU_AVAILABLE'] = 1 if GPU_AVAILABLE else 0
 
     print("Parameters loaded successfully")
 

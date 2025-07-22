@@ -9,8 +9,9 @@ import numpy as np
 import os
 from astroca.tools.exportData import export_data
 from tqdm import tqdm
+import torch
 
-def compute_variance_stabilization(data: np.ndarray,
+def compute_variance_stabilization_CPU(data: np.ndarray,
                                    index_xmin: np.ndarray,
                                    index_xmax: np.ndarray,
                                    params: dict) -> np.ndarray:
@@ -60,6 +61,65 @@ def compute_variance_stabilization(data: np.ndarray,
     print(60*"=")
     print()
     return data
+
+
+def compute_variance_stabilization_GPU(data: np.ndarray,
+                                       index_xmin: np.ndarray,
+                                       index_xmax: np.ndarray,
+                                       params: dict) -> np.ndarray:
+    """
+    Applies Anscombe variance stabilization transform on GPU using PyTorch.
+
+    @param data: 4D NumPy array (T, Z, Y, X).
+    @param index_xmin: 1D numpy array of shape (Z,) with left cropping bounds per z.
+    @param index_xmax: 1D numpy array of shape (Z,) with right cropping bounds per z.
+    @param params: Dictionary containing:
+        - save_results
+        - output_directory
+    @return: Variance-stabilized data as a NumPy array.
+    """
+    print("=== Applying variance stabilization on GPU using PyTorch... ===")
+
+    device = torch.device("cuda")
+    data_torch = torch.from_numpy(data.astype(np.float32)).to(device)
+    index_xmin_torch = torch.from_numpy(index_xmin).to(device)
+    index_xmax_torch = torch.from_numpy(index_xmax).to(device)
+
+    T, Z, Y, X = data.shape
+
+    for z in tqdm(range(Z), desc="Variance stabilization per Z-slice (GPU)", unit="slice"):
+        x_min = index_xmin_torch[z].item()
+        x_max = index_xmax_torch[z].item() + 1
+        if x_min >= x_max:
+            continue
+        sub_volume = data_torch[:, z, :, x_min:x_max]
+        sub_volume.add_(3.0 / 8.0).sqrt_().mul_(2.0)
+
+    result = data_torch.cpu().numpy()
+
+    if int(params['save']['save_variance_stabilization']) == 1:
+        out_dir = params['paths']['output_dir']
+        if out_dir is None:
+            raise ValueError("Output directory must be specified when save_results is True.")
+        os.makedirs(out_dir, exist_ok=True)
+        export_data(result, out_dir, export_as_single_tif=True, file_name="variance_stabilized_sequence")
+
+    print("=" * 60 + "\n")
+    return result
+
+
+def compute_variance_stabilization(data: np.ndarray,
+                                   index_xmin: np.ndarray,
+                                   index_xmax: np.ndarray,
+                                   params: dict) -> np.ndarray:
+    """
+    Dispatcher for variance stabilization, CPU or GPU.
+    """
+    if int(params.get("GPU_AVAILABLE", 0)) == 1:
+        return compute_variance_stabilization_GPU(data, index_xmin, index_xmax, params)
+    else:
+        return compute_variance_stabilization_CPU(data, index_xmin, index_xmax, params)
+
 
 def check_variance(data: np.ndarray,
                    index_xmin: np.ndarray,
