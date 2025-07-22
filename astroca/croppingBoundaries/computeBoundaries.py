@@ -95,41 +95,43 @@ def compute_boundaries_CPU(data: np.ndarray, params: dict) -> Tuple[np.ndarray, 
     return index_xmin, index_xmax, default_value, data
 
 
-def compute_boundaries_GPU(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+def compute_boundaries_GPU(data: torch.Tensor, params: dict) -> Tuple[np.ndarray, np.ndarray, float, torch.Tensor]:
     """
     Compute cropping boundaries in X for each Z slice using PyTorch on GPU.
 
-    @param data: 4D numpy array (T, Z, Y, X)
-    @param params: Dictionary containing the parameters:
-        - pixel_cropped: Number of pixels to crop from the height dimension.
-        - save_results: Boolean indicating whether to save the results.
-        - output_directory: Directory to save the results if save_results is True.
+    @param data: 4D data (T, Z, Y, X), either a numpy array or a torch tensor
+    @param params: Dictionary with parameters:
+        - pixel_cropped: Number of pixels to crop in X.
+        - save_results: Boolean for saving results.
+        - output_directory: Where to save results if needed.
     @return: (index_xmin, index_xmax, default_value, data)
     """
     print(" - Computing cropping boundaries in X for each Z slice (PyTorch GPU)...")
 
-    # Extract parameters
+    # Extract params
     pixel_cropped = int(params['preprocessing']['pixel_cropped'])
     save_results = int(params['save']['save_boundaries']) == 1
     out_dir = params['paths']['output_dir']
 
-    # Convert to GPU tensor
-    device = torch.device('cuda')
-    data_gpu = torch.from_numpy(data).float().to(device)  # (T, Z, Y, X)
+    # # Ensure tensor format on GPU
+    # if isinstance(data, np.ndarray):
+    #     data_gpu = torch.from_numpy(data).float().to('cuda')
+    # else:
+    #     data_gpu = data.to('cuda') if not data.is_cuda else data
 
     T, Z, Y, X = data.shape
-    default_val = float(data[0, 0, 0, X - 1])
+    default_val = float(data[0, 0, 0, X - 1].item())
 
-    xmin = torch.full((Z,), -1, dtype=torch.int32, device=device)
-    xmax = torch.full((Z,), X - 1, dtype=torch.int32, device=device)
+    xmin = torch.full((Z,), -1, dtype=torch.int32, device='cuda')
+    xmax = torch.full((Z,), X - 1, dtype=torch.int32, device='cuda')
 
     y_sample_size = max(1, Y // 10)
-    y_indices = torch.randperm(Y, device=device)[:y_sample_size]  # (y_sample_size,)
+    y_indices = torch.randperm(Y, device='cuda')[:y_sample_size]
 
     for z in range(Z):
         found = False
         for x in range(X):
-            vals = data_gpu[0, z, y_indices, x]
+            vals = data[0, z, y_indices, x]
             all_default = (vals == default_val).all()
             if not all_default:
                 if not found:
@@ -139,31 +141,26 @@ def compute_boundaries_GPU(data: np.ndarray, params: dict) -> Tuple[np.ndarray, 
                 xmax[z] = x - 1
                 break
 
-    # Apply cropping
     xmin += pixel_cropped
     xmax -= pixel_cropped
 
-    # Broadcasting mask (Z, X)
-    x_range = torch.arange(X, device=device).unsqueeze(0)  # (1, X)
+    x_range = torch.arange(X, device='cuda').unsqueeze(0)  # (1, X)
     mask_zx = (x_range < xmin[:, None]) | (x_range >= (xmax[:, None] + 1))  # (Z, X)
-
-    # Apply to all T, Y
     mask = mask_zx.unsqueeze(0).unsqueeze(2)  # (1, Z, 1, X)
-    data_gpu[mask.expand(T, Z, Y, X)] = default_val
+    data[mask.expand(T, Z, Y, X)] = default_val
 
-    # Copy back to CPU for export
+    # Convert to CPU for output
     index_xmin = xmin.cpu().numpy()
     index_xmax = xmax.cpu().numpy()
-    data_result = data_gpu.cpu().numpy()
+    data_result = data.cpu().numpy()
 
     if save_results:
         os.makedirs(out_dir, exist_ok=True)
-        export_data(data_result, out_dir, export_as_single_tif=True,
-                    file_name="bounded_image_sequence")
+        export_data(data_result, out_dir, export_as_single_tif=True, file_name="bounded_image_sequence")
         save_numpy_tab(index_xmin, out_dir, file_name="index_Xmin.npy")
         save_numpy_tab(index_xmax, out_dir, file_name="index_Xmax.npy")
 
-    return index_xmin, index_xmax, default_val, data_result
+    return index_xmin, index_xmax, default_val, data
 
 
 def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
