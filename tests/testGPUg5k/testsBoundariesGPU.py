@@ -3,7 +3,7 @@ from astroca.tools.loadData import load_data, read_config
 from astroca.croppingBoundaries.cropper import crop_boundaries
 import cupy as cp
 
-def test_boundariesGPU(file_path: str = "home/maudigie/data/inputData/20stepsTimeScene.tif") -> None:
+def test_boundariesGPU(file_path: str = "/home/maudigie/data/inputData/20stepsTimeScene.tif") -> None:
     """
     Test the boundariesGPU function.
     """
@@ -16,7 +16,8 @@ def test_boundariesGPU(file_path: str = "home/maudigie/data/inputData/20stepsTim
     data = load_data(file_path, GPU_AVAILABLE=GPU_AVAILABLE)
     params = read_config()
     params["GPU_AVAILABLE"] = 1 if GPU_AVAILABLE else 0
-    index_xmin, index_xmax, default_value, data = compute_boundaries(crop_boundaries(data, params), params)
+    cropped_data = crop_boundaries(data, params)
+    index_xmin, index_xmax, default_value, data = compute_boundaries(cropped_data, params)
 
 if __name__ == "__main__":
     test_boundariesGPU()

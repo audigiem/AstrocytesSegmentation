@@ -43,6 +43,7 @@ def load_data(file_path: str, GPU_AVAILABLE: bool = False) -> np.ndarray:
         raise ValueError(f"Invalid file path: {file_path}. Must be a .tif file or a directory containing .tif files.")
     if GPU_AVAILABLE:
         # Convert to cupy array for GPU processing
+        print(f"Re")
         data = cp.asarray(data)
     else:
         # Ensure data is a numpy array for CPU processing
