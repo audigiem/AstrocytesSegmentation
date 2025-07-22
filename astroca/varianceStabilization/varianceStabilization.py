@@ -63,14 +63,14 @@ def compute_variance_stabilization_CPU(data: np.ndarray,
     return data
 
 
-def compute_variance_stabilization_GPU(data: np.ndarray,
+def compute_variance_stabilization_GPU(data: torch.Tensor,
                                        index_xmin: np.ndarray,
                                        index_xmax: np.ndarray,
-                                       params: dict) -> np.ndarray:
+                                       params: dict) -> torch.Tensor:
     """
     Applies Anscombe variance stabilization transform on GPU using PyTorch.
 
-    @param data: 4D NumPy array (T, Z, Y, X).
+    @param data: torch Tensor of shape (T, Z, Y, X) where T is time, Z is depth, Y is height, and X is width.
     @param index_xmin: 1D numpy array of shape (Z,) with left cropping bounds per z.
     @param index_xmax: 1D numpy array of shape (Z,) with right cropping bounds per z.
     @param params: Dictionary containing:
@@ -81,7 +81,6 @@ def compute_variance_stabilization_GPU(data: np.ndarray,
     print("=== Applying variance stabilization on GPU using PyTorch... ===")
 
     device = torch.device("cuda")
-    data_torch = torch.from_numpy(data.astype(np.float32)).to(device)
     index_xmin_torch = torch.from_numpy(index_xmin).to(device)
     index_xmax_torch = torch.from_numpy(index_xmax).to(device)
 
@@ -92,10 +91,10 @@ def compute_variance_stabilization_GPU(data: np.ndarray,
         x_max = index_xmax_torch[z].item() + 1
         if x_min >= x_max:
             continue
-        sub_volume = data_torch[:, z, :, x_min:x_max]
+        sub_volume = data[:, z, :, x_min:x_max]
         sub_volume.add_(3.0 / 8.0).sqrt_().mul_(2.0)
 
-    result = data_torch.cpu().numpy()
+    result = data.cpu().numpy()
 
     if int(params['save']['save_variance_stabilization']) == 1:
         out_dir = params['paths']['output_dir']
@@ -105,13 +104,13 @@ def compute_variance_stabilization_GPU(data: np.ndarray,
         export_data(result, out_dir, export_as_single_tif=True, file_name="variance_stabilized_sequence")
 
     print("=" * 60 + "\n")
-    return result
+    return data
 
 
-def compute_variance_stabilization(data: np.ndarray,
+def compute_variance_stabilization(data: np.ndarray | torch.Tensor,
                                    index_xmin: np.ndarray,
                                    index_xmax: np.ndarray,
-                                   params: dict) -> np.ndarray:
+                                   params: dict) -> np.ndarray | torch.Tensor:
     """
     Dispatcher for variance stabilization, CPU or GPU.
     """

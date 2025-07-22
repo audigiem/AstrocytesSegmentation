@@ -165,12 +165,12 @@ def compute_boundaries_GPU(data: torch.Tensor, params: dict) -> Tuple[np.ndarray
     return index_xmin, index_xmax, default_val, data
 
 
-def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+def compute_boundaries(data: np.ndarray | torch.Tensor, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray | torch.Tensor]:
     """
     Compute cropping boundaries in X for each Z slice based on background values.
     Sets boundary pixels to default_value and saves results optionally.
 
-    @param data: 4D data (T, Z, Y, X)
+    @param data: 4D data (T, Z, Y, X) as a numpy array or torch tensor.
     @param params: Dictionary containing the parameters:
         - pixel_cropped: Number of pixels to crop from the height dimension.
         - save_results: Boolean indicating whether to save the results.
