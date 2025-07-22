@@ -7,53 +7,36 @@ from astroca.tools.exportData import export_data
 import os
 import numpy as np
 
-try:
-    import cupy as cp
-    HAS_CUPY = True
-except ImportError:
-    HAS_CUPY = False
-    cp = None
+import numpy as np
+import os
+import torch
+from typing import Union
+
+
 
 def crop_boundaries_CPU(data: np.ndarray, params: dict) -> np.ndarray:
-    """
-    @brief Crop the boundaries of a 3D image sequence with time dimension.
-
-    @param data: 4D numpy array of shape (T, Z, Y, X) representing the image sequence.
-    @param params: Dictionary containing the cropping parameters:
-        - pixel_cropped: Number of pixels to crop from the height dimension.
-        - x_min: Minimum x-coordinate for cropping.
-        - x_max: Maximum x-coordinate for cropping.
-        - save_results: Boolean indicating whether to save the cropped data.
-        - output_directory: Directory to save the cropped data if save_results is True.
-    @return 4D numpy array of shape (T, Z, Y', X') representing the cropped image sequence,
-    where Y' = Y - pixel_cropped and X' = x_max - x_min
-    """
     print("=== Cropping boundaries and compute boundaries (CPU) ===")
     print(" - Cropping the boundaries of the image sequence...")
-    
-    # extract necessary parameters
+
     required_keys = {'preprocessing', 'save', 'paths'}
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+
     x_min = int(params['preprocessing']['x_min'])
     x_max = int(params['preprocessing']['x_max'])
     pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    save_results = int(params['save']['save_cropp_boundaries']) == 1  # Convert to boolean
+    save_results = int(params['save']['save_cropp_boundaries']) == 1
     output_directory = params['paths']['output_dir']
-    
-    
-    if len(data.shape) != 4 and len(data.shape) != 3:
-        raise ValueError(f"Input data must be a 4D (or 3D) numpy array with shape (T, Z, Y, X) or (Z, Y, X) but got shape {data.shape}.")
-    
-    T, Z, Y, X = data.shape    
 
-    start_depth, end_depth = (0, Z)  # No cropping in depth
-    start_height, end_height = (pixel_cropped, Y)  # Crop pixel_cropped pixels from the top
-    start_width, end_width = (x_min, x_max + 1)  # Crop from x_min to x_max (inclusive)
+    if len(data.shape) not in [3, 4]:
+        raise ValueError(f"Input must be a 3D or 4D numpy array, got {data.shape}")
 
-    # for all the frames in the time dimension, perform the cropping
-    cropped_data = data[:, start_depth:end_depth, start_height:end_height, start_width:end_width]
-    
+    if data.ndim == 3:
+        data = np.expand_dims(data, axis=0)
+
+    T, Z, Y, X = data.shape
+    cropped_data = data[:, :, pixel_cropped:Y, x_min:x_max + 1]
+
     print(f"    Cropped data shape: {cropped_data.shape}")
 
     if save_results:
@@ -62,27 +45,12 @@ def crop_boundaries_CPU(data: np.ndarray, params: dict) -> np.ndarray:
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         export_data(cropped_data, output_directory, export_as_single_tif=True, file_name="cropped_image_sequence")
+
     print()
-    
     return cropped_data
 
 
-def crop_boundaries_GPU(data: 'cp.ndarray', params: dict) -> 'cp.ndarray':
-    """
-    @brief Crop the boundaries of a 3D image sequence with time dimension using GPU.
-    @param data: 4D cupy array of shape (T, Z, Y, X) representing the image sequence.
-    @param params: Dictionary containing the cropping parameters:
-        - pixel_cropped: Number of pixels to crop from the height dimension.
-        - x_min: Minimum x-coordinate for cropping.
-        - x_max: Maximum x-coordinate for cropping.
-        - save_results: Boolean indicating whether to save the cropped data.
-        - output_directory: Directory to save the cropped data if save_results is True.
-    @return: 4D cupy array of shape (T, Z, Y', X') representing the cropped image sequence,
-             where Y' = Y - pixel_cropped and X' = x_max - x_min
-    """
-    if not HAS_CUPY:
-        raise RuntimeError("cupy is not available on this system.")
-
+def crop_boundaries_GPU(data: torch.Tensor, params: dict) -> torch.Tensor:
     print("=== Cropping boundaries and compute boundaries (GPU) ===")
     print(" - Cropping the boundaries of the image sequence...")
 
@@ -96,11 +64,12 @@ def crop_boundaries_GPU(data: 'cp.ndarray', params: dict) -> 'cp.ndarray':
     save_results = int(params['save']['save_cropp_boundaries']) == 1
     output_directory = params['paths']['output_dir']
 
-    if len(data.shape) != 4:
-        raise ValueError(f"Input data must be a 4D cupy array with shape (T, Z, Y, X), but got shape {data.shape}.")
+    if data.ndim != 4:
+        raise ValueError(f"Input data must be a 4D torch tensor (T, Z, Y, X), got shape {data.shape}.")
 
     T, Z, Y, X = data.shape
-    cropped_data = data[:, 0:Z, pixel_cropped:Y, x_min:x_max + 1]
+    cropped_data = data[:, :, pixel_cropped:Y, x_min:x_max + 1]
+
     print(f"    Cropped data shape: {cropped_data.shape}")
 
     if save_results:
@@ -108,23 +77,28 @@ def crop_boundaries_GPU(data: 'cp.ndarray', params: dict) -> 'cp.ndarray':
             raise ValueError("output_directory must be specified if save_results is True.")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-        # Convert to numpy before export
-        cropped_data_cpu = cp.asnumpy(cropped_data)
+        # Copy data back to CPU before saving
+        cropped_data_cpu = cropped_data.cpu().numpy()
         export_data(cropped_data_cpu, output_directory, export_as_single_tif=True, file_name="cropped_image_sequence")
 
     print()
     return cropped_data
 
 
-def crop_boundaries(data, params: dict):
+def crop_boundaries(data: Union[np.ndarray, torch.Tensor], params: dict):
     """
-    Wrapper function that dispatches to CPU or GPU version based on params['GPU_AVAILABLE'].
+    Wrapper that dispatches to CPU or GPU version depending on GPU_AVAILABLE flag.
     """
-    bool = int(params['GPU_AVAILABLE']) == 1
-    if bool:
+    use_gpu = int(params.get('GPU_AVAILABLE', 0)) == 1
+    if use_gpu:
         print("GPU processing requested.")
-        if not HAS_CUPY:
-            raise RuntimeError("GPU processing requested but cupy is not installed.")
+        if not isinstance(data, torch.Tensor):
+            # Convert from numpy to torch.Tensor on GPU
+            data = torch.from_numpy(data).float().to("cuda")
+        else:
+            data = data.to("cuda")
         return crop_boundaries_GPU(data, params)
     else:
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
         return crop_boundaries_CPU(data, params)

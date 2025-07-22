@@ -12,8 +12,9 @@ from astroca.tools.exportData import export_data, save_numpy_tab
 import os
 from tqdm import tqdm
 from typing import List, Dict, Tuple, Any
-import cupy as cp
+# import cupy as cp
 from numba import cuda
+import torch
 
 
 
@@ -94,82 +95,75 @@ def compute_boundaries_CPU(data: np.ndarray, params: dict) -> Tuple[np.ndarray, 
     return index_xmin, index_xmax, default_value, data
 
 
-@cuda.jit
-def _find_bounds(frame, default_val, xmin, xmax, pixel_cropped):
-    """Kernel par Z pour détecter xmin / xmax."""
-    z = cuda.grid(1)
-    Z, Y, X = frame.shape
-    if z >= Z:
-        return
-    found = False
-    for x in range(X):
-        # échantillonner 10% des Y (heuristique simplifiée)
-        step = max(1, Y // 10)
-        all_default = True
-        y = 0
-        while y < Y:
-            if frame[z, y, x] != default_val:
-                all_default = False
-                break
-            y += step
-        if not all_default and not found:
-            xmin[z] = x
-            found = True
-        elif all_default and found:
-            xmax[z] = x - 1
-            break
-    # post‑traitement (padding)
-    xmin[z] += pixel_cropped
-    xmax[z] -= pixel_cropped
-
-def compute_boundaries_GPU(data: cp.ndarray, params: dict) -> Tuple[cp.ndarray, cp.ndarray, float, cp.ndarray]:
+def compute_boundaries_GPU(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
     """
-    Compute cropping boundaries in X for each Z slice based on background values using GPU.
+    Compute cropping boundaries in X for each Z slice using PyTorch on GPU.
 
-    @param data: 4D data (T, Z, Y, X) as a cupy array
+    @param data: 4D numpy array (T, Z, Y, X)
     @param params: Dictionary containing the parameters:
         - pixel_cropped: Number of pixels to crop from the height dimension.
         - save_results: Boolean indicating whether to save the results.
         - output_directory: Directory to save the results if save_results is True.
     @return: (index_xmin, index_xmax, default_value, data)
     """
-    print(" - Computing cropping boundaries in X for each Z slice (GPU)...")
-    
-    # extract necessary parameters
-    required_keys = {'preprocessing', 'save', 'paths'}
-    if not required_keys.issubset(params.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+    print(" - Computing cropping boundaries in X for each Z slice (PyTorch GPU)...")
+
+    # Extract parameters
     pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    save_results  = int(params['save']['save_boundaries']) == 1
-    out_dir       = params['paths']['output_dir']
+    save_results = int(params['save']['save_boundaries']) == 1
+    out_dir = params['paths']['output_dir']
+
+    # Convert to GPU tensor
+    device = torch.device('cuda')
+    data_gpu = torch.from_numpy(data).float().to(device)  # (T, Z, Y, X)
 
     T, Z, Y, X = data.shape
-    default_val = float(data[0, 0, 0, X-1])
+    default_val = float(data[0, 0, 0, X - 1])
 
-    xmin = cp.full(Z, -1, dtype=cp.int32)
-    xmax = cp.full(Z,  X-1, dtype=cp.int32)
-    threads, blocks = 128, (Z + 127)//128
-    _find_bounds[blocks, threads](data[0], default_val, xmin, xmax, pixel_cropped)
-    cuda.synchronize()
+    xmin = torch.full((Z,), -1, dtype=torch.int32, device=device)
+    xmax = torch.full((Z,), X - 1, dtype=torch.int32, device=device)
 
-    arange_x = cp.arange(X)                          # shape (X,)
-    # Broadcasting : (Z,1)  vs  (1,X)  → (Z,X)
-    mask_left  = arange_x[None, :] <  (xmin + pixel_cropped)[:, None]
-    mask_right = arange_x[None, :] >= (xmax - pixel_cropped + 1)[:, None]
-    mask_zx    = cp.logical_or(mask_left, mask_right)           # shape (Z,X)
+    y_sample_size = max(1, Y // 10)
+    y_indices = torch.randperm(Y, device=device)[:y_sample_size]  # (y_sample_size,)
 
-    # Diffusion paresseuse : (1,Z,1,X) se propage sur T et Y
-    mask_4d = mask_zx[None, :, None, :]              # shape (1,Z,1,X)
-    data[mask_4d] = default_val                      # remplissage GPU
+    for z in range(Z):
+        found = False
+        for x in range(X):
+            vals = data_gpu[0, z, y_indices, x]
+            all_default = (vals == default_val).all()
+            if not all_default:
+                if not found:
+                    xmin[z] = x
+                    found = True
+            elif found:
+                xmax[z] = x - 1
+                break
+
+    # Apply cropping
+    xmin += pixel_cropped
+    xmax -= pixel_cropped
+
+    # Broadcasting mask (Z, X)
+    x_range = torch.arange(X, device=device).unsqueeze(0)  # (1, X)
+    mask_zx = (x_range < xmin[:, None]) | (x_range >= (xmax[:, None] + 1))  # (Z, X)
+
+    # Apply to all T, Y
+    mask = mask_zx.unsqueeze(0).unsqueeze(2)  # (1, Z, 1, X)
+    data_gpu[mask.expand(T, Z, Y, X)] = default_val
+
+    # Copy back to CPU for export
+    index_xmin = xmin.cpu().numpy()
+    index_xmax = xmax.cpu().numpy()
+    data_result = data_gpu.cpu().numpy()
 
     if save_results:
         os.makedirs(out_dir, exist_ok=True)
-        export_data(data, out_dir, export_as_single_tif=True,
+        export_data(data_result, out_dir, export_as_single_tif=True,
                     file_name="bounded_image_sequence")
-        save_numpy_tab(xmin, out_dir, file_name="index_Xmin.npy")
-        save_numpy_tab(xmax, out_dir, file_name="index_Xmax.npy")
+        save_numpy_tab(index_xmin, out_dir, file_name="index_Xmin.npy")
+        save_numpy_tab(index_xmax, out_dir, file_name="index_Xmax.npy")
 
-    return xmin, xmax, default_val, data
+    return index_xmin, index_xmax, default_val, data_result
 
 
 def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
