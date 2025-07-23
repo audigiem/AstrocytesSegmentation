@@ -202,22 +202,27 @@ def show_offset_voxels_diff(differences: np.ndarray, expected_sequence_path: str
 
 def main():
     # Define paths to expected and output files
-    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/"
-    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/"
+    EXPECTED_DIR_PATH = "/home/maudigie/data/outputData/testCPU/"
+    OUTPUT_DIR_PATH = "/home/maudigie/data/outputData/testGPU/"
 
-    expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
+    # expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
+    expected_f0_path = EXPECTED_DIR_PATH + "F0_estimated.tif"
     output_f0_path = OUTPUT_DIR_PATH + "F0_estimated.tif"
 
-    expected_cropped_path = EXPECTED_DIR_PATH + "data_cropped.tif"
+    # expected_cropped_path = EXPECTED_DIR_PATH + "data_cropped.tif"
+    expected_cropped_path = EXPECTED_DIR_PATH + "cropped_image_sequence.tif"
     output_cropped_path = OUTPUT_DIR_PATH + "cropped_image_sequence.tif"
 
-    expected_boundaries_path = EXPECTED_DIR_PATH + "data_boundaries.tif"
+    # expected_boundaries_path = EXPECTED_DIR_PATH + "data_boundaries.tif"
+    expected_boundaries_path = EXPECTED_DIR_PATH + "bounded_image_sequence.tif"
     output_boundaries_path = OUTPUT_DIR_PATH + "bounded_image_sequence.tif"
 
-    expected_anscombe_path = EXPECTED_DIR_PATH + "anscombeTransform.tif"
+    # expected_anscombe_path = EXPECTED_DIR_PATH + "anscombeTransform.tif"
+    expected_anscombe_path = EXPECTED_DIR_PATH + "variance_stabilized_sequence.tif"
     output_anscombe_path = OUTPUT_DIR_PATH + "variance_stabilized_sequence.tif"
 
-    expected_dF_path = EXPECTED_DIR_PATH + "dF.tif"
+    # expected_dF_path = EXPECTED_DIR_PATH + "dF.tif"
+    expected_dF_path = EXPECTED_DIR_PATH + "dynamic_image_dF.tif"
     output_dF_path = OUTPUT_DIR_PATH + "dynamic_image_dF.tif"
 
     expected_Zscore_path = EXPECTED_DIR_PATH + "Zscore.tif"
@@ -250,21 +255,21 @@ def main():
     print("Comparing files after each step...")
     print("Step 1: Comparing files after crop and boundaries computations...")
     
-    # compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
+    compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
     compare_sequence(expected_boundaries_path, output_boundaries_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
     
-    # print("Step 2: Comparing files after Anscombe transform...")
-    # compare_sequence(expected_anscombe_path, output_anscombe_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
+    print("Step 2: Comparing files after Anscombe transform...")
+    compare_sequence(expected_anscombe_path, output_anscombe_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
     
     print("Step 3: Comparing files after F0 estimation...")
     compare_files(expected_f0_path, output_f0_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
     
-    # print("Step 4: Comparing files after dF computation...")
-    # compare_sequence(expected_dF_path, output_dF_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
+    print("Step 4: Comparing files after dF computation...")
+    compare_sequence(expected_dF_path, output_dF_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
 
     # print("Step 5: Comparing files after Z-score computation...")
     # compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=save_results, percentage_accuracy=1e-6)
@@ -282,21 +287,21 @@ def main():
     # compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
     # print()
     
-    print("Step 9: Comparing files after calcium events detection...")
-    compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
+    # print("Step 9: Comparing files after calcium events detection...")
+    # compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
 
     # print("Step 10: Comparing files after Anscombe inverse transform...")
     # compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
     # print()
 
-    print("Step 11: Comparing files after amplitude computation...")
-    compare_sequence(expected_amplitude_image_path, output_amplitude_image_path, save_diff=save_results, percentage_accuracy=1e-6)
-    print()
-    
-    print(f"Step 12: Comparing CSV files for features with a float precision of {10 ** -features_float_precision}...")
-    compare_csv_files(expected_csv_path, output_csv_path, float_precision=features_float_precision)
-    print()
+    # print("Step 11: Comparing files after amplitude computation...")
+    # compare_sequence(expected_amplitude_image_path, output_amplitude_image_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # print()
+    #
+    # print(f"Step 12: Comparing CSV files for features with a float precision of {10 ** -features_float_precision}...")
+    # compare_csv_files(expected_csv_path, output_csv_path, float_precision=features_float_precision)
+    # print()
     
     print("All comparisons completed.")
 
