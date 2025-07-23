@@ -55,6 +55,8 @@ def estimate_std_map_over_time_GPU(data: torch.Tensor, xmin: np.ndarray, xmax: n
         std_map[z, :, x0:x1] = mad_with_pseudo_residual_GPU(res_slice)
 
     std_map_exported = std_map.cpu().numpy()  # Convert to NumPy for export
+    if std_map_exported.ndim == 3:
+        std_map_exported = np.expand_dims(std_map_exported, axis=0)
     export_data(std_map_exported, "/home/maudigie/data/outputData/debug/", export_as_single_tif=True, file_name="stdMapGPU")
     return std_map
 
