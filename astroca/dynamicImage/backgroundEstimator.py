@@ -176,32 +176,26 @@ def background_estimation_GPU(data: torch.Tensor,
             continue
 
         roi = data[:, z, :, x_min:x_max + 1]  # shape: (T, Y, X_roi)
-        T_roi, Y_roi, X_roi = roi.shape
 
-        if Y_roi != Y or X_roi != (x_max - x_min + 1):
-            raise RuntimeError(
-                f"[Z={z}] ROI shape mismatch: expected Y={Y}, got Y_roi={Y_roi}; X_roi={X_roi}, expected {x_max - x_min + 1}")
-
-        # Unfold over time (dim 0): (T - w + 1, w, Y, X)
-        windowed = roi.unfold(0, moving_window, 1)  # (num_iter, moving_window, Y, X)
+        # Unfold over time (dim 0): (T - w + 1, w, Y, X_roi)
+        windowed = roi.unfold(0, moving_window, 1)  # (num_iter, moving_window, Y, X_roi)
         windowed = windowed.permute(1, 0, 2, 3)  # shape: (moving_window, num_iter, Y, X_roi)
 
         if method2 == "Mean":
-            moving_vals = torch.mean(windowed, dim=0)  # (num_iter, Y, X)
+            moving_vals = torch.mean(windowed, dim=0)  # (num_iter, Y, X_roi)
         else:  # Med
-            moving_vals = torch.median(windowed, dim=0).values  # (num_iter, Y, X)
+            moving_vals = torch.median(windowed, dim=0).values  # (num_iter, Y, X_roi)
 
         if method == "min":
-            result = torch.min(moving_vals, dim=0).values  # (Y, X)
+            result = torch.min(moving_vals, dim=0).values  # (Y, X_roi)
         else:  # percentile
             k = int(np.ceil((percentile / 100.0) * num_iter))
             k = np.clip(k, 1, num_iter)
             sorted_vals, _ = torch.sort(moving_vals, dim=0)
-            result = sorted_vals[k - 1]  # kth smallest (Y, X)
+            result = sorted_vals[k - 1]  # kth smallest (Y, X_roi)
 
-        print(f"result shape: {result.shape}")
-        print(f"result.permute(1, 0) shape: {result.permute(1, 0).shape}")
-        print(f"Target slice shape: {F0[0, z, :, x_min:x_max + 1].shape}")
+        # CORRECTION : Assigner directement result qui a la forme (Y, X_roi)
+        # à la slice correspondante dans F0
         F0[0, z, :, x_min:x_max + 1] = result
 
     if save_results:
