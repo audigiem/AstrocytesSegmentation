@@ -177,9 +177,9 @@ def background_estimation_GPU(data: torch.Tensor,
 
         roi = data[:, z, :, x_min:x_max + 1]  # shape: (T, Y, X_roi)
 
-        # Unfold over time (dim 0): (T - w + 1, w, Y, X_roi)
-        windowed = roi.unfold(0, moving_window, 1)  # (num_iter, moving_window, Y, X_roi)
-        windowed = windowed.permute(1, 0, 2, 3)  # shape: (moving_window, num_iter, Y, X_roi)
+        # Unfold over time (dim 0): (num_iter, Y, X_roi, moving_window)
+        windowed = roi.unfold(0, moving_window, 1)  # (num_iter, Y, X_roi, moving_window)
+        windowed = windowed.permute(3, 0, 1, 2)  # shape: (moving_window, num_iter, Y, X_roi)
 
         if method2 == "Mean":
             moving_vals = torch.mean(windowed, dim=0)  # (num_iter, Y, X_roi)
