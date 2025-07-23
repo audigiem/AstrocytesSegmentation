@@ -22,12 +22,12 @@ class FeaturesTest(unittest.TestCase):
         @brief Set up the test case with synthetic data.
         """
         self.base_data = load_data("/home/maudigie/data/outputData/testCPU/dynamic_image_dF.tif")
-        self.index_xmin = np.load("home/maudigie/data/outputData/testCPU/index_Xmin.npy")
-        self.index_xmax = np.load("home/maudigie/data/outputData/testCPU/index_Xmax.npy")
-        self.stdMapGPU = load_data("home/maudigie/data/outputData/debug/stdMapGPU.tif")
-        self.stdMapCPU = load_data("home/maudigie/data/outputData/debug/stdMapCPU.tif")
-        self.residualGPU = load_data("home/maudigie/data/outputData/debug/residualsGPU.tif")
-        self.residualCPU = load_data("home/maudigie/data/outputData/debug/residualsCPU.tif")
+        self.index_xmin = np.load("/home/maudigie/data/outputData/testCPU/index_Xmin.npy")
+        self.index_xmax = np.load("/home/maudigie/data/outputData/testCPU/index_Xmax.npy")
+        self.stdMapGPU = load_data("/home/maudigie/data/outputData/debug/stdMapGPU.tif")
+        self.stdMapCPU = load_data("/home/maudigie/data/outputData/debug/stdMapCPU.tif")
+        self.residualGPU = load_data("/home/maudigie/data/outputData/debug/residualsGPU.tif")
+        self.residualCPU = load_data("/home/maudigie/data/outputData/debug/residualsCPU.tif")
 
     def test_event_detection(self):
         """
