@@ -257,6 +257,18 @@ def main():
     
     compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
     compare_sequence(expected_boundaries_path, output_boundaries_path, save_diff=save_results, percentage_accuracy=1e-6)
+    expected_XMIN = np.load(EXPECTED_DIR_PATH + "index_Xmin.npy")
+    expected_XMAX = np.load(EXPECTED_DIR_PATH + "index_Xmax.npy")
+    output_XMIN = np.load(OUTPUT_DIR_PATH + "index_Xmin.npy")
+    output_XMAX = np.load(OUTPUT_DIR_PATH + "index_Xmax.npy")
+    if np.array_equal(expected_XMIN, output_XMIN) and np.array_equal(expected_XMAX, output_XMAX):
+        print("Xmin and Xmax arrays are identical.")
+    else:
+        print("Xmin and Xmax arrays differ.")
+        print(f"Expected Xmin: {expected_XMIN}")
+        print(f"Output Xmin: {output_XMIN}")
+        print(f"Expected Xmax: {expected_XMAX}")
+        print(f"Output Xmax: {output_XMAX}")
     print()
     
     print("Step 2: Comparing files after Anscombe transform...")

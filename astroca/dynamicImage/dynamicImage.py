@@ -117,7 +117,9 @@ def compute_dynamic_image_GPU(data: torch.Tensor, F0: torch.Tensor, index_xmin: 
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
 
-    dF = torch.empty_like(data)
+    # CORRECTION 1: Utiliser torch.copy() au lieu de torch.empty_like()
+    # pour commencer avec les données originales comme dans la version CPU
+    dF = data.clone()
 
     # Préallocation avec estimation maximale
     width_without_zeros = sum(max(0, index_xmax[z] - index_xmin[z] + 1) for z in range(Z))
@@ -130,19 +132,26 @@ def compute_dynamic_image_GPU(data: torch.Tensor, F0: torch.Tensor, index_xmin: 
             x_min, x_max = index_xmin[z], index_xmax[z] + 1
             if x_min >= x_max:
                 continue
-            # Vectorisé sur Y
+            # CORRECTION 2: Calculer delta exactement comme dans la version CPU
             delta = data[t, z, :, x_min:x_max] - F0[it, z, :, x_min:x_max]
             dF[t, z, :, x_min:x_max] = delta
             n = x_max - x_min
-            flattened_dF[k:k + Y * n] = delta.view(-1)
+            # CORRECTION 3: Utiliser reshape(-1) au lieu de view(-1)
+            # pour être cohérent avec NumPy
+            flattened_dF[k:k + Y * n] = delta.reshape(-1)
             k += Y * n
+
+    # CORRECTION 4: S'assurer que le calcul de médiane est identique
     mean_noise = float(torch.median(flattened_dF[:k]))
     print(f"    mean_Noise = {mean_noise:.6f}")
+
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_results is True.")
         os.makedirs(output_directory, exist_ok=True)
-        export_data(dF.cpu().numpy(), output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
+        # CORRECTION 5: Convertir en NumPy avec le bon dtype
+        export_data(dF.cpu().numpy().astype(np.float64), output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
+
     print()
     return dF, mean_noise
 
