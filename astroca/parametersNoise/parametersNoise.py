@@ -43,7 +43,7 @@ def estimate_std_map_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndar
             continue
         res_slice = residuals[:, z, :, x0:x1]  # (T-1, Y, Xroi)
         std_map[z, :, x0:x1] = mad_with_pseudo_residual(res_slice)
-    if export_data.ndim == 3:
+    if std_map.ndim == 3:
         std_map = np.expand_dims(std_map, axis=0)
     export_data(std_map, "/home/maudigie/data/outputData/debug/", export_as_single_tif=True, file_name="stdMapCPU")
     return std_map

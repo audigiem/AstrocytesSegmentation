@@ -30,7 +30,7 @@ def compute_frame_accuracy(expected_frame: np.ndarray, differences: np.ndarray, 
         frame_accuracy = 0.0
     return frame_accuracy
 
-def compare_files(expected_file_path: str, output_file_path: str, percentage_accuracy: float = 0.01, save_diff: bool = False):
+def compare_files(expected_file_path: str, output_file_path: str, percentage_accuracy: float = 0.01, save_diff: bool = False) -> bool:
     """
     Compare two files and print statistics about their differences.
     
@@ -85,6 +85,9 @@ def compare_files(expected_file_path: str, output_file_path: str, percentage_acc
         diff_file_path = os.path.join(os.path.dirname(output_file_path), diff_file_name)
         imwrite(diff_file_path, differences.astype(np.float32))
         print(f"Differences saved to {diff_file_path}")
+    if tag_differences:
+        return False
+    return True
 
 def compare_sequence(expected_sequence_path: str, output_sequence_path: str, percentage_accuracy: float = 0.01, save_diff: bool = False):
     """
@@ -96,6 +99,7 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
     @param save_diff: If True, saves the differences to a new .tif file containing all the differences frames.
     @raise FileNotFoundError: If either the expected sequence path or the output sequence path does not exist.
     @raise ValueError: If the shapes of the expected and output sequences do not match.
+    @return: True if the sequences are identical, False otherwise.
     """
     if not os.path.exists(expected_sequence_path):
         raise FileNotFoundError(f"Expected sequence path {expected_sequence_path} does not exist.")
