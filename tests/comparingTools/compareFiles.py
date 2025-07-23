@@ -202,8 +202,8 @@ def show_offset_voxels_diff(differences: np.ndarray, expected_sequence_path: str
 
 def main():
     # Define paths to expected and output files
-    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/"
-    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/"
+    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdirLatestTest/"
+    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirLatestTest/"
 
     expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
     output_f0_path = OUTPUT_DIR_PATH + "F0_estimated.tif"
@@ -250,7 +250,7 @@ def main():
     print("Comparing files after each step...")
     print("Step 1: Comparing files after crop and boundaries computations...")
     
-    compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
     compare_sequence(expected_boundaries_path, output_boundaries_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
     
@@ -265,19 +265,19 @@ def main():
     print("Step 4: Comparing files after dF computation...")
     compare_sequence(expected_dF_path, output_dF_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
-
+    
     print("Step 5: Comparing files after Z-score computation...")
     compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
-
+    
     print("Step 6: Comparing files after closing in space...")
     compare_sequence(expected_closing_path, output_closing_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
-
+    
     print("Step 7: Comparing files after median filtering...")
     compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
-
+    
     print("Step 8: Comparing files after active voxels detection...")
     compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()

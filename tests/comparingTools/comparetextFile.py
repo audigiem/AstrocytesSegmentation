@@ -47,7 +47,7 @@ if __name__ == "__main__":
     import sys
     if len(sys.argv) == 1:
         file2 = "/home/matteo/Bureau/INRIA/codePython/AstrocytesSegmentation/sizeEventPython.txt"
-        file1 = "/home/matteo/Bureau/INRIA/codePython/AstrocytesSegmentation/SizeEventJava.txt"
+        file1 = "/home/matteo/Bureau/INRIA/codePython/AstrocytesSegmentation/sizeEventJava.txt"
         compare_files(file1, file2) 
     
     
