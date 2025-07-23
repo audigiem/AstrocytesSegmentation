@@ -82,7 +82,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     # === Compute dF and noise ===
     dF, mean_noise = run_step("compute_dynamic_image", compute_dynamic_image, data, F0, index_xmin, index_xmax, T,
                               params)
-    std_noise = run_step("estimate_std_noise", estimate_std_over_time, dF, index_xmin, index_xmax)
+    std_noise = run_step("estimate_std_noise", estimate_std_over_time, dF, index_xmin, index_xmax, GPU_AVAILABLE)
 
     # === Active voxels ===
     active_voxels = run_step("find_active_voxels", find_active_voxels, dF, std_noise, mean_noise, index_xmin,
@@ -137,19 +137,19 @@ def run_pipeline():
 
     # === Compute dF and background noise estimation ===
     dF, mean_noise = compute_dynamic_image(data, F0, index_xmin, index_xmax, T, params)
-    std_noise = estimate_std_over_time(dF, index_xmin, index_xmax)
+    std_noise = estimate_std_over_time(dF, index_xmin, index_xmax, GPU_AVAILABLE)
 
-    # === Compute Z-score, closing morphology, median filter ===
-    active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)
-
-    # === Detect calcium events ===
-    id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
-    
-    # === Compute image amplitude ===
-    image_amplitude = compute_image_amplitude(raw_data, F0, index_xmin, index_xmax, params)
-    
-    # === Compute features ===
-    save_features_from_events(id_connections, ids_events, image_amplitude, params_values=params)
+    # # === Compute Z-score, closing morphology, median filter ===
+    # active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)
+    #
+    # # === Detect calcium events ===
+    # id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
+    #
+    # # === Compute image amplitude ===
+    # image_amplitude = compute_image_amplitude(raw_data, F0, index_xmin, index_xmax, params)
+    #
+    # # === Compute features ===
+    # save_features_from_events(id_connections, ids_events, image_amplitude, params_values=params)
     end_time = time.time() - time_start
     print(f"Pipeline completed in {end_time:.2f} seconds.")
 

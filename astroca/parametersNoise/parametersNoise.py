@@ -5,6 +5,8 @@
 """
 import numpy as np
 from tqdm import tqdm
+from astroca.parametersNoise.parametersNoiseGPU import estimate_std_over_time_GPU
+import torch
 
 def compute_pseudo_residuals(data: np.ndarray) -> np.ndarray:
     """
@@ -42,7 +44,7 @@ def estimate_std_map_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndar
     
     return std_map
 
-def estimate_std_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray) -> float:
+def estimate_std_over_time_CPU(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray) -> float:
     """
     Final std estimation as the median of the 3D map excluding zeros.
     @param data: 4D numpy array of shape (T, Z, Y, X) representing the image sequence.
@@ -58,3 +60,24 @@ def estimate_std_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray)
     print(60*"=")
     print()
     return std
+
+
+def estimate_std_over_time(data: np.ndarray | torch.Tensor, xmin: np.ndarray, xmax: np.ndarray, GPU_AVAILABLE: bool = False) -> float:
+    """
+    Wrapper function to estimate the standard deviation of the noise over time.
+    Chooses between CPU and GPU implementations based on the data type.
+
+    @param data: 4D numpy array or torch tensor of shape (T, Z, Y, X) representing the image sequence.
+    @param xmin: 1D array of cropping bounds (left) for each Z slice.
+    @param xmax: 1D array of cropping bounds (right) for each Z slice.
+    @return: Estimated standard deviation of the noise over time.
+    """
+    if GPU_AVAILABLE:
+        if not isinstance(data, torch.Tensor):
+            raise TypeError("When GPU is available, data must be a torch.Tensor.")
+        return estimate_std_over_time_GPU(data, xmin, xmax)
+
+    else:
+        if not isinstance(data, np.ndarray):
+            raise TypeError("When GPU is not available, data must be a numpy.ndarray.")
+        return estimate_std_over_time_CPU(data, xmin, xmax)

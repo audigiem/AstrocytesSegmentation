@@ -150,7 +150,7 @@ def compute_dynamic_image_GPU(data: torch.Tensor, F0: torch.Tensor, index_xmin: 
             raise ValueError("Output directory must be specified when save_results is True.")
         os.makedirs(output_directory, exist_ok=True)
         # CORRECTION 5: Convertir en NumPy avec le bon dtype
-        export_data(dF.cpu().numpy().astype(np.float64), output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
+        export_data(dF.cpu().numpy().astype(np.float32), output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
 
     print()
     return dF, mean_noise
