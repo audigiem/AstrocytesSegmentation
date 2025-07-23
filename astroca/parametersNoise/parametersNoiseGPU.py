@@ -6,6 +6,7 @@
 import torch
 import numpy as np
 from tqdm import tqdm
+from astroca.tools.exportData import export_data
 
 
 def compute_pseudo_residuals_GPU(data: torch.Tensor) -> torch.Tensor:
@@ -39,6 +40,9 @@ def estimate_std_map_over_time_GPU(data: torch.Tensor, xmin: np.ndarray, xmax: n
     """
     T, Z, Y, X = data.shape
     residuals = compute_pseudo_residuals_GPU(data)  # Shape: (T-1, Z, Y, X)
+    residuals_exported = residuals.cpu().numpy()  # Convert to NumPy for export
+    export_data(residuals_exported, "/home/maudigie/data/outputData/debug/", export_as_single_tif=True, file_name="residualsGPU")
+
 
     # Initialiser avec NaN comme dans la version CPU
     std_map = torch.full((Z, Y, X), float('nan'), dtype=torch.float32, device=data.device)
@@ -50,6 +54,8 @@ def estimate_std_map_over_time_GPU(data: torch.Tensor, xmin: np.ndarray, xmax: n
         res_slice = residuals[:, z, :, x0:x1]  # (T-1, Y, Xroi)
         std_map[z, :, x0:x1] = mad_with_pseudo_residual_GPU(res_slice)
 
+    std_map_exported = std_map.cpu().numpy()  # Convert to NumPy for export
+    export_data(std_map_exported, "/home/maudigie/data/outputData/debug/", export_as_single_tif=True, file_name="stdMapGPU")
     return std_map
 
 
