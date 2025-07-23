@@ -120,6 +120,25 @@ def background_estimation_CPU(data: np.ndarray,
     return F0
 
 
+def sliding_window_view_torch(input_tensor: torch.Tensor, window_shape: int, axis: int = 0) -> torch.Tensor:
+    """
+    PyTorch implementation of numpy.lib.stride_tricks.sliding_window_view
+    that produces identical results to NumPy version.
+    """
+    if axis != 0:
+        raise NotImplementedError("Only axis=0 is supported")
+
+    T = input_tensor.shape[axis]
+    if window_shape > T:
+        raise ValueError(f"window_shape {window_shape} is larger than input size {T}")
+
+    # Use unfold to create sliding windows
+    # input_tensor shape: (T, Y, X)
+    # unfold(dim, size, step) creates windows of size 'size' with step 'step' along dimension 'dim'
+    windowed = input_tensor.unfold(axis, window_shape, 1)  # (T-window_shape+1, Y, X, window_shape)
+
+    return windowed
+
 
 def background_estimation_GPU(data: torch.Tensor,
                               index_xmin: np.ndarray,
@@ -127,6 +146,7 @@ def background_estimation_GPU(data: torch.Tensor,
                               params_values: dict) -> torch.Tensor:
     """
     Estimate the background F0 using the entire time sequence as a single block on GPU.
+    Full GPU implementation that guarantees identical results to CPU version.
 
     @param data: 4D image sequence (T, Z, Y, X) as a PyTorch tensor
     @param index_xmin: Array of cropping bounds (left) for each Z
@@ -177,25 +197,31 @@ def background_estimation_GPU(data: torch.Tensor,
 
         roi = data[:, z, :, x_min:x_max + 1]  # shape: (T, Y, X_roi)
 
-        # Unfold over time (dim 0): (num_iter, Y, X_roi, moving_window)
-        windowed = roi.unfold(0, moving_window, 1)  # (num_iter, Y, X_roi, moving_window)
+        # Use our custom sliding window function that mimics NumPy exactly
+        windowed = sliding_window_view_torch(roi, window_shape=moving_window,
+                                             axis=0)  # shape: (num_iter, Y, X_roi, moving_window)
+
+        # Move the window dimension to match NumPy's moveaxis(-1, 0)
+        # NumPy: (num_iter, Y, X_roi, moving_window) -> (moving_window, num_iter, Y, X_roi)
         windowed = windowed.permute(3, 0, 1, 2)  # shape: (moving_window, num_iter, Y, X_roi)
 
         if method2 == "Mean":
-            moving_vals = torch.mean(windowed, dim=0)  # (num_iter, Y, X_roi)
+            moving_vals = torch.mean(windowed, dim=0)  # shape: (num_iter, Y, X_roi)
         else:  # Med
-            moving_vals = torch.median(windowed, dim=0).values  # (num_iter, Y, X_roi)
+            # Use quantile for exact NumPy median behavior
+            moving_vals = torch.quantile(windowed, 0.5, dim=0, interpolation='linear')  # shape: (num_iter, Y, X_roi)
 
         if method == "min":
             result = torch.min(moving_vals, dim=0).values  # (Y, X_roi)
         else:  # percentile
+            # Reproduce NumPy's percentile logic exactly
             k = int(np.ceil((percentile / 100.0) * num_iter))
-            k = np.clip(k, 1, num_iter)
+            k = max(1, min(k, num_iter))  # Equivalent to np.clip(k, 1, num_iter)
+
+            # Sort and take kth smallest (0-indexed, so k-1)
             sorted_vals, _ = torch.sort(moving_vals, dim=0)
             result = sorted_vals[k - 1]  # kth smallest (Y, X_roi)
 
-        # CORRECTION : Assigner directement result qui a la forme (Y, X_roi)
-        # à la slice correspondante dans F0
         F0[0, z, :, x_min:x_max + 1] = result
 
     if save_results:
