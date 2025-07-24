@@ -161,6 +161,12 @@ Available options for time profiling:
 poetry run ./tests/main.py --stats
 ```
 
+Note: For better time profiling, you can add @profile above any function you want to analyze (except those decorated with Numba's @njit or @jit).
+Then run the code with:
+```bash
+poetry run kernprof -l -v ./tests/main.py 
+```
+
 Silent execution option:
 ```bash
 poetry run ./tests/main.py --quiet
