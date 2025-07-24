@@ -172,24 +172,115 @@ class TableWidget(QWidget):
 
         self._hidden_rows = []
         ### Fin ajout de ma part
+        
+                ### Définir le layout principal avant d’ajouter quoi que ce soit
+        main_layout = QGridLayout()
+        self.setLayout(main_layout)
+
+        ### Bouton filtrage déjà existant
+        filter_button = QPushButton("Find simultaneous events")
+        filter_button.clicked.connect(self._filter)
+
+        self._label_text_box = QLineEdit()
+
+        reset_button = QPushButton("Reset table")
+        reset_button.clicked.connect(self._reset_view_from_viewer)
+
+        # Layout pour les boutons d'action existants
+        action_widget = QWidget()
+        action_layout = QHBoxLayout()
+        action_layout.addWidget(filter_button)
+        action_layout.addWidget(self._label_text_box)
+        action_layout.addWidget(reset_button)
+        action_layout.setSpacing(3)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        action_widget.setLayout(action_layout)
+
+        # Zone de saisie pour labels à afficher (NOUVEAU)
+        self._highlight_box = QLineEdit()
+        self._highlight_box.setPlaceholderText("ex: 12 ou 12,15,18")
+
+        highlight_button = QPushButton("Afficher événement(s)")
+        highlight_button.clicked.connect(self._highlight_labels)
+
+        highlight_widget = QWidget()
+        highlight_layout = QHBoxLayout()
+        highlight_layout.addWidget(self._highlight_box)
+        highlight_layout.addWidget(highlight_button)
+        highlight_layout.setSpacing(3)
+        highlight_layout.setContentsMargins(0, 0, 0, 0)
+        highlight_widget.setLayout(highlight_layout)
+
+        # Ajout de tous les widgets au layout principal
+        main_layout.addWidget(action_widget)
+        main_layout.addWidget(highlight_widget)
+        main_layout.addWidget(self._view)
 
         self.setWindowTitle("Properties of " + layer.name)
-        self.setLayout(QGridLayout())
 
-        data_widget = QWidget()
-        data_widget.setLayout(QHBoxLayout())
+        
+    def _highlight_labels(self):
+        text = self._highlight_box.text()
+        if not text:
+            print("Aucun label entré.")
+            return
 
-        action_widget = QWidget()
-        action_widget.setLayout(QHBoxLayout())
-        action_widget.layout().addWidget(filter_button)
-        action_widget.layout().addWidget(self._label_text_box)
-        action_widget.layout().addWidget(reset_button)
+        try:
+            labels_to_show = [int(x.strip()) for x in text.split(",")]
+        except ValueError:
+            print("Entrée invalide. Exemple attendu : 12 ou 12,15,18")
+            return
 
-        self.layout().addWidget(data_widget)
-        self.layout().addWidget(action_widget)
-        self.layout().addWidget(self._view)
-        action_widget.layout().setSpacing(3)
-        action_widget.layout().setContentsMargins(0, 0, 0, 0)
+        labels_data = self._layer.data
+        
+        # ajouter ou mettre à jour la couche de labels
+        if "labels" in self._viewer.layers:
+            self._viewer.layers["labels"].data = labels_data
+        else:
+            self._viewer.add_image(
+                mask.astype(np.uint8),
+                name="mask labels",
+                scale=scale_voxel,
+                opacity=0.5,
+                colormap="yellow",
+                blending="additive",  # permet effet lumineux
+                contrast_limits=(0,1),
+            )
+
+        # Vérifier présence image brute
+        if "raw image" not in self._viewer.layers:
+            print("Pas d'image brute chargée dans le viewer.")
+            return
+
+        image_data = self._viewer.layers["raw image"].data
+
+        # Créer masque binaire des pixels des labels sélectionnés
+        mask = np.isin(labels_data, labels_to_show)
+
+        # Copier image brute pour modification
+        highlighted_image = image_data.copy()
+
+        # diviser par 4 intensité de tte l'image
+        highlighted_image = highlighted_image / 4.0
+        
+        # Appliquer masque pour mettre en évidence les pixels des labels sélectionnés
+        highlighted_image[mask] = image_data[mask] * 8.0  #
+
+        # Ajouter ou mettre à jour couche d’image highlightée
+        if "highlighted raw" in self._viewer.layers:
+            self._viewer.layers["highlighted raw"].data = highlighted_image
+        else:
+            self._viewer.add_image(
+                highlighted_image,
+                name="highlighted raw",
+                scale=scale_voxel,
+                blending="additive",  # permet effet lumineux
+                contrast_limits=(0, 255),
+                colormap="yellow",  # ou "yellow" pour un effet lumineux
+                opacity=1.0,
+            )
+
+
 
     def _clicked_table(self):
         if "Label" in self._table.keys():
