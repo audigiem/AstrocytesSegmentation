@@ -42,8 +42,13 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     radius = int(params_values['active_voxels']['radius_closing_morphology'])
     size_median_filter = float(params_values['active_voxels']['median_size'])
     border_condition = params_values['active_voxels']['border_condition']
+    
+    if int(params_values['GPU_AVAILABLE']) == 1:
+        GPU_AVAILABLE = True
+    else:
+        GPU_AVAILABLE = False
 
-    data = compute_z_score(dF, std_noise, gaussian_noise_mean, threshold, index_xmin, index_xmax)
+    data = compute_z_score(dF, std_noise, gaussian_noise_mean, threshold, index_xmin, index_xmax, GPU_AVAILABLE)
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_results is True.")
