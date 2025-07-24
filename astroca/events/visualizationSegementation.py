@@ -19,6 +19,8 @@ from qtpy.QtWidgets import QLabel, QLineEdit, QTableWidget, QHBoxLayout, QTableW
     QPushButton, QFileDialog
 
 from typing import Union
+import matplotlib.pyplot as plt
+
 
 
 path_dir = os.getcwd()
@@ -44,23 +46,6 @@ unit_voxel = "um"
 
 im_as_tiff = False
 
-# if fc_rawData != None:
-#     path_image = fc_rawData.selected
-#     im_as_tiff = True;  # True: If the sequence is contained in one tiff image; False: If the sequence is in a directory with several tiff images
-#
-# if fc_dir_rawData != None:
-#     path_image_dir = fc_dir_rawData.selected
-
-# path_image = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/data_boundaries.tif"
-# im_as_tiff = True
-
-# path_labels = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/ID_calciumEvents.tif"
-# path_csv = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/Features.csv"
-
-# ----------------------------------------------------------------------
-# Visualization of the data and the segmentations
-
-#### Open Napari viewer
 
 viewer = napari.Viewer(ndisplay=3)
 
@@ -232,53 +217,27 @@ class TableWidget(QWidget):
             return
 
         labels_data = self._layer.data
-        
-        # ajouter ou mettre à jour la couche de labels
-        if "labels" in self._viewer.layers:
-            self._viewer.layers["labels"].data = labels_data
+
+        # Filtrer les labels
+        filtered_labels = np.where(np.isin(labels_data, labels_to_show), labels_data, 0)
+
+        if "label_selected" in self._viewer.layers:
+            self._viewer.layers["label_selected"].data = filtered_labels
         else:
-            self._viewer.add_image(
-                mask.astype(np.uint8),
-                name="mask labels",
-                scale=scale_voxel,
-                opacity=0.5,
-                colormap="yellow",
-                blending="additive",  # permet effet lumineux
-                contrast_limits=(0,1),
-            )
+            self._viewer.add_labels(filtered_labels, name="label_selected", scale=scale_voxel, opacity=1)
 
-        # Vérifier présence image brute
-        if "raw image" not in self._viewer.layers:
-            print("Pas d'image brute chargée dans le viewer.")
-            return
+        # Masquer l'image originale sauf sur ces labels
+        if "raw image" in self._viewer.layers:
+            image_data = self._viewer.layers["raw image"].data
+           
 
-        image_data = self._viewer.layers["raw image"].data
+            if "masked image" in self._viewer.layers:
+                self._viewer.layers["masked image"].data = image_data
+            else:
+                self._viewer.add_image(image_data, name="masked image", scale=scale_voxel, opacity=0.7)
 
-        # Créer masque binaire des pixels des labels sélectionnés
-        mask = np.isin(labels_data, labels_to_show)
 
-        # Copier image brute pour modification
-        highlighted_image = image_data.copy()
 
-        # diviser par 4 intensité de tte l'image
-        highlighted_image = highlighted_image / 4.0
-        
-        # Appliquer masque pour mettre en évidence les pixels des labels sélectionnés
-        highlighted_image[mask] = image_data[mask] * 8.0  #
-
-        # Ajouter ou mettre à jour couche d’image highlightée
-        if "highlighted raw" in self._viewer.layers:
-            self._viewer.layers["highlighted raw"].data = highlighted_image
-        else:
-            self._viewer.add_image(
-                highlighted_image,
-                name="highlighted raw",
-                scale=scale_voxel,
-                blending="additive",  # permet effet lumineux
-                contrast_limits=(0, 255),
-                colormap="yellow",  # ou "yellow" pour un effet lumineux
-                opacity=1.0,
-            )
 
 
 
@@ -482,6 +441,15 @@ class TableWidget(QWidget):
 
         self.set_content(table.to_dict('list'))
 
+
+def generate_label_colors(labels):
+    cmap = plt.get_cmap("tab10")  # ou "tab20", "gist_ncar", etc.
+    unique_labels = sorted(set(labels))
+    color_map = {}
+    for i, label in enumerate(unique_labels):
+        color = (np.array(cmap(i % cmap.N))[:3] * 255).astype(np.uint8)
+        color_map[label] = color  # RGB uint8
+    return color_map
 
 def add_table(labels_layer: napari.layers.Layer, viewer: napari.Viewer) -> TableWidget:
     """
