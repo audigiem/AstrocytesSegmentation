@@ -107,7 +107,9 @@ def unified_median_filter_3d_gpu(
         data3D = data.reshape(data.shape[0] * data.shape[1], data.shape[2], data.shape[3])
         radius = int(np.ceil(radius))
         offsets = generate_spherical_offsets_C(radius)
-        return apply_median_filter_3d_gpu_ignore_border(data3D, offsets)
+        median_data = apply_median_filter_3d_gpu_ignore_border(data3D, offsets)
+        result = median_data.reshape(data.shape[0], data.shape[1], data.shape[2], data.shape[3])
+        return result
     else:
         return apply_median_filter_3d_gpu_with_padding(data, radius, border_mode)
 
@@ -159,6 +161,7 @@ def apply_median_filter_3d_gpu_ignore_border(data_3D: torch.Tensor, offsets: tor
 
     # stack shape: (N, T*Z, Y, X)
     median = stack.median(dim=0).values
+    
     return median
 
 
