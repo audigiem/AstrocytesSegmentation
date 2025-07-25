@@ -287,21 +287,21 @@ def main():
     compare_sequence(expected_dF_path, output_dF_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
 
-    # print("Step 5: Comparing files after Z-score computation...")
-    # compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
-    #
-    # print("Step 6: Comparing files after closing in space...")
-    # compare_sequence(expected_closing_path, output_closing_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
-    #
-    # print("Step 7: Comparing files after median filtering...")
-    # compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
-    #
-    # print("Step 8: Comparing files after active voxels detection...")
-    # compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
-    # print()
+    print("Step 5: Comparing files after Z-score computation...")
+    compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
+    
+    print("Step 6: Comparing files after closing in space...")
+    compare_sequence(expected_closing_path, output_closing_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
+    
+    print("Step 7: Comparing files after median filtering...")
+    compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
+    
+    print("Step 8: Comparing files after active voxels detection...")
+    compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
+    print()
     
     # print("Step 9: Comparing files after calcium events detection...")
     # compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)

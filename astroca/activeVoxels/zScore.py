@@ -74,6 +74,7 @@ def compute_z_score_GPU(
     Returns:
         torch.Tensor: Binary z-score volume, dtype=torch.uint8, values in {0, 255}.
     """
+    print(f" - Compute binary z-score (GPU)...")
     if std_noise <= 0:
         raise ValueError("std_noise must be > 0")
 
