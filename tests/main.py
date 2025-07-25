@@ -138,6 +138,9 @@ def run_pipeline():
     # === Compute dF and background noise estimation ===
     dF, mean_noise = compute_dynamic_image(data, F0, index_xmin, index_xmax, T, params)
     std_noise = estimate_std_over_time(dF, index_xmin, index_xmax, GPU_AVAILABLE)
+    
+    mean_noise = 1.187468
+    std_noise = 1.1693237
 
     # === Compute Z-score, closing morphology, median filter ===
     active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)

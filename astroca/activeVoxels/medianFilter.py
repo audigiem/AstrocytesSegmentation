@@ -200,9 +200,11 @@ def median_filter_batch_gpu(batch_data: torch.Tensor, offsets: torch.Tensor) -> 
                         values_tensor = torch.stack(values)
                         median_val = torch.median(values_tensor)
                         # Handle different PyTorch versions
-                        if hasattr(median_val, 'values'):
-                            result[b, z, y, x] = median_val.values
+                        # robustement obtenir la valeur scalaire
+                        if isinstance(median_val, torch.Tensor):
+                            result[b, z, y, x] = median_val.item()
                         else:
+                            # vieux comportement (dans des versions obsolètes ou cas très particuliers)
                             result[b, z, y, x] = median_val
                     else:
                         result[b, z, y, x] = batch_data[b, z, y, x]
