@@ -67,7 +67,7 @@ def find_active_voxels(dF: np.ndarray | torch.Tensor, std_noise: float, gaussian
         export_data(data_to_export, output_directory, export_as_single_tif=True, file_name="filledSpaceMorphology")
     print()
 
-    data = unified_median_filter_3d(data, size_median_filter, border_condition, GPU_AVAILABLE)
+    data = unified_median_filter_3d(data, size_median_filter, border_condition, use_gpu=GPU_AVAILABLE)
     if save_results:
         if isinstance(data, torch.Tensor):
             data_to_export = data.cpu().numpy()

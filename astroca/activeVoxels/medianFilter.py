@@ -198,7 +198,12 @@ def median_filter_batch_gpu(batch_data: torch.Tensor, offsets: torch.Tensor) -> 
                     
                     if values:
                         values_tensor = torch.stack(values)
-                        result[b, z, y, x] = torch.median(values_tensor).values
+                        median_val = torch.median(values_tensor)
+                        # Handle different PyTorch versions
+                        if hasattr(median_val, 'values'):
+                            result[b, z, y, x] = median_val.values
+                        else:
+                            result[b, z, y, x] = median_val
                     else:
                         result[b, z, y, x] = batch_data[b, z, y, x]
     
@@ -234,8 +239,15 @@ def median_filter_batch_gpu_padded(batch_padded: torch.Tensor, offsets: torch.Te
                         values.append(batch_padded[b, zz, yy, xx])
                     
                     values_tensor = torch.stack(values)
-                    result[b, z, y, x] = torch.median(values_tensor).values
-    
+                    if values:
+                        values_tensor = torch.stack(values)
+                        median_val = torch.median(values_tensor)
+                        # Handle different PyTorch versions
+                        if hasattr(median_val, 'values'):
+                            result[b, z, y, x] = median_val.values
+                        else:
+                            result[b, z, y, x] = median_val
+                        
     return result
 
 

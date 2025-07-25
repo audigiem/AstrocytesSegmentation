@@ -229,16 +229,16 @@ def main():
     expected_dF_path = EXPECTED_DIR_PATH + "dynamic_image_dF.tif"
     output_dF_path = OUTPUT_DIR_PATH + "dynamic_image_dF.tif"
 
-    expected_Zscore_path = EXPECTED_DIR_PATH + "Zscore.tif"
+    expected_Zscore_path = EXPECTED_DIR_PATH + "zScore.tif"
     output_Zscore_path = OUTPUT_DIR_PATH + "zScore.tif"
 
-    expected_closing_path = EXPECTED_DIR_PATH + "Closing_in_space.tif"
+    expected_closing_path = EXPECTED_DIR_PATH + "filledSpaceMorphology.tif"
     output_closing_path = OUTPUT_DIR_PATH + "filledSpaceMorphology.tif"
 
-    expected_median_path = EXPECTED_DIR_PATH + "Median.tif"
+    expected_median_path = EXPECTED_DIR_PATH + "medianFiltered_2.tif"
     output_median_path = OUTPUT_DIR_PATH + "medianFiltered_2.tif"
 
-    expected_active_voxels_path = EXPECTED_DIR_PATH + "AV.tif"
+    expected_active_voxels_path = EXPECTED_DIR_PATH + "activeVoxels.tif"
     output_active_voxels_path = OUTPUT_DIR_PATH + "activeVoxels.tif"
 
     expected_ID_calcium_events_path = EXPECTED_DIR_PATH + "ID_calciumEvents.tif"
