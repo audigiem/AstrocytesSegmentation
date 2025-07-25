@@ -10,7 +10,7 @@ from astroca.activeVoxels.medianFilter import *
 import os
 from astroca.tools.exportData import export_data
 
-def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: float, index_xmin: list, index_xmax: list, params_values: dict) -> np.ndarray:
+def find_active_voxels(dF: np.ndarray | torch.Tensor, std_noise: float, gaussian_noise_mean: float, index_xmin: list, index_xmax: list, params_values: dict) -> np.ndarray | torch.Tensor:
     """
     @brief Find active voxels in a 3D+time image sequence based on z-score thresholding.
 
@@ -54,21 +54,30 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
             raise ValueError("Output directory must be specified when save_results is True.")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
+        # convert data to np.ndarray if it's a torch.Tensor
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
         export_data(data, output_directory, export_as_single_tif=True, file_name="zScore")
     print()
 
-    data = closing_morphology_in_space(data, radius, border_condition)
+    data = closing_morphology_in_space(data, radius, border_condition, GPU_AVAILABLE)
     if save_results:
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
         export_data(data, output_directory, export_as_single_tif=True, file_name="filledSpaceMorphology")
     print()
 
-    data = unified_median_filter_3d(data, size_median_filter, border_condition)
+    data = unified_median_filter_3d(data, size_median_filter, border_condition, GPU_AVAILABLE)
     if save_results:
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
         export_data(data, output_directory, export_as_single_tif=True, file_name="medianFiltered_2")
     print()
 
-    active_voxels = voxels_finder(data, dF, std_noise, index_xmin, index_xmax)
+    active_voxels = voxels_finder(data, dF, std_noise, index_xmin, index_xmax, GPU_AVAILABLE)
     if save_results:
+        if isinstance(active_voxels, torch.Tensor):
+            active_voxels = active_voxels.cpu().numpy()
         export_data(active_voxels, output_directory, export_as_single_tif=True, file_name="activeVoxels")
 
     print(60 * "=")
@@ -76,7 +85,24 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
     return active_voxels
 
 
-def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, index_xmin: list, index_xmax: list) -> np.ndarray:
+
+def voxels_finder(filtered_data: np.ndarray | torch.Tensor, dF: np.ndarray | torch.Tensor, std_noise: float, index_xmin: np.ndarray, index_xmax: np.ndarray, use_gpu: bool=False):
+    """
+    @brief Determine active voxels based on the value of the filtered data. 
+    If data(x,t) > 0, then active_voxels(x,t) = dF(x,t); 
+    if data(x,t) < 0, then active_voxels(x,t) = std_noise; 
+    otherwise, active_voxels(x,t) = 0.
+    
+    This version delegates to CPU or GPU based on `use_gpu`.
+    """
+    if use_gpu:
+        return voxels_finder_GPU(filtered_data, dF, std_noise, index_xmin, index_xmax)
+    else:
+        return voxels_finder_CPU(filtered_data, dF, std_noise, index_xmin, index_xmax)
+    
+    
+
+def voxels_finder_CPU(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, index_xmin: list, index_xmax: list) -> np.ndarray:
     """
     @brief Determine active voxels based on the value of the filtered data. 
     If data(x,t) > 0, then active_voxels(x,t) = dF(x,t); 
@@ -110,4 +136,35 @@ def voxels_finder(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, i
         active_voxels[:, z, :, :index_xmin[z]] = 0
         active_voxels[:, z, :, index_xmax[z]+1:] = 0
     return active_voxels
+
+
+def voxels_finder_GPU(filtered_data: torch.Tensor, dF: torch.Tensor, std_noise: float, index_xmin: list, index_xmax: list) -> torch.Tensor:
+    print(" - Finding active voxels (GPU)...")
+    if filtered_data.ndim != 4 or dF.ndim != 4:
+        raise ValueError("Input must be a 4D torch.Tensor of shape (T, Z, Y, X).")
+
+    T, Z, Y, X = dF.shape
+    device = dF.device
+
+    # std_noise en tensor GPU
+    std_noise_tensor = torch.tensor(std_noise, dtype=dF.dtype, device=device)
+
+    # Masques
+    positive_mask = (filtered_data != 0) & (dF > 0)
+    negative_mask = (filtered_data != 0) & (dF <= 0)
+
+    active_voxels = torch.zeros_like(dF)
+
+    active_voxels[positive_mask] = dF[positive_mask]
+    active_voxels[negative_mask] = std_noise_tensor
+
+    # Crop en GPU
+    for z in tqdm(range(Z), desc="Cropping active voxels (GPU)", unit="slice"):
+        if index_xmin[z] > 0:
+            active_voxels[:, z, :, :index_xmin[z]] = 0
+        if index_xmax[z] < X - 1:
+            active_voxels[:, z, :, index_xmax[z] + 1:] = 0
+
+    return active_voxels
+
 

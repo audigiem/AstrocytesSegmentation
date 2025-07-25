@@ -139,8 +139,8 @@ def run_pipeline():
     dF, mean_noise = compute_dynamic_image(data, F0, index_xmin, index_xmax, T, params)
     std_noise = estimate_std_over_time(dF, index_xmin, index_xmax, GPU_AVAILABLE)
 
-    # # === Compute Z-score, closing morphology, median filter ===
-    # active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)
+    # === Compute Z-score, closing morphology, median filter ===
+    active_voxels = find_active_voxels(dF, std_noise, mean_noise, index_xmin, index_xmax, params)
     #
     # # === Detect calcium events ===
     # id_connections, ids_events = detect_calcium_events_opti(active_voxels, params_values=params)
