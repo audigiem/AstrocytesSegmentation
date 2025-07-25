@@ -104,32 +104,76 @@ def unified_median_filter_3d_gpu(
     
     
     if border_mode == 'ignore':
-        return apply_median_filter_3d_gpu_ignore_border(data, radius)
+        data3D = data.reshape(data.shape[0] * data.shape[1], data.shape[2], data.shape[3])
+        radius = int(np.ceil(radius))
+        offsets = generate_spherical_offsets_C(radius)
+        return apply_median_filter_3d_gpu_ignore_border(data3D, offsets)
     else:
         return apply_median_filter_3d_gpu_with_padding(data, radius, border_mode)
 
 
-def apply_median_filter_3d_gpu_ignore_border(
-        data: torch.Tensor,
-        radius: float,
-) -> torch.Tensor:
+
+def generate_spherical_offsets_C(radius):
     """
-    @brief GPU implementation for 'ignore' border mode
+    Génère les offsets (dz, dy, dx) d'une boule 3D de rayon donné.
+    """
+    r = int(radius)
+    offsets = []
+    for dz in range(-r, r + 1):
+        for dy in range(-r, r + 1):
+            for dx in range(-r, r + 1):
+                if dz ** 2 + dy ** 2 + dx ** 2 <= radius ** 2:
+                    offsets.append([dz, dy, dx])
+    return torch.tensor(offsets, dtype=torch.long)
+
+
+def apply_median_filter_3d_gpu_ignore_border(data_3D: torch.Tensor, offsets: torch.Tensor) -> torch.Tensor:
+    """
+    Applique le filtre médian 3D sur GPU avec des offsets sphériques.
+    
+    data_3D : (T*Z, Y, X) torch.Tensor (sur GPU)
+    offsets : (N, 3) torch.LongTensor
+    return : même shape, médian appliqué
+    """
+    device = data_3D.device
+    TZ, Y, X = data_3D.shape
+    N = offsets.shape[0]
+
+    # Ajouter un padding pour éviter les problèmes de bord
+    pad = offsets.abs().max().item()
+    padded = torch.nn.functional.pad(data_3D, (pad, pad, pad, pad), mode='reflect')
+
+    result = torch.empty_like(data_3D)
+
+    for i in range(N):
+        dz, dy, dx = offsets[i]
+        shifted = padded[
+            :,
+            pad + dy : pad + dy + Y,
+            pad + dx : pad + dx + X
+        ]
+        if i == 0:
+            stack = shifted.unsqueeze(0)
+        else:
+            stack = torch.cat((stack, shifted.unsqueeze(0)), dim=0)
+
+    # stack shape: (N, T*Z, Y, X)
+    median = stack.median(dim=0).values
+    return median
+
+
+def median_filter_4D_gpu(data: torch.Tensor, radius: float) -> torch.Tensor:
+    """
+    data: 4D torch.Tensor on GPU (T, Z, Y, X)
+    radius: float, spherical radius
+    return: torch.Tensor of same shape
     """
     T, Z, Y, X = data.shape
-    offsets = generate_spherical_offsets_gpu(radius)
-    
-    # Process in batches to manage memory
-    batch_size = min(T, 8)  # Adjust based on GPU memory
-    result = torch.empty_like(data)
-    
-    for i in tqdm(range(0, T, batch_size), desc="Processing frames (GPU) with ignore border"):
-        end_idx = min(i + batch_size, T)
-        batch_data = data[i:end_idx]
-        batch_result = median_filter_batch_gpu(batch_data, offsets)
-        result[i:end_idx] = batch_result
-    
-    return result
+    data_3D = data.reshape(T * Z, Y, X)
+    offsets = generate_spherical_offsets(radius).to(data.device)
+    filtered_3D = apply_median_filter_3d_gpu(data_3D, offsets)
+    return filtered_3D.reshape(T, Z, Y, X)
+
 
 
 def apply_median_filter_3d_gpu_with_padding(
@@ -168,46 +212,6 @@ def apply_median_filter_3d_gpu_with_padding(
         batch_padded = padded[i:end_idx]
         batch_result = median_filter_batch_gpu_padded(batch_padded, offsets, r)
         result[i:end_idx] = batch_result
-    
-    return result
-
-
-def median_filter_batch_gpu(batch_data: torch.Tensor, offsets: torch.Tensor) -> torch.Tensor:
-    """
-    @brief Process a batch of frames with median filter (ignore border mode)
-    """
-    batch_size, Z, Y, X = batch_data.shape
-    n_offsets = offsets.shape[0]
-    
-    # Create output tensor
-    result = torch.empty_like(batch_data)
-    
-    # Process each position
-    for b in range(batch_size):
-        for z in range(Z):
-            for y in range(Y):
-                for x in range(X):
-                    # Collect valid neighbors
-                    values = []
-                    for i in range(n_offsets):
-                        dz, dy, dx = offsets[i]
-                        zz, yy, xx = z + dz, y + dy, x + dx
-                        
-                        if 0 <= zz < Z and 0 <= yy < Y and 0 <= xx < X:
-                            values.append(batch_data[b, zz, yy, xx])
-                    
-                    if values:
-                        values_tensor = torch.stack(values)
-                        median_val = torch.median(values_tensor)
-                        # Handle different PyTorch versions
-                        # robustement obtenir la valeur scalaire
-                        if isinstance(median_val, torch.Tensor):
-                            result[b, z, y, x] = median_val.item()
-                        else:
-                            # vieux comportement (dans des versions obsolètes ou cas très particuliers)
-                            result[b, z, y, x] = median_val
-                    else:
-                        result[b, z, y, x] = batch_data[b, z, y, x]
     
     return result
 
