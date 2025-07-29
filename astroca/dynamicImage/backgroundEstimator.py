@@ -8,7 +8,7 @@
 
 # from joblib import Parallel, delayed
 from astroca.tools.exportData import export_data
-from astroca.activeVoxels.medianFilter import quickselect_median, quickselect_kth
+from astroca.tools.medianComputationTools import quickselect_median, quickselect_kth
 import os
 import numpy as np
 import time
