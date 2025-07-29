@@ -77,7 +77,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     data = run_step("variance_stabilization", compute_variance_stabilization, raw_data, index_xmin, index_xmax, params)
 
     # === Background estimation (F0) ===
-    F0 = run_step("background_estimation", background_estimation_single_block_numba, data, index_xmin, index_xmax, params)
+    F0 = run_step("background_estimation", background_estimation_single_block, data, index_xmin, index_xmax, params)
 
     # === Compute dF and noise ===
     dF, mean_noise = run_step("compute_dynamic_image", compute_dynamic_image, data, F0, index_xmin, index_xmax, T,
@@ -133,7 +133,7 @@ def run_pipeline():
     data = compute_variance_stabilization(raw_data, index_xmin, index_xmax, params)
 
     # === F0 estimation ===
-    F0 = background_estimation_single_block_numba(data, index_xmin, index_xmax, params)
+    F0 = background_estimation_single_block(data, index_xmin, index_xmax, params)
 
     # === Compute dF and background noise estimation ===
     dF, mean_noise = compute_dynamic_image(data, F0, index_xmin, index_xmax, T, params)

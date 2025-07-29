@@ -86,7 +86,7 @@ def find_active_voxels(dF: np.ndarray | torch.Tensor, std_noise: float, gaussian
 
 
 
-def voxels_finder(filtered_data: np.ndarray | torch.Tensor, dF: np.ndarray | torch.Tensor, std_noise: float, index_xmin: np.ndarray, index_xmax: np.ndarray, use_gpu: bool=False):
+def voxels_finder(filtered_data: np.ndarray | torch.Tensor, dF: np.ndarray | torch.Tensor, std_noise: float, index_xmin: np.ndarray, index_xmax: np.ndarray, use_gpu: bool=False) -> np.ndarray | torch.Tensor:
     """
     @brief Determine active voxels based on the value of the filtered data. 
     If data(x,t) > 0, then active_voxels(x,t) = dF(x,t); 
@@ -145,6 +145,8 @@ def voxels_finder_GPU(filtered_data: torch.Tensor, dF: torch.Tensor, std_noise: 
 
     T, Z, Y, X = dF.shape
     device = dF.device
+    
+    filtered_data = filtered_data.to(device)
 
     # std_noise en tensor GPU
     std_noise_tensor = torch.tensor(std_noise, dtype=dF.dtype, device=device)
