@@ -19,6 +19,7 @@ import time
 import tracemalloc
 from typing import List, Dict, Tuple, Any
 import sys
+import numpy as np
 
 
 def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
@@ -100,10 +101,10 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     print(f"Total time: {total_time:.2f} seconds")
     if enable_memory_profiling:
         for step in time_stats:
-            print(f"{step}: {time_stats[step]:.2f} seconds | Peak Memory: {memory_stats[step]:.2f} MB")
+            print(f"{step}: {time_stats[step]:.2f} seconds ({time_stats[step] / total_time * 100:.2f}%) | Peak Memory: {memory_stats[step]:.2f} MB")
     else:
         for step in time_stats:
-            print(f"{step}: {time_stats[step]:.2f} seconds")
+            print(f"{step}: {time_stats[step]:.2f} seconds ({time_stats[step] / total_time * 100:.2f}%)")
 
 def run_pipeline():
     # loading parameters from config file

@@ -168,7 +168,7 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
             print(f"Differences saved to {diff_file_path}")
     else:
         if len(list_acceptable_frames) > 0:
-            print(f"Frames are either identical or within the acceptable margin of 1e-5: {list_acceptable_frames}")
+            print(f"All frames are either identical or within the acceptable margin of 1e-5.")
         else:
             print("All frames are identical.")
     return differences
@@ -202,8 +202,8 @@ def show_offset_voxels_diff(differences: np.ndarray, expected_sequence_path: str
 
 def main():
     # Define paths to expected and output files
-    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdirLatestTest/"
-    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirLatestTest/"
+    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdirTest/"
+    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/testDir/"
 
     expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
     output_f0_path = OUTPUT_DIR_PATH + "F0_estimated.tif"
@@ -245,7 +245,7 @@ def main():
     output_csv_path = OUTPUT_DIR_PATH + "Features.csv"
 
     save_results = False
-    features_float_precision = 3
+    features_float_precision = 2
 
     print("Comparing files after each step...")
     print("Step 1: Comparing files after crop and boundaries computations...")
@@ -289,7 +289,7 @@ def main():
     print("Step 10: Comparing files after Anscombe inverse transform...")
     compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
-
+    
     print("Step 11: Comparing files after amplitude computation...")
     compare_sequence(expected_amplitude_image_path, output_amplitude_image_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
