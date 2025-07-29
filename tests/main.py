@@ -10,8 +10,8 @@ from astroca.croppingBoundaries.cropper import crop_boundaries
 from astroca.croppingBoundaries.computeBoundaries import compute_boundaries
 from astroca.varianceStabilization.varianceStabilization import compute_variance_stabilization
 from astroca.dynamicImage.dynamicImage import compute_dynamic_image, compute_image_amplitude
-from astroca.dynamicImage.backgroundEstimator import background_estimation_single_block
-from astroca.parametersNoise.parametersNoise import estimate_std_over_time
+from astroca.dynamicImage.backgroundEstimator import background_estimation_single_block, background_estimation_single_block_numba
+from astroca.parametersNoise.parametersNoise import estimate_std_over_time, estimate_std_over_time_optimized
 from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
 from astroca.events.eventDetectorCorrected import detect_calcium_events_opti
 from astroca.features.featuresComputation import save_features_from_events
@@ -77,7 +77,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     data = run_step("variance_stabilization", compute_variance_stabilization, raw_data, index_xmin, index_xmax, params)
 
     # === Background estimation (F0) ===
-    F0 = run_step("background_estimation", background_estimation_single_block, data, index_xmin, index_xmax, params)
+    F0 = run_step("background_estimation", background_estimation_single_block_numba, data, index_xmin, index_xmax, params)
 
     # === Compute dF and noise ===
     dF, mean_noise = run_step("compute_dynamic_image", compute_dynamic_image, data, F0, index_xmin, index_xmax, T,
@@ -105,10 +105,10 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     print(f"Total time: {total_time:.2f} seconds")
     if enable_memory_profiling:
         for step in time_stats:
-            print(f"{step}: {time_stats[step]:.2f} seconds | Peak Memory: {memory_stats[step]:.2f} MB")
+            print(f"{step}: {time_stats[step]:.2f} seconds ({time_stats[step] / total_time * 100:.2f}%) | Peak Memory: {memory_stats[step]:.2f} MB")
     else:
         for step in time_stats:
-            print(f"{step}: {time_stats[step]:.2f} seconds")
+            print(f"{step}: {time_stats[step]:.2f} seconds ({time_stats[step] / total_time * 100:.2f}%)")
 
 def run_pipeline():
     # loading parameters from config file
@@ -133,7 +133,7 @@ def run_pipeline():
     data = compute_variance_stabilization(raw_data, index_xmin, index_xmax, params)
 
     # === F0 estimation ===
-    F0 = background_estimation_single_block(data, index_xmin, index_xmax, params)
+    F0 = background_estimation_single_block_numba(data, index_xmin, index_xmax, params)
 
     # === Compute dF and background noise estimation ===
     dF, mean_noise = compute_dynamic_image(data, F0, index_xmin, index_xmax, T, params)

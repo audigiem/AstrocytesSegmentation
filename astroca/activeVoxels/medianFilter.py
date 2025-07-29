@@ -5,6 +5,7 @@ GPU and CPU versions with identical results
 """
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
+from astroca.tools.medianComputationTools import quickselect_median
 from tqdm import tqdm
 from scipy.ndimage import median_filter
 from numba import njit, prange

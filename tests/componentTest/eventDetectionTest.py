@@ -17,8 +17,8 @@ class EventDetectionTest(unittest.TestCase):
         """ 
         @brief Set up the test case with synthetic data.
         """
-        self.dataPython = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir20/AV.tif")
-        # self.dataJava = load_data("/home/matteo/Bureau/INRIA/assets/Matteo/Matteo/AV.tif")
+        self.dataPython = load_data("/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirLatestTest/activeVoxels.tif")
+        self.targetResults = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdirLatestTest/ID_calciumEvents.tif")
 
         self.params_values = {
             'events_extraction' : {
@@ -27,10 +27,10 @@ class EventDetectionTest(unittest.TestCase):
                 'threshold_corr' : 0.6
             },
             'paths': {
-                'output_dir': None 
+                'output_dir': "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirLatestTest/"
             },
             'save': {
-                'save_events': 0
+                'save_events': 1
             }
         }
 

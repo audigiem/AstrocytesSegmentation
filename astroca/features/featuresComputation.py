@@ -110,7 +110,6 @@ def compute_features(calcium_events: np.ndarray, events_ids: int, image_amplitud
         centroid_y = int(np.mean(y))
         centroid_z = int(np.mean(z))
         centroid_t = int(np.mean(t))
-
         t0, t1 = t.min(), t.max()
         duration = t1 - t0 + 1
         volume = nb_voxels * voxel_size

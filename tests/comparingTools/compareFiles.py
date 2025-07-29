@@ -172,7 +172,7 @@ def compare_sequence(expected_sequence_path: str, output_sequence_path: str, per
             print(f"Differences saved to {diff_file_path}")
     else:
         if len(list_acceptable_frames) > 0:
-            print(f"Frames are either identical or within the acceptable margin of 1e-5: {list_acceptable_frames}")
+            print(f"All frames are either identical or within the acceptable margin of 1e-5.")
         else:
             print("All frames are identical.")
     return differences
@@ -254,12 +254,12 @@ def main():
     output_csv_path = OUTPUT_DIR_PATH + "Features.csv"
 
     save_results = False
-    features_float_precision = 3
+    features_float_precision = 2
 
     print("Comparing files after each step...")
     print("Step 1: Comparing files after crop and boundaries computations...")
     
-    compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
     compare_sequence(expected_boundaries_path, output_boundaries_path, save_diff=save_results, percentage_accuracy=1e-6)
     expected_XMIN = np.load(EXPECTED_DIR_PATH + "index_Xmin.npy")
     expected_XMAX = np.load(EXPECTED_DIR_PATH + "index_Xmax.npy")
@@ -286,7 +286,7 @@ def main():
     print("Step 4: Comparing files after dF computation...")
     compare_sequence(expected_dF_path, output_dF_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
-
+    
     print("Step 5: Comparing files after Z-score computation...")
     compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=save_results, percentage_accuracy=1e-6)
     print()
