@@ -57,6 +57,8 @@ def find_active_voxels(dF: np.ndarray | torch.Tensor, std_noise: float, gaussian
         # convert data to np.ndarray if it's a torch.Tensor
         if isinstance(data, torch.Tensor):
             data_to_export = data.cpu().numpy()
+        else:
+            data_to_export = data
         export_data(data_to_export, output_directory, export_as_single_tif=True, file_name="zScore")
     print()
 
@@ -64,6 +66,8 @@ def find_active_voxels(dF: np.ndarray | torch.Tensor, std_noise: float, gaussian
     if save_results:
         if isinstance(data, torch.Tensor):
             data_to_export = data.cpu().numpy()
+        else:
+            data_to_export = data
         export_data(data_to_export, output_directory, export_as_single_tif=True, file_name="filledSpaceMorphology")
     print()
 
@@ -71,6 +75,8 @@ def find_active_voxels(dF: np.ndarray | torch.Tensor, std_noise: float, gaussian
     if save_results:
         if isinstance(data, torch.Tensor):
             data_to_export = data.cpu().numpy()
+        else:
+            data_to_export = data
         export_data(data_to_export, output_directory, export_as_single_tif=True, file_name="medianFiltered_2")
     print()
 
@@ -78,6 +84,8 @@ def find_active_voxels(dF: np.ndarray | torch.Tensor, std_noise: float, gaussian
     if save_results:
         if isinstance(active_voxels, torch.Tensor):
             active_voxels_to_export = active_voxels.cpu().numpy()
+        else:
+            active_voxels_to_export = active_voxels
         export_data(active_voxels_to_export, output_directory, export_as_single_tif=True, file_name="activeVoxels")
 
     print(60 * "=")

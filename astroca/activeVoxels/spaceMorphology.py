@@ -8,7 +8,7 @@ from skimage.morphology import ball
 from numba import njit, prange
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
-from astroca.activeVoxels.medianFilter import generate_spherical_offsets
+from astroca.tools.medianComputationTools import generate_spherical_offsets
 import torch
 
 

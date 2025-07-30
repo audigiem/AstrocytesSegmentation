@@ -89,3 +89,42 @@ def partition(arr, left, right):
 
     arr[i + 1], arr[right] = arr[right], arr[i + 1]
     return i + 1
+
+
+
+def generate_spherical_offsets(radius: float):
+    """
+    @brief Generates offsets for spherical neighborhood of given radius
+
+    @details Uses exact algorithm from Java code with normalized ellipsoid.
+    Returns array of (dz,dy,dx) offsets where distance ≤ radius.
+
+    @param radius Filter radius (spherical)
+
+    @return Array of integer offsets defining spherical neighborhood
+    """
+    radx = rady = radz = radius  # Sphere = ellipsoid with equal radii
+
+    vx = int(np.ceil(radx))
+    vy = int(np.ceil(rady))
+    vz = int(np.ceil(radz))
+
+    # Calculate inverse squared radii (as in Java)
+    rx2 = 1.0 / (radx * radx) if radx != 0.0 else 0.0
+    ry2 = 1.0 / (rady * rady) if rady != 0.0 else 0.0
+    rz2 = 1.0 / (radz * radz) if radz != 0.0 else 0.0
+
+    offsets = []
+
+    # Loops in same order as Java: k(z), j(y), i(x)
+    for k in range(-vz, vz + 1):  # dz
+        for j in range(-vy, vy + 1):  # dy
+            for i in range(-vx, vx + 1):  # dx
+                # Normalized distance from Java
+                dist = (i * i) * rx2 + (j * j) * ry2 + (k * k) * rz2
+
+                if dist <= 1.0:  # Exact condition from Java
+                    offsets.append((k, j, i))  # (dz, dy, dx)
+
+    offsets_array = np.array(offsets, dtype=np.int32)
+    return offsets_array

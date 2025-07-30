@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-from astroca.activeVoxels.medianFilter import generate_spherical_offsets
+from astroca.tools.medianComputationTools import generate_spherical_offsets
 
 
 def unified_median_filter_3d_gpu(
