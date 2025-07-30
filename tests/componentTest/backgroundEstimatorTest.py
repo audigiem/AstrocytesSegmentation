@@ -19,7 +19,8 @@ class EventDetectionTest(unittest.TestCase):
         """ 
         @brief Set up the test case with synthetic data.
         """
-        self.target_dir = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/"
+        self.target_dir = "/home/matteo/Bureau/INRIA/codePython/outputdir/testDir/"
+        self.src_dir = "/home/matteo/Bureau/INRIA/codeJava/outputdirTest/F0.tif"
         self.data = load_data(self.target_dir + "variance_stabilized_sequence.tif")
         self.xmins = np.load(self.target_dir + "index_Xmin.npy")
         self.xmaxs = np.load(self.target_dir + "index_Xmax.npy")
@@ -47,6 +48,7 @@ class EventDetectionTest(unittest.TestCase):
         F0 = background_estimation_single_block(self.data, self.xmins, self.xmaxs, params_values=self.params_values)
         F0_numba = background_estimation_single_block_numba(self.data, self.xmins, self.xmaxs, params_values=self.params_values)
         compare_files(self.target_dir + "F0_estimated.tif", self.target_dir + "F0_estimated_numba.tif")
+        self.assertTrue(np.allclose(F0, F0_numba, atol=1e-5), "Background estimation results do not match between implementations.")
 
     def tearDown(self):
         """ 
