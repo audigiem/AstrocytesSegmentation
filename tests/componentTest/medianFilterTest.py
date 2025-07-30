@@ -7,6 +7,7 @@ import unittest
 from astroca.tools.loadData import load_data
 from astroca.tools.exportData import export_data
 from astroca.activeVoxels.medianFilter import unified_median_filter_3d
+from tests.comparingTools.compareFiles import compare_sequence
 import numpy as np
 import torch
 
@@ -21,6 +22,7 @@ class EventDetectionTest(unittest.TestCase):
         @brief Set up the test case with synthetic data.
         """
         self.target_dir = "/home/maudigie/data/outputData/testGPU/"
+        self.src_dir = "/home/maudigie/data/outputData/testCPU/"
         self.gpu_available = True
         self.save_results = True
         self.data = load_data(self.target_dir + "filledSpaceMorphology.tif", self.gpu_available)
@@ -39,6 +41,7 @@ class EventDetectionTest(unittest.TestCase):
             else:
                 data_to_export = data
             export_data(data_to_export, self.target_dir, export_as_single_tif=True, file_name="medianFiltered_2")
+        compare_sequence(self.src_dir + "medianFiltered_2.tif", self.target_dir + "medianFiltered_2.tif")
 
     def tearDown(self):
         """ 
