@@ -72,82 +72,20 @@ def generate_spherical_offsets_torch(radius: float, device: torch.device = None)
     return torch.tensor(offsets, dtype=torch.long, device=device)
 
 
-def apply_median_filter_3d_gpu_optimized(data_3d: torch.Tensor,
-                                         offsets: torch.Tensor) -> torch.Tensor:
-    """
-    Version GPU ultra-optimisée du filtre médian 3D ignorant les bords
-
-    Args:
-        data_3d: Tensor 3D (Z, Y, X) sur GPU
-        offsets: Tensor d'offsets (N, 3) avec (dz, dy, dx)
-
-    Returns:
-        Tensor filtré de même forme que l'entrée
-    """
-    device = data_3d.device
-    dtype = data_3d.dtype
-    Z, Y, X = data_3d.shape
-    N = offsets.shape[0]
-
-    # Créer les grilles de coordonnées une seule fois
-    z_coords = torch.arange(Z, device=device, dtype=torch.long)
-    y_coords = torch.arange(Y, device=device, dtype=torch.long)
-    x_coords = torch.arange(X, device=device, dtype=torch.long)
-
-    # Grilles 3D des coordonnées : (Z, Y, X)
-    z_grid, y_grid, x_grid = torch.meshgrid(z_coords, y_coords, x_coords, indexing='ij')
-
-    # Étendre les dimensions pour la vectorisation : (1, Z, Y, X)
-    z_grid = z_grid.unsqueeze(0)
-    y_grid = y_grid.unsqueeze(0)
-    x_grid = x_grid.unsqueeze(0)
-
-    # Étendre les offsets : (N, 1, 1, 1)
-    dz = offsets[:, 0].view(N, 1, 1, 1)
-    dy = offsets[:, 1].view(N, 1, 1, 1)
-    dx = offsets[:, 2].view(N, 1, 1, 1)
-
-    # Calculer toutes les coordonnées des voisins en une fois : (N, Z, Y, X)
-    neighbor_z = z_grid + dz
-    neighbor_y = y_grid + dy
-    neighbor_x = x_grid + dx
-
-    # Masque de validité pour tous les voisins : (N, Z, Y, X)
-    valid_mask = ((neighbor_z >= 0) & (neighbor_z < Z) &
-                  (neighbor_y >= 0) & (neighbor_y < Y) &
-                  (neighbor_x >= 0) & (neighbor_x < X))
-
-    # Clamper les indices pour éviter les erreurs d'indexation
-    neighbor_z_clamped = torch.clamp(neighbor_z, 0, Z - 1)
-    neighbor_y_clamped = torch.clamp(neighbor_y, 0, Y - 1)
-    neighbor_x_clamped = torch.clamp(neighbor_x, 0, X - 1)
-
-    # Collecter toutes les valeurs des voisins : (N, Z, Y, X)
-    neighborhoods = data_3d[neighbor_z_clamped, neighbor_y_clamped, neighbor_x_clamped]
-
-    # Masquer les voisins invalides avec NaN
-    neighborhoods = torch.where(valid_mask, neighborhoods, torch.tensor(float('nan'), device=device, dtype=dtype))
-
-    # Calculer la médiane en ignorant les NaN, dim=0 pour réduire sur les N voisins
-    median_result = torch.nanmedian(neighborhoods, dim=0).values
-
-    # Fallback : pixels sans voisins valides gardent leur valeur originale
-    no_valid_neighbors = (~valid_mask).all(dim=0)
-    median_result = torch.where(no_valid_neighbors, data_3d, median_result)
-
-    return median_result
 
 
 def apply_median_filter_3d_gpu_memory_efficient(data_3d: torch.Tensor,
                                                 offsets: torch.Tensor,
-                                                chunk_size: int = None) -> torch.Tensor:
+                                                chunk_size: int = None,
+                                                batch_size: int = None) -> torch.Tensor:
     """
-    Version mémoire-efficiente pour très gros volumes
+    Version mémoire-efficiente pour très gros volumes avec double chunking
 
     Args:
         data_3d: Tensor 3D (Z, Y, X) sur GPU
         offsets: Tensor d'offsets (N, 3) avec (dz, dy, dx)
-        chunk_size: Taille des chunks pour traitement par batch (défaut: auto)
+        chunk_size: Taille des chunks Z pour traitement par batch (défaut: auto)
+        batch_size: Taille des mini-batches dans chaque chunk (défaut: auto)
 
     Returns:
         Tensor filtré de même forme que l'entrée
@@ -157,16 +95,22 @@ def apply_median_filter_3d_gpu_memory_efficient(data_3d: torch.Tensor,
     Z, Y, X = data_3d.shape
     N = offsets.shape[0]
 
-    # Calculer la taille de chunk automatiquement si non spécifiée
-    if chunk_size is None:
-        # Estimer la mémoire disponible et ajuster
+    # Calculer les tailles automatiquement si non spécifiées
+    if chunk_size is None or batch_size is None:
         memory_per_element = 4 if dtype == torch.float32 else 8
-        estimated_memory = N * Z * Y * X * memory_per_element
         gpu_memory = torch.cuda.get_device_properties(device).total_memory
-        if estimated_memory > gpu_memory * 0.7:  # 70% de la mémoire GPU
-            chunk_size = max(1, int(Z * 0.7 * gpu_memory / estimated_memory))
-        else:
-            chunk_size = Z
+        available_memory = gpu_memory * 0.6  # 60% pour être sûr
+
+        if chunk_size is None:
+            # Chunk size basé sur la mémoire disponible
+            estimated_memory_per_z = N * Y * X * memory_per_element
+            chunk_size = max(1, min(Z, int(available_memory * 0.7 / estimated_memory_per_z)))
+
+        if batch_size is None:
+            # Batch size pour les mini-chunks dans le plan XY
+            target_memory = available_memory * 0.3  # 30% pour les mini-batches
+            elements_per_batch = int(target_memory / (N * memory_per_element))
+            batch_size = max(1, min(Y * X, elements_per_batch))
 
     result = torch.empty_like(data_3d)
 
@@ -175,19 +119,17 @@ def apply_median_filter_3d_gpu_memory_efficient(data_3d: torch.Tensor,
         z_end = min(z_start + chunk_size, Z)
         z_slice = slice(z_start, z_end)
 
-        # Extraire le chunk avec un padding pour les voisins
+        # Extraire le chunk avec padding pour les voisins
         max_offset_z = max(abs(offsets[:, 0].max().item()), abs(offsets[:, 0].min().item()))
         z_start_padded = max(0, z_start - max_offset_z)
         z_end_padded = min(Z, z_end + max_offset_z)
 
         data_chunk = data_3d[z_start_padded:z_end_padded]
-
-        # Ajuster les offsets pour le chunk
         z_offset_in_chunk = z_start - z_start_padded
 
-        # Appliquer le filtre sur le chunk
-        chunk_result = apply_median_filter_3d_gpu_optimized_chunk(
-            data_chunk, offsets, z_slice, z_offset_in_chunk
+        # Appliquer le filtre sur le chunk avec mini-batching
+        chunk_result = apply_median_filter_3d_gpu_optimized_chunk_batched(
+            data_chunk, offsets, z_slice, z_offset_in_chunk, batch_size
         )
 
         result[z_slice] = chunk_result
@@ -195,61 +137,80 @@ def apply_median_filter_3d_gpu_memory_efficient(data_3d: torch.Tensor,
     return result
 
 
-def apply_median_filter_3d_gpu_optimized_chunk(data_chunk: torch.Tensor,
-                                               offsets: torch.Tensor,
-                                               target_z_slice: slice,
-                                               z_offset: int) -> torch.Tensor:
+def apply_median_filter_3d_gpu_optimized_chunk_batched(data_chunk: torch.Tensor,
+                                                       offsets: torch.Tensor,
+                                                       target_z_slice: slice,
+                                                       z_offset: int,
+                                                       batch_size: int) -> torch.Tensor:
     """
-    Applique le filtre médian sur un chunk de données
+    Applique le filtre médian sur un chunk avec mini-batching dans le plan XY
     """
     device = data_chunk.device
     dtype = data_chunk.dtype
     Z_chunk, Y, X = data_chunk.shape
     N = offsets.shape[0]
 
-    # Coordonnées uniquement pour la tranche cible
     z_start, z_end = target_z_slice.start, target_z_slice.stop
     z_target_size = z_end - z_start
 
-    z_coords = torch.arange(z_target_size, device=device, dtype=torch.long) + z_offset
-    y_coords = torch.arange(Y, device=device, dtype=torch.long)
-    x_coords = torch.arange(X, device=device, dtype=torch.long)
+    result = torch.empty((z_target_size, Y, X), device=device, dtype=dtype)
 
-    z_grid, y_grid, x_grid = torch.meshgrid(z_coords, y_coords, x_coords, indexing='ij')
+    # Traitement par mini-batches dans le plan XY
+    total_pixels = Y * X
 
-    # Vectorisation comme dans la version optimisée
-    z_grid = z_grid.unsqueeze(0)
-    y_grid = y_grid.unsqueeze(0)
-    x_grid = x_grid.unsqueeze(0)
+    for batch_start in range(0, total_pixels, batch_size):
+        batch_end = min(batch_start + batch_size, total_pixels)
 
-    dz = offsets[:, 0].view(N, 1, 1, 1)
-    dy = offsets[:, 1].view(N, 1, 1, 1)
-    dx = offsets[:, 2].view(N, 1, 1, 1)
+        # Convertir les indices linéaires en coordonnées 2D
+        pixel_indices = torch.arange(batch_start, batch_end, device=device)
+        y_indices = pixel_indices // X
+        x_indices = pixel_indices % X
 
-    neighbor_z = z_grid + dz
-    neighbor_y = y_grid + dy
-    neighbor_x = x_grid + dx
+        # Traiter chaque plan Z du chunk cible
+        for z_local in range(z_target_size):
+            z_global = z_local + z_offset
 
-    # Masque de validité dans le chunk
-    valid_mask = ((neighbor_z >= 0) & (neighbor_z < Z_chunk) &
-                  (neighbor_y >= 0) & (neighbor_y < Y) &
-                  (neighbor_x >= 0) & (neighbor_x < X))
+            # Créer les coordonnées pour ce mini-batch
+            batch_neighborhoods = torch.empty((N, batch_end - batch_start),
+                                              device=device, dtype=dtype)
+            batch_valid_mask = torch.empty((N, batch_end - batch_start),
+                                           device=device, dtype=torch.bool)
 
-    neighbor_z_clamped = torch.clamp(neighbor_z, 0, Z_chunk - 1)
-    neighbor_y_clamped = torch.clamp(neighbor_y, 0, Y - 1)
-    neighbor_x_clamped = torch.clamp(neighbor_x, 0, X - 1)
+            # Pour chaque offset, calculer les voisins
+            for i, (dz, dy, dx) in enumerate(offsets):
+                neighbor_z = z_global + dz.item()
+                neighbor_y = y_indices + dy.item()
+                neighbor_x = x_indices + dx.item()
 
-    neighborhoods = data_chunk[neighbor_z_clamped, neighbor_y_clamped, neighbor_x_clamped]
-    neighborhoods = torch.where(valid_mask, neighborhoods, torch.tensor(float('nan'), device=device, dtype=dtype))
+                # Masque de validité
+                valid = ((neighbor_z >= 0) & (neighbor_z < Z_chunk) &
+                         (neighbor_y >= 0) & (neighbor_y < Y) &
+                         (neighbor_x >= 0) & (neighbor_x < X))
 
-    median_result = torch.nanmedian(neighborhoods, dim=0).values
+                batch_valid_mask[i] = valid
 
-    # Valeur originale pour les pixels du chunk cible
-    original_data = data_chunk[z_offset:z_offset + z_target_size]
-    no_valid_neighbors = (~valid_mask).all(dim=0)
-    median_result = torch.where(no_valid_neighbors, original_data, median_result)
+                # Clamping des coordonnées
+                neighbor_z_safe = torch.clamp(neighbor_z, 0, Z_chunk - 1)
+                neighbor_y_safe = torch.clamp(neighbor_y, 0, Y - 1)
+                neighbor_x_safe = torch.clamp(neighbor_x, 0, X - 1)
 
-    return median_result
+                # Récupérer les valeurs
+                values = data_chunk[neighbor_z_safe, neighbor_y_safe, neighbor_x_safe]
+                batch_neighborhoods[i] = torch.where(valid, values,
+                                                     torch.tensor(float('nan'), device=device, dtype=dtype))
+
+            # Calculer la médiane
+            batch_medians = torch.nanmedian(batch_neighborhoods, dim=0).values
+
+            # Gérer les cas sans voisins valides
+            no_valid = (~batch_valid_mask).all(dim=0)
+            original_values = data_chunk[z_global, y_indices, x_indices]
+            batch_medians = torch.where(no_valid, original_values, batch_medians)
+
+            # Stocker les résultats
+            result[z_local, y_indices, x_indices] = batch_medians
+
+    return result
 
 
 def apply_median_filter_3d_gpu_with_padding(
