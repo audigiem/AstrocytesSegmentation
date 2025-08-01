@@ -4,8 +4,6 @@
 @detail Applies a moving mean or median filter to estimate the fluorescence baseline (F0) and supports min or percentile aggregation.
 """
 
-
-
 # from joblib import Parallel, delayed
 from astroca.tools.exportData import export_data
 from astroca.tools.medianComputationTools import quickselect_median, quickselect_kth
@@ -41,12 +39,16 @@ def background_estimation_single_block(data: np.ndarray,
     if not required_keys.issubset(params_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
 
-    moving_window = int(params_values['background_estimation']['moving_window'])
+    acquisition_frequency = float(params_values['background_estimation']['acquisition_frequency'])
+    amplification_factor = float(params_values['background_estimation']['amplification_factor'])
+    # moving_window = int(params_values['background_estimation']['moving_window'])
     method = params_values['background_estimation']['method']
     method2 = params_values['background_estimation']['method2']
     percentile = float(params_values['background_estimation']['percentile'])
     save_results = int(params_values['save']['save_background_estimation']) == 1
     output_directory = params_values['paths']['output_dir']
+
+    moving_window = int(np.ceil(acquisition_frequency * amplification_factor + 1))
 
     if method not in {'min', 'percentile'}:
         raise ValueError("method must be 'min' or 'percentile'")
@@ -98,7 +100,7 @@ def background_estimation_single_block(data: np.ndarray,
         if output_directory is None:
             raise ValueError("Output directory must be specified.")
         os.makedirs(output_directory, exist_ok=True)
-        export_data(F0, output_directory, export_as_single_tif=True, file_name="F0_estimated")
+        export_data(F0, output_directory, export_as_single_tif=True, file_name="F0")
 
     print(60*"=")
     print()
@@ -172,12 +174,16 @@ def background_estimation_single_block_numba(data: np.ndarray,
     if not required_keys.issubset(params_values.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
 
-    moving_window = int(params_values['background_estimation']['moving_window'])
+    acquisition_frequency = float(params_values['background_estimation']['acquisition_frequency'])
+    amplification_factor = float(params_values['background_estimation']['amplification_factor'])
+    # moving_window = int(params_values['background_estimation']['moving_window'])
     method = params_values['background_estimation']['method']
     method2 = params_values['background_estimation']['method2']
     percentile = float(params_values['background_estimation']['percentile'])
     save_results = int(params_values['save']['save_background_estimation']) == 1
     output_directory = params_values['paths']['output_dir']
+
+    moving_window = int(np.ceil(acquisition_frequency * amplification_factor + 1))
 
     if method not in {'min', 'percentile'}:
         raise ValueError("method must be 'min' or 'percentile'")
@@ -234,7 +240,7 @@ def background_estimation_single_block_numba(data: np.ndarray,
         if output_directory is None:
             raise ValueError("Output directory must be specified.")
         os.makedirs(output_directory, exist_ok=True)
-        export_data(F0, output_directory, export_as_single_tif=True, file_name="F0_estimated_numba")
+        export_data(F0, output_directory, export_as_single_tif=True, file_name="F0")
 
     print(60*"=")
     print()

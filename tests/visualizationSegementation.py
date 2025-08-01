@@ -1,3 +1,5 @@
+#! /usr/bin/env python3
+
 import napari
 import imageio
 import numpy as np
@@ -27,17 +29,7 @@ path_dir = os.getcwd()
 fc_dir_rawData = None
 fc_rawData = None
 
-# select raw data
-fc_rawData = FileChooser("/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/")
-# display(fc_rawData)
 
-# select labels
-fc_labels = FileChooser("/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/")
-# display(fc_labels)
-
-# select csv file with features
-fc_csv = FileChooser("/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/")
-# display(fc_csv)
 
 scale_voxel = [0.1344, 0.1025, 0.1025]
 unit_voxel = "um"
@@ -225,16 +217,6 @@ class TableWidget(QWidget):
             self._viewer.layers["label_selected"].data = filtered_labels
         else:
             self._viewer.add_labels(filtered_labels, name="label_selected", scale=scale_voxel, opacity=1)
-
-        # Masquer l'image originale sauf sur ces labels
-        if "raw image" in self._viewer.layers:
-            image_data = self._viewer.layers["raw image"].data
-           
-
-            if "masked image" in self._viewer.layers:
-                self._viewer.layers["masked image"].data = image_data
-            else:
-                self._viewer.add_image(image_data, name="masked image", scale=scale_voxel, opacity=0.7)
 
 
 

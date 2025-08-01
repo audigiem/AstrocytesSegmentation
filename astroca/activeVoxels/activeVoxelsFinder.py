@@ -54,12 +54,12 @@ def find_active_voxels(dF: np.ndarray, std_noise: float, gaussian_noise_mean: fl
 
     data = closing_morphology_in_space(data, radius, border_condition)
     if save_results:
-        export_data(data, output_directory, export_as_single_tif=True, file_name="filledSpaceMorphology")
+        export_data(data, output_directory, export_as_single_tif=True, file_name="closing_in_space")
     print()
 
     data = unified_median_filter_3d(data, size_median_filter, border_condition)
     if save_results:
-        export_data(data, output_directory, export_as_single_tif=True, file_name="medianFiltered_2")
+        export_data(data, output_directory, export_as_single_tif=True, file_name="medianFiltered")
     print()
 
     active_voxels = voxels_finder(data, dF, std_noise, index_xmin, index_xmax)
