@@ -6,6 +6,38 @@
 from astroca.tools.exportData import export_data
 import os
 import numpy as np
+from typing import Tuple
+
+
+def detect_null_band_X_dir(data: np.ndarray) -> Tuple[int, int]:
+    """
+    @fn detect_null_band_X_dir
+    @brief Detect the first and last non null band in the X direction of a 4D image sequence.
+    @param file_path Path to the 4D image sequence file
+    @return Tuple containing the first and last non null band indices in the X direction
+    """
+    print(" - Detecting null bands in X direction...")
+    if len(data.shape) != 4:
+        raise ValueError(f"Input data must be a 4D numpy array with shape (T, Z, Y, X) but got shape {data.shape}.")
+
+    T, Z, Y, X = data.shape
+
+    # Optimized approach: compute sum along T, Z, Y axes for each X slice
+    # This creates a 1D array where each element is the sum of all values in that X slice
+    x_sums = np.sum(data, axis=(0, 1, 2))
+
+    # Find non-zero indices (bands with data)
+    non_zero_indices = np.nonzero(x_sums)[0]
+
+    if len(non_zero_indices) == 0:
+        raise ValueError("No non-null bands found in the X direction.")
+
+    first_non_null_band = int(non_zero_indices[0])
+    last_non_null_band = int(non_zero_indices[-1])
+
+    print(f"    First non-null band: {first_non_null_band}, Last non-null band: {last_non_null_band}")
+
+    return first_non_null_band, last_non_null_band
 
 def crop_boundaries(data: np.ndarray, params: dict) -> np.ndarray:
     """
@@ -28,8 +60,11 @@ def crop_boundaries(data: np.ndarray, params: dict) -> np.ndarray:
     required_keys = {'preprocessing', 'save', 'paths'}
     if not required_keys.issubset(params.keys()):
         raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
-    x_min = int(params['preprocessing']['x_min'])
-    x_max = int(params['preprocessing']['x_max'])
+
+    try:
+        x_min, x_max = detect_null_band_X_dir(data)
+    except ValueError as e:
+        raise ValueError(f"Error detecting null bands in X direction: {e}")
     pixel_cropped = int(params['preprocessing']['pixel_cropped'])
     save_results = int(params['save']['save_cropp_boundaries']) == 1  # Convert to boolean
     output_directory = params['paths']['output_dir']
