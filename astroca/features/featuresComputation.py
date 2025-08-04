@@ -137,18 +137,18 @@ def compute_features(calcium_events: np.ndarray, events_ids: int, image_amplitud
             median_displacement = 0.0
 
         features[event_id] = {
-            'T0': t0,
-            'Duration': duration,
-            'CentroidX': centroid_x,
-            'CentroidY': centroid_y,
-            'CentroidZ': centroid_z,
-            'CentroidT': centroid_t,
-            'Volume': volume,
+            'T0 [frame]': t0,
+            'Duration [frame]': duration,
+            'CentroidX [voxel]': centroid_x,
+            'CentroidY [voxel]': centroid_y,
+            'CentroidZ [voxel]': centroid_z,
+            'CentroidT [voxel]': centroid_t,
+            'Volume [µm^3]': volume,
             'Amplitude': amplitude,
             'Class': class_label,
-            'STD displacement': confidence,
-            'Mean displacement': mean_displacement,
-            'Median displacement': median_displacement
+            'STD displacement [µm]': confidence,
+            'Mean displacement [µm]': mean_displacement,
+            'Median displacement [µm]': median_displacement
         }
 
     return features
@@ -219,8 +219,8 @@ def write_excel_features(features: dict, output_directory: str) -> None:
     """
     df = pd.DataFrame.from_dict(features, orient='index')
     # Réorganiser les colonnes pour correspondre à l'ordre Java
-    columns_order = ['T0', 'Duration', 'CentroidX', 'CentroidY', 'CentroidZ', 'CentroidT', 
-                    'Volume', 'Amplitude', 'Class', 'STD displacement', 'Mean displacement', 'Median displacement']
+    columns_order = ['T0 [frame]', 'Duration [frame]', 'CentroidX [voxel]', 'CentroidY [voxel]', 'CentroidZ [voxel]', 'CentroidT [voxel]',
+                    'Volume [µm^3]', 'Amplitude', 'Class', 'STD displacement [µm]', 'Mean displacement [µm]', 'Median displacement [µm]']
     df = df[columns_order]
     
     output_file = os.path.join(output_directory, "Features.xlsx")
@@ -237,8 +237,8 @@ def write_csv_features(features: dict, output_directory: str) -> None:
     """
     df = pd.DataFrame.from_dict(features, orient='index')
     # Réorganiser les colonnes pour correspondre à l'ordre Java
-    columns_order = ['T0', 'Duration', 'CentroidX', 'CentroidY', 'CentroidZ', 'CentroidT', 
-                    'Volume', 'Amplitude', 'Class', 'STD displacement', 'Mean displacement', 'Median displacement']
+    columns_order = ['T0 [frame]', 'Duration [frame]', 'CentroidX [voxel]', 'CentroidY [voxel]', 'CentroidZ [voxel]', 'CentroidT [voxel]',
+                    'Volume [µm^3]', 'Amplitude', 'Class', 'STD displacement [µm]', 'Mean displacement [µm]', 'Median displacement [µm]']
     df = df[columns_order]
     
     output_file = os.path.join(output_directory, "Features.csv")
