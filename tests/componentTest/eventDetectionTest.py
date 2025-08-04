@@ -4,9 +4,13 @@
 @brief This module provides component tests for the event detection functionality in the astroca package.
 """
 import unittest
+
+import torch
+
 from astroca.tools.loadData import load_data
 from astroca.tools.exportData import export_data
 from astroca.events.eventDetectorCorrected import detect_calcium_events_opti
+from astroca.events.eventDetectorGPU import detect_calcium_events_gpu
 
 class EventDetectionTest(unittest.TestCase):
     """ 
@@ -17,8 +21,8 @@ class EventDetectionTest(unittest.TestCase):
         """ 
         @brief Set up the test case with synthetic data.
         """
-        self.dataPython = load_data("/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirLatestTest/activeVoxels.tif")
-        self.targetResults = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdirLatestTest/ID_calciumEvents.tif")
+        self.dataPython = load_data("/home/maudigie/data/outputData/testCPU/activeVoxels.tif")
+        self.targetResults = load_data("/home/maudigie/data/outputData/testCPU/ID_calciumEvents.tif")
 
         self.params_values = {
             'events_extraction' : {
@@ -27,21 +31,28 @@ class EventDetectionTest(unittest.TestCase):
                 'threshold_corr' : 0.6
             },
             'paths': {
-                'output_dir': "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDirLatestTest/"
+                'output_dir': "/home/maudigie/data/outputData/testGPU/"
             },
             'save': {
-                'save_events': 1
+                'save_events': 0
             }
         }
 
-    def test_event_detection(self):
-        """ 
-        @brief Test the event detection functionality.
+    # def test_event_detection(self):
+    #     """
+    #     @brief Test the event detection functionality.
+    #     """
+    #     print("Starting event detection test...")
+    #     id_connections, nb_events = detect_calcium_events_opti(self.dataPython, params_values=self.params_values)
+        
+    def test_event_detection_GPU(self):
         """
-        print("Starting event detection test...")
-        id_connections, nb_events = detect_calcium_events_opti(self.dataPython, params_values=self.params_values)
-        
-        
+        @brief Test the event detection functionality with GPU support.
+        """
+        print("Starting event detection test with GPU...")
+        id_connections, nb_events = detect_calcium_events_gpu(self.dataPython, params_values=self.params_values)
+        # Compare the results with the target results
+        self.assertTrue(torch.allclose(id_connections, self.targetResults))
         
     def tearDown(self):
         """ 
