@@ -200,7 +200,7 @@ def compute_image_amplitude(data_cropped: np.ndarray, F0: np.ndarray, index_xmin
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_results is True.")
         os.makedirs(output_directory, exist_ok=True)
-        export_data(image_amplitude, output_directory, export_as_single_tif=True, file_name="image_amplitude")
+        export_data(image_amplitude, output_directory, export_as_single_tif=True, file_name="amplitude")
 
     print(60 * "=")
     print()

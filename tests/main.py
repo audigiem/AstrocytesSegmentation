@@ -15,6 +15,7 @@ from astroca.parametersNoise.parametersNoise import estimate_std_over_time, esti
 from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
 from astroca.events.eventDetectorCorrected import detect_calcium_events_opti
 from astroca.features.featuresComputation import save_features_from_events
+from astroca.tools.runLogger import RunLogger
 import time
 import tracemalloc
 from typing import List, Dict, Tuple, Any
@@ -27,6 +28,9 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     @brief Run the pipeline with memory and time statistics.
     @param enable_memory_profiling: If True, enables memory profiling using tracemalloc.
     """
+
+    logger = RunLogger(config_path="config.ini", base_dir="runs")
+
     def run_step(name, func, *args, **kwargs) -> Any:
         """
         @brief Run a single step of the pipeline and collect statistics.
@@ -103,15 +107,43 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     print("\n=== Pipeline completed ===")
     total_time = sum(time_stats.values())
     print(f"Total time: {total_time:.2f} seconds")
-    if enable_memory_profiling:
-        for step in time_stats:
-            print(f"{step}: {time_stats[step]:.2f} seconds ({time_stats[step] / total_time * 100:.2f}%) | Peak Memory: {memory_stats[step]:.2f} MB")
-    else:
-        for step in time_stats:
-            print(f"{step}: {time_stats[step]:.2f} seconds ({time_stats[step] / total_time * 100:.2f}%)")
+
+    summary = {
+        "original shape": f"{T}x{Z}x{Y}x{X}",
+        "indexes xmin": index_xmin.tolist(),
+        "indexes xmax": index_xmax.tolist(),
+        "mean_noise": mean_noise,
+        "std_noise": std_noise,
+        "number_of_events": ids_events,
+        "total_time_sec": round(total_time, 2),
+        "steps": {},
+        "memory_profiling": enable_memory_profiling
+    }
+
+    for step in time_stats:
+        step_time = time_stats[step]
+        percent = step_time / total_time * 100
+        summary["steps"][step] = {
+            "time_seconds": round(step_time, 2),
+            "percent": round(percent, 2)
+        }
+        if enable_memory_profiling:
+            mem = memory_stats[step]
+            summary["steps"][step]["peak_memory_MB"] = round(mem, 2) if mem else None
+            print(f"{step}: {step_time:.2f}s ({percent:.2f}%) | Peak: {mem:.2f} MB")
+        else:
+            print(f"{step}: {step_time:.2f}s ({percent:.2f}%)")
+
+    logger.save_summary(summary)
 
 def run_pipeline():
-    # loading parameters from config file
+    """
+    @fn run_pipeline
+    @brief Run the main pipeline with logging support.
+    @return None
+    """
+    logger = RunLogger(config_path="config.ini", base_dir="runs")
+
     time_start = time.time()
     params = read_config()
     GPU_AVAILABLE = torch.cuda.is_available()
@@ -138,7 +170,7 @@ def run_pipeline():
     # === Compute dF and background noise estimation ===
     dF, mean_noise = compute_dynamic_image(data, F0, index_xmin, index_xmax, T, params)
     std_noise = estimate_std_over_time(dF, index_xmin, index_xmax, GPU_AVAILABLE)
-    
+
     mean_noise = 1.187468
     std_noise = 1.1693237
 
@@ -156,6 +188,20 @@ def run_pipeline():
     end_time = time.time() - time_start
     print(f"Pipeline completed in {end_time:.2f} seconds.")
 
+    # Save summary with logger
+    summary = {
+        "original shape": f"{T}x{Z}x{Y}x{X}",
+        "indexes xmin": index_xmin.tolist(),
+        "indexes xmax": index_xmax.tolist(),
+        "mean_noise": mean_noise,
+        "std_noise": std_noise,
+        "number_of_events": ids_events,
+        "total_time_sec": round(end_time, 2),
+        "memory_profiling": False
+    }
+
+    logger.save_summary(summary)
+
 
 def main():
     """
@@ -165,7 +211,7 @@ def main():
     profile_time = False
 
     if len(sys.argv) > 2:
-        raise ValueError(f"Too many arguments. Usage: {sys.argv[0]} [--stats | --memstats]")
+        raise ValueError(f"Too many arguments. Usage: {sys.argv[0]} [--stats | --memstats | --quiet | --help]")
 
     if len(sys.argv) == 2:
         arg = sys.argv[1]
@@ -176,8 +222,6 @@ def main():
             profile_time = True
             profile_memory = True
         elif arg == "--quiet":
-            profile_time = False
-            profile_memory = False
             print("Running pipeline in quiet mode, no statistics nor execution trace will be printed.")
             with open(os.devnull, 'w') as devnull:
                 sys.stdout = devnull 

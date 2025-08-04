@@ -86,7 +86,7 @@ def compute_boundaries_CPU(data: np.ndarray, params: dict) -> Tuple[np.ndarray, 
         if output_directory is None:
             raise ValueError("output_directory must be specified if save_results is True.")
         os.makedirs(output_directory, exist_ok=True)
-        export_data(data, output_directory, export_as_single_tif=True, file_name="bounded_image_sequence")
+        export_data(data, output_directory, export_as_single_tif=True, file_name="data")
         save_numpy_tab(index_xmin, output_directory, file_name="index_Xmin.npy")
         save_numpy_tab(index_xmax, output_directory, file_name="index_Xmax.npy")
         

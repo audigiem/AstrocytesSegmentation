@@ -42,7 +42,7 @@ def find_active_voxels(dF: np.ndarray | torch.Tensor, std_noise: float, gaussian
     radius = int(params_values['active_voxels']['radius_closing_morphology'])
     size_median_filter = float(params_values['active_voxels']['median_size'])
     border_condition = params_values['active_voxels']['border_condition']
-    
+
     if int(params_values['GPU_AVAILABLE']) == 1:
         GPU_AVAILABLE = True
     else:
@@ -96,19 +96,19 @@ def find_active_voxels(dF: np.ndarray | torch.Tensor, std_noise: float, gaussian
 
 def voxels_finder(filtered_data: np.ndarray | torch.Tensor, dF: np.ndarray | torch.Tensor, std_noise: float, index_xmin: np.ndarray, index_xmax: np.ndarray, use_gpu: bool=False) -> np.ndarray | torch.Tensor:
     """
-    @brief Determine active voxels based on the value of the filtered data. 
-    If data(x,t) > 0, then active_voxels(x,t) = dF(x,t); 
-    if data(x,t) < 0, then active_voxels(x,t) = std_noise; 
+    @brief Determine active voxels based on the value of the filtered data.
+    If data(x,t) > 0, then active_voxels(x,t) = dF(x,t);
+    if data(x,t) < 0, then active_voxels(x,t) = std_noise;
     otherwise, active_voxels(x,t) = 0.
-    
+
     This version delegates to CPU or GPU based on `use_gpu`.
     """
     if use_gpu:
         return voxels_finder_GPU(filtered_data, dF, std_noise, index_xmin, index_xmax)
     else:
         return voxels_finder_CPU(filtered_data, dF, std_noise, index_xmin, index_xmax)
-    
-    
+
+
 
 def voxels_finder_CPU(filtered_data: np.ndarray, dF: np.ndarray, std_noise: float, index_xmin: list, index_xmax: list) -> np.ndarray:
     """
@@ -153,7 +153,7 @@ def voxels_finder_GPU(filtered_data: torch.Tensor, dF: torch.Tensor, std_noise: 
 
     T, Z, Y, X = dF.shape
     device = dF.device
-    
+
     filtered_data = filtered_data.to(device)
 
     # std_noise en tensor GPU
