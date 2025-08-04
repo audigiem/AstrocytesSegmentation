@@ -1,6 +1,6 @@
 # AstroCa
 
-3D+time fluorescence image astrocyte segmentation.
+3D+time fluorescence image astrocyte segmentation with feature extraction.
 
 ## Architecture
 
@@ -38,14 +38,17 @@ The project structure is organized as follows:
 │   │   ├── ./astroca/tools/converter.py
 │   │   ├── ./astroca/tools/exportData.py
 │   │   ├── ./astroca/tools/loadData.py
+│   │   ├── ./astroca/tools/medianComputationTools.py
 │   └── ./astroca/varianceStabilization
 │       └── ./astroca/varianceStabilization/varianceStabilization.py
 ├── ./config.ini
+├── ./debug.py
 ├── ./docs
 ├── ./Doxyfile
 ├── ./poetry.lock
 ├── ./pyproject.toml
 ├── ./README.md
+├── ./showArchitectureProjetct.sh
 └── ./tests
     ├── ./tests/comparingTools
     │   ├── ./tests/comparingTools/compareCSVFiles.py
@@ -53,11 +56,15 @@ The project structure is organized as follows:
     │   ├── ./tests/comparingTools/compareFiles.py
     │   ├── ./tests/comparingTools/comparetextFile.py
     ├── ./tests/componentTest
+    │   ├── ./tests/componentTest/backgroundEstimatorTest.py
     │   ├── ./tests/componentTest/eventDetectionTest.py
     │   ├── ./tests/componentTest/featuresTest.py
     │   ├── ./tests/componentTest/medianFilterTest.py
     │   ├── ./tests/componentTest/morphologyClosing.py
-    └── ./tests/main.py
+    │   ├── ./tests/componentTest/parmatersNoiseTest.py
+    ├── ./tests/main.py
+    └── ./tests/visualizationSegementation.py
+
 ```
 
 ## Installation
@@ -117,11 +124,10 @@ save_features = 1
 
 [preprocessing]
 pixel_cropped = 10
-x_min = 0
-x_max = 319
 
 [background_estimation]
-moving_window = 7
+acquisition_frequency = 4
+amplification_factor = 2.0
 method = percentile
 method2 = Med
 percentile = 10.0
