@@ -60,8 +60,8 @@ class EventDetectionTest(unittest.TestCase):
         diff = compare_sequence("/home/maudigie/data/outputData/testCPU/ID_calciumEvents.tif",
                         "/home/maudigie/data/outputData/testGPU/ID_calciumEvents.tif",
                         percentage_accuracy=1e-5)
-        show_offset_voxels_diff(diff, "/home/maudigie/data/outputData/testCPU/ID_calciumEvents.tif",
-                        "/home/maudigie/data/outputData/testGPU/ID_calciumEvents.tif")
+        # show_offset_voxels_diff(diff, "/home/maudigie/data/outputData/testCPU/ID_calciumEvents.tif",
+        #                 "/home/maudigie/data/outputData/testGPU/ID_calciumEvents.tif")
         
     def tearDown(self):
         """ 
