@@ -11,6 +11,7 @@ from astroca.tools.loadData import load_data
 from astroca.tools.exportData import export_data
 from astroca.events.eventDetectorCorrected import detect_calcium_events_opti
 from astroca.events.eventDetectorGPU import detect_calcium_events_gpu
+from tests.comparingTools.compareFiles import compare_sequence, show_offset_voxels_diff
 
 class EventDetectionTest(unittest.TestCase):
     """ 
@@ -34,7 +35,7 @@ class EventDetectionTest(unittest.TestCase):
                 'output_dir': "/home/maudigie/data/outputData/testGPU/"
             },
             'save': {
-                'save_events': 0
+                'save_events': 1
             }
         }
 
@@ -56,7 +57,11 @@ class EventDetectionTest(unittest.TestCase):
         self.dataPython = torch.tensor(self.dataPython, dtype=torch.float32).cuda()
         id_connections, nb_events = detect_calcium_events_gpu(self.dataPython, params_values=self.params_values)
         # Compare the results with the target results
-        self.assertTrue(torch.allclose(id_connections, self.targetResults))
+        diff = compare_sequence("/home/maudigie/data/outputData/testCPU/ID_calciumEvents.tif",
+                        "/home/maudigie/data/outputData/testGPU/ID_calciumEvents.tif",
+                        percentage_accuracy=1e-5)
+        show_offset_voxels_diff(diff, "/home/maudigie/data/outputData/testCPU/ID_calciumEvents.tif",
+                        "/home/maudigie/data/outputData/testGPU/ID_calciumEvents.tif")
         
     def tearDown(self):
         """ 

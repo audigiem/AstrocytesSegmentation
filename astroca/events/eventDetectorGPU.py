@@ -487,7 +487,7 @@ def detect_calcium_events_gpu(av_data: torch.Tensor, params_values: dict = None,
             raise ValueError("Output directory must be specified if save_results is True.")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-        export_data(id_connections_np, output_directory, export_as_single_tif=True, file_name="ID_calciumEvents_GPU")
+        export_data(id_connections_np, output_directory, export_as_single_tif=True, file_name="ID_calciumEvents")
 
     print(60 * "=")
     print()
