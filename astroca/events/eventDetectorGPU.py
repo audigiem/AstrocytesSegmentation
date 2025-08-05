@@ -15,7 +15,7 @@ class EventDetectorGPU:
     @brief Fully vectorized GPU event detector maintaining CPU logic.
     """
 
-    def __init__(self, av_data: np.ndarray, threshold_size_3d: int = 10,
+    def __init__(self, av_data: torch.Tensor, threshold_size_3d: int = 10,
                  threshold_size_3d_removed: int = 5, threshold_corr: float = 0.5,
                  device: str = None, plot: bool = False):
         """
@@ -40,8 +40,7 @@ class EventDetectorGPU:
         # Convert to tensor on GPU
         if isinstance(av_data, np.ndarray):
             self.av_ = torch.from_numpy(av_data).float().to(self.device)
-        else:
-            self.av_ = av_data.float().to(self.device)
+
 
         self.time_length_, self.depth_, self.height_, self.width_ = self.av_.shape
 
@@ -449,8 +448,8 @@ class EventDetectorGPU:
         return stats
 
 
-def detect_calcium_events_gpu(av_data: np.ndarray, params_values: dict = None, device: str = None) -> Tuple[
-    np.ndarray, int]:
+def detect_calcium_events_gpu(av_data: torch.Tensor, params_values: dict = None, device: str = None) -> Tuple[
+    torch.Tensor, int]:
     """
     @fn detect_calcium_events_gpu
     @brief GPU-optimized calcium event detection function.
@@ -485,4 +484,4 @@ def detect_calcium_events_gpu(av_data: np.ndarray, params_values: dict = None, d
 
     print(60 * "=")
     print()
-    return id_connections_np, len(id_events)
+    return id_connections, len(id_events)
