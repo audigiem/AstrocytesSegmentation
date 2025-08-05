@@ -50,6 +50,10 @@ class EventDetectionTest(unittest.TestCase):
         @brief Test the event detection functionality with GPU support.
         """
         print("Starting event detection test with GPU...")
+        # Ensure the data is in the correct format for GPU processing
+        if not torch.cuda.is_available():
+            raise RuntimeError("CUDA is not available. Please check your GPU setup.")
+        self.dataPython = torch.tensor(self.dataPython, dtype=torch.float32).cuda()
         id_connections, nb_events = detect_calcium_events_gpu(self.dataPython, params_values=self.params_values)
         # Compare the results with the target results
         self.assertTrue(torch.allclose(id_connections, self.targetResults))
