@@ -309,13 +309,16 @@ def background_estimation_GPU(data: torch.Tensor,
         raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
 
     device = data.device
-    moving_window = int(params_values['background_estimation']['moving_window'])
+    acquisition_frequency = float(params_values['background_estimation']['acquisition_frequency'])
+    amplification_factor = float(params_values['background_estimation']['amplification_factor'])
+    # moving_window = int(params_values['background_estimation']['moving_window'])
     method = params_values['background_estimation']['method']
     method2 = params_values['background_estimation']['method2']
     percentile = float(params_values['background_estimation']['percentile'])
     save_results = int(params_values['save']['save_background_estimation']) == 1
     output_directory = params_values['paths']['output_dir']
 
+    moving_window = int(np.ceil(acquisition_frequency * amplification_factor + 1))
     if method not in {'min', 'percentile'}:
         raise ValueError("method must be 'min' or 'percentile'")
     if method2 not in {'Mean', 'Med'}:

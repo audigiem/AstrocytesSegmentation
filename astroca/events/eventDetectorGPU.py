@@ -47,7 +47,7 @@ class EventDetectorGPU:
             print(f"GPU Memory: {torch.cuda.get_device_properties(self.device).total_memory / 1e9:.1f} GB")
 
         print(f"Input data range: [{av_data.min():.3f}, {av_data.max():.3f}]")
-        print(f"Non-zero voxels density: {np.count_nonzero(av_data) / av_data.size:.5f}")
+        print(f"Non-zero voxels density: {torch.count_nonzero(av_data).item() / av_data.numel():.4f}")
 
         # Convert to PyTorch tensor on GPU
         self.av_ = av_data
