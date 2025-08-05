@@ -40,6 +40,13 @@ class EventDetectorGPU:
         # Convert to tensor on GPU
         if isinstance(av_data, np.ndarray):
             self.av_ = torch.from_numpy(av_data).float().to(self.device)
+        elif isinstance(av_data, torch.Tensor):
+            if av_data.dtype != torch.float32:
+                self.av_ = av_data.float().to(self.device)
+            else:
+                self.av_ = av_data.to(self.device)
+        else:
+            raise TypeError("Input data must be a numpy array or a torch tensor.")
 
 
         self.time_length_, self.depth_, self.height_, self.width_ = self.av_.shape
