@@ -39,16 +39,18 @@ The project structure is organized as follows:
 │   │   ├── ./astroca/tools/exportData.py
 │   │   ├── ./astroca/tools/loadData.py
 │   │   ├── ./astroca/tools/medianComputationTools.py
+│   │   └── ./astroca/tools/runLogger.py
 │   └── ./astroca/varianceStabilization
 │       └── ./astroca/varianceStabilization/varianceStabilization.py
 ├── ./config.ini
 ├── ./debug.py
 ├── ./docs
 ├── ./Doxyfile
+├── ./Makefile
 ├── ./poetry.lock
 ├── ./pyproject.toml
 ├── ./README.md
-├── ./showArchitectureProjetct.sh
+├── ./showArchitectureProject.sh
 └── ./tests
     ├── ./tests/comparingTools
     │   ├── ./tests/comparingTools/compareCSVFiles.py
