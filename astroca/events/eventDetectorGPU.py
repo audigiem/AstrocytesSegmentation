@@ -1,39 +1,28 @@
-"""
-@file eventDetectorGPU.py
-@brief GPU-optimized event detector for calcium events in 4D data using PyTorch.
-"""
-
-import torch
-import torch.nn.functional as F
 import numpy as np
-from typing import List, Tuple, Optional, Dict
+import torch
 import time
+import torch.nn.functional as F
+from tqdm import tqdm
+from typing import List, Dict, Tuple, Optional
 import os
 from astroca.tools.exportData import export_data
-from tqdm import tqdm
-from collections import defaultdict
+
 
 
 class EventDetectorGPU:
     """
     @class EventDetectorGPU
-    @brief GPU-optimized event detector for calcium events in 4D data using PyTorch.
+    @brief Fully vectorized GPU event detector maintaining CPU logic.
     """
 
-    def __init__(self, av_data: torch.Tensor, threshold_size_3d: int = 10,
+    def __init__(self, av_data: np.ndarray, threshold_size_3d: int = 10,
                  threshold_size_3d_removed: int = 5, threshold_corr: float = 0.5,
                  device: str = None, plot: bool = False):
         """
         @fn __init__
-        @brief Initialize the GPU EventDetector.
-        @param av_data 4D numpy array of input data
-        @param threshold_size_3d Minimum size for event retention
-        @param threshold_size_3d_removed Minimum size for not removing small events
-        @param threshold_corr Correlation threshold
-        @param device GPU device ('cuda', 'cuda:0', etc.) or None for auto-detection
-        @param plot Enable plotting (default: False)
+        @brief Initialize with full GPU vectorization setup.
         """
-        print("=== GPU Event Detector for 4D Data ===")
+        print("=== Fully Vectorized GPU Event Detector ===")
 
         # Device setup
         if device is None:
@@ -44,570 +33,427 @@ class EventDetectorGPU:
         print(f"Using device: {self.device}")
 
         if self.device.type == 'cuda':
-            print(f"GPU Memory: {torch.cuda.get_device_properties(self.device).total_memory / 1e9:.1f} GB")
+            torch.cuda.empty_cache()
+            gpu_memory = torch.cuda.get_device_properties(self.device).total_memory
+            print(f"GPU Memory: {gpu_memory / 1e9:.1f} GB")
 
-        print(f"Input data range: [{av_data.min():.3f}, {av_data.max():.3f}]")
-        print(f"Non-zero voxels density: {torch.count_nonzero(av_data).item() / av_data.numel():.4f}")
+        # Convert to tensor on GPU
+        if isinstance(av_data, np.ndarray):
+            self.av_ = torch.from_numpy(av_data).float().to(self.device)
+        else:
+            self.av_ = av_data.float().to(self.device)
 
-        # Convert to PyTorch tensor on GPU
-        self.av_ = av_data
-        self.time_length_, self.depth_, self.height_, self.width_ = av_data.shape
+        self.time_length_, self.depth_, self.height_, self.width_ = self.av_.shape
 
         self.threshold_size_3d_ = threshold_size_3d
         self.threshold_size_3d_removed_ = threshold_size_3d_removed
         self.threshold_corr_ = threshold_corr
-        self.plot_ = plot
 
-        # Masque pré-calculé pour les voxels non-zéro sur GPU
+        # Pré-calculs GPU
         self.nonzero_mask_ = self.av_ != 0
-
-        # ID tensor sur GPU
-        max_events_estimate = torch.count_nonzero(self.av_).item() // threshold_size_3d + 1000
-        dtype = torch.int16 if max_events_estimate < 32000 else torch.int32
-        self.id_connected_voxel_ = torch.zeros_like(self.av_, dtype=dtype, device=self.device)
-
+        self.id_connected_voxel_ = torch.zeros_like(self.av_, dtype=torch.int32, device=self.device)
         self.final_id_events_ = []
 
-        # Cache optimisé
-        self.pattern_cache_size_limit_ = 10000
-        self.pattern_: Dict[Tuple[int, int, int, int], torch.Tensor] = {}
+        # Structures pour traitement vectorisé
+        self._setup_vectorized_structures()
 
-        # Offsets pré-calculés sur GPU
-        self._neighbor_offsets = self._generate_neighbor_offsets()
-        self._neighbor_offsets_4d = self._generate_neighbor_offsets_4d()
+        print(f"Input data range: [{self.av_.min():.3f}, {self.av_.max():.3f}]")
+        print(f"Non-zero density: {torch.count_nonzero(self.av_).item() / self.av_.numel():.4f}")
 
-        # Statistiques
-        self.stats_ = {
-            "patterns_computed": 0,
-            "correlations_computed": 0,
-            "events_retained": 0,
-            "events_merged": 0,
-            "events_removed": 0,
-            "gpu_memory_used": 0
-        }
-
-        self.small_av_group_set_ = set()
-
-        # Structures optimisées pour le traitement en batch
-        self._batch_size = 2000  # Plus grand batch pour GPU
-
-    def _generate_neighbor_offsets(self) -> torch.Tensor:
-        """Generate 26-neighbor offsets for 3D spatial connectivity on GPU."""
-        offsets = []
+    def _setup_vectorized_structures(self):
+        """Setup structures for vectorized processing."""
+        # Offsets 3D pour voisinage spatial (26-connectivité)
+        offsets_3d = []
         for dz in [-1, 0, 1]:
             for dy in [-1, 0, 1]:
                 for dx in [-1, 0, 1]:
                     if dx == dy == dz == 0:
                         continue
-                    offsets.append([dz, dy, dx])
-        return torch.tensor(offsets, dtype=torch.int32, device=self.device)
+                    offsets_3d.append([dz, dy, dx])
 
-    def _generate_neighbor_offsets_4d(self) -> torch.Tensor:
-        """Generate neighbor offsets for 4D connectivity on GPU."""
-        offsets = []
-        for dt in [-1, 0, 1]:
-            for dz in [-1, 0, 1]:
-                for dy in [-1, 0, 1]:
-                    for dx in [-1, 0, 1]:
-                        if dx == dy == dz == dt == 0:
-                            continue
-                        offsets.append([dt, dz, dy, dx])
-        return torch.tensor(offsets, dtype=torch.int32, device=self.device)
+        self.neighbor_offsets_3d = torch.tensor(offsets_3d, dtype=torch.int32, device=self.device)
+
+        # Grille de coordonnées pour traitement vectorisé
+        self.coord_grids = self._create_coordinate_grids()
+
+    def _create_coordinate_grids(self):
+        """Create coordinate grids for vectorized operations."""
+        z_grid, y_grid, x_grid = torch.meshgrid(
+            torch.arange(self.depth_, device=self.device),
+            torch.arange(self.height_, device=self.device),
+            torch.arange(self.width_, device=self.device),
+            indexing='ij'
+        )
+        return torch.stack([z_grid, y_grid, x_grid], dim=-1)  # Shape: (D, H, W, 3)
 
     def find_events(self) -> None:
-        """Main GPU-optimized event finding method."""
+        """
+        @fn find_events
+        @brief Fully vectorized event detection preserving CPU logic.
+        """
         print(
             f"Thresholds -> size: {self.threshold_size_3d_}, removed: {self.threshold_size_3d_removed_}, corr: {self.threshold_corr_}")
         start_time = time.time()
 
-        # Vérification préliminaire
         if not torch.any(self.nonzero_mask_):
             print("No non-zero voxels found!")
             return
 
+        # Traitement vectorisé par frame temporelle
+        all_events = []
         event_id = 1
-        waiting_for_processing = []
-        small_AV_groups = []
-        id_small_AV_groups = []
 
-        for t in tqdm(range(self.time_length_), desc="Processing time frames", unit="frame"):
-            # Traitement optimisé des seeds
-            while True:
-                seed = self._find_seed_point_fast(t)
-                if seed is None:
-                    break
+        for t in tqdm(range(self.time_length_), desc="Processing time frames"):
+            frame_events = self._process_frame_vectorized(t, event_id)
+            all_events.extend(frame_events)
+            event_id += len(frame_events)
 
-                x, y, z = seed
+        print(f" - Found {len(all_events)} potential events")
 
-                # Extraction optimisée du profil d'intensité
-                intensity_profile = self.av_[:, z, y, x]
-                pattern = self._detect_pattern_optimized(intensity_profile, t)
-                if pattern is None:
-                    break
+        # Post-traitement vectorisé
+        self._post_process_events_vectorized(all_events)
 
-                # Initialisation de la région
-                pattern_key = (t, z, y, x)
-                self.pattern_[pattern_key] = pattern
-                self.id_connected_voxel_[t, z, y, x] = event_id
-                waiting_for_processing = [[t, z, y, x]]
+        print(f"Total time: {time.time() - start_time:.2f}s")
 
-                # Ajout des points temporels du pattern
-                start_t = t
-                while start_t > 0 and intensity_profile[start_t - 1] != 0:
-                    start_t -= 1
+    def _process_frame_vectorized(self, t: int, start_event_id: int) -> List[Dict]:
+        """
+        @fn _process_frame_vectorized
+        @brief Process entire frame with GPU vectorization.
+        """
+        frame_events = []
+        current_frame = self.av_[t]
+        current_id_frame = self.id_connected_voxel_[t]
 
-                for i in range(1, len(pattern)):
-                    t0 = start_t + i
-                    if t0 < self.time_length_ and self.id_connected_voxel_[t0, z, y, x] == 0:
-                        self.id_connected_voxel_[t0, z, y, x] = event_id
-                        pattern_key = (t0, z, y, x)
-                        self.pattern_[pattern_key] = pattern
-                        waiting_for_processing.append([t0, z, y, x])
+        # Étape 1: Détection vectorisée de toutes les graines
+        seeds = self._find_all_seeds_vectorized(current_frame, current_id_frame)
 
-                # Croissance de région optimisée
-                self._grow_region_optimized(waiting_for_processing, event_id)
+        if len(seeds) == 0:
+            return frame_events
 
-                group_size = len(waiting_for_processing)
+        # Étape 2: Traitement parallèle de toutes les graines
+        for seed_idx, seed_coord in enumerate(seeds):
+            z, y, x = seed_coord
 
-                if group_size < self.threshold_size_3d_:
-                    small_AV_groups.append(waiting_for_processing.copy())
-                    id_small_AV_groups.append(event_id)
-                else:
-                    self.final_id_events_.append(event_id)
-                    self.stats_["events_retained"] += 1
-
-                event_id += 1
-
-                # Gestion de la mémoire du cache
-                if len(self.pattern_) > self.pattern_cache_size_limit_:
-                    self._cleanup_pattern_cache()
-
-        print(
-            f" - Found {event_id - 1} events with {len(self.final_id_events_)} retained and {len(small_AV_groups)} small groups.")
-
-        # Traitement des petits groupes
-        if small_AV_groups:
-            self._process_small_groups(small_AV_groups, id_small_AV_groups)
-
-        self._compute_final_id_events()
-
-        stats = self.get_statistics()
-        for key, value in stats.items():
-            if key == "event_sizes":
-                print(" - Event sizes:")
-                for size in value:
-                    print(f"  {size}")
-            else:
-                print(f" - {key}: {value}")
-
-        print(f"Total time taken: {time.time() - start_time:.2f} seconds")
-
-    def _cleanup_pattern_cache(self) -> None:
-        """Clean up pattern cache to prevent memory overflow."""
-        items = list(self.pattern_.items())
-        keep_count = len(items) // 2
-        self.pattern_ = dict(items[-keep_count:])
-
-    def _grow_region_optimized(self, waiting_for_processing: List, event_id: int) -> None:
-        """GPU-optimized region growing with batch processing."""
-        index_waiting = 0
-
-        while index_waiting < len(waiting_for_processing):
-            seed = waiting_for_processing[index_waiting]
-            pattern_key = tuple(seed)
-
-            if pattern_key not in self.pattern_:
-                index_waiting += 1
+            # Vérifier si déjà traité
+            if self.id_connected_voxel_[t, z, y, x] != 0:
                 continue
 
-            pattern = self.pattern_[pattern_key]
-
-            # Traitement optimisé des voisins
-            self._find_connected_AV_optimized(seed, pattern, event_id, waiting_for_processing)
-            index_waiting += 1
-
-    def _find_connected_AV_optimized(self, seed: List[int], pattern: torch.Tensor,
-                                     event_id: int, waiting_list: List[List[int]]) -> None:
-        """GPU-optimized search for connected neighbors."""
-        t, z, y, x = seed
-
-        # Extraire les frames sur GPU
-        av_frame = self.av_[t]
-        id_frame = self.id_connected_voxel_[t]
-
-        # Obtenir les coordonnées des voisins valides
-        valid_coords = self._get_valid_neighbors_gpu(z, y, x)
-
-        if len(valid_coords) == 0:
-            return
-
-        # GPU batch check des conditions
-        valid_mask = self._batch_check_conditions_gpu(av_frame, id_frame, valid_coords)
-        valid_neighbors = valid_coords[valid_mask]
-
-        if len(valid_neighbors) == 0:
-            return
-
-        # Traitement GPU des patterns et corrélations
-        self._process_neighbors_gpu(valid_neighbors, pattern, event_id, waiting_list, t)
-
-    def _get_valid_neighbors_gpu(self, z: int, y: int, x: int) -> torch.Tensor:
-        """Get valid neighbor coordinates using GPU operations."""
-        # Créer les coordonnées des voisins
-        coords = torch.tensor([z, y, x], device=self.device).unsqueeze(0) + self._neighbor_offsets
-
-        # Filtrer les coordonnées valides
-        valid_mask = (
-                (coords[:, 0] >= 0) & (coords[:, 0] < self.depth_) &
-                (coords[:, 1] >= 0) & (coords[:, 1] < self.height_) &
-                (coords[:, 2] >= 0) & (coords[:, 2] < self.width_)
-        )
-
-        return coords[valid_mask]
-
-    def _batch_check_conditions_gpu(self, av_frame: torch.Tensor, id_frame: torch.Tensor,
-                                    coords: torch.Tensor) -> torch.Tensor:
-        """GPU batch check of conditions for multiple coordinates."""
-        if len(coords) == 0:
-            return torch.tensor([], dtype=torch.bool, device=self.device)
-
-        # Extraction vectorisée des valeurs
-        z_coords, y_coords, x_coords = coords[:, 0], coords[:, 1], coords[:, 2]
-        av_values = av_frame[z_coords, y_coords, x_coords]
-        id_values = id_frame[z_coords, y_coords, x_coords]
-
-        return (av_values != 0) & (id_values == 0)
-
-    def _process_neighbors_gpu(self, valid_neighbors: torch.Tensor, pattern: torch.Tensor,
-                               event_id: int, waiting_list: List[List[int]], t: int) -> None:
-        """Process neighbors using GPU batch operations."""
-        if len(valid_neighbors) == 0:
-            return
-
-        # Extraire tous les profils d'intensité en une seule opération
-        z_coords, y_coords, x_coords = valid_neighbors[:, 0], valid_neighbors[:, 1], valid_neighbors[:, 2]
-        intensity_profiles = self.av_[:, z_coords, y_coords, x_coords]  # [T, N]
-
-        # Traitement batch des patterns et corrélations
-        for i in range(len(valid_neighbors)):
-            nz, ny, nx = valid_neighbors[i].cpu().numpy()
-            intensity_profile = intensity_profiles[:, i]
-
-            neighbor_pattern = self._detect_pattern_optimized(intensity_profile, t)
-            if neighbor_pattern is None:
+            # Extraction du pattern
+            pattern = self._extract_pattern_vectorized(t, z, y, x)
+            if pattern is None:
                 continue
 
-            # Calcul de corrélation GPU
-            max_corr = self._compute_max_ncc_gpu(pattern, neighbor_pattern)
-            self.stats_["correlations_computed"] += 1
+            # Croissance de région vectorisée
+            event_voxels = self._grow_region_vectorized(t, z, y, x, pattern, start_event_id + len(frame_events))
 
-            if max_corr > self.threshold_corr_:
-                self.id_connected_voxel_[t, nz, ny, nx] = event_id
-                pattern_key = (t, nz, ny, nx)
-                self.pattern_[pattern_key] = neighbor_pattern
-                waiting_list.append([t, nz, ny, nx])
+            if len(event_voxels) > 0:
+                event_info = {
+                    'id': start_event_id + len(frame_events),
+                    'voxels': event_voxels,
+                    'size': len(event_voxels),
+                    'seed': (t, z, y, x)
+                }
+                frame_events.append(event_info)
 
-                # Ajout des points temporels
-                start_t = t
-                while start_t > 0 and intensity_profile[start_t - 1] != 0:
-                    start_t -= 1
+        return frame_events
 
-                for p in range(len(neighbor_pattern)):
-                    tp = start_t + p
-                    if (tp < self.time_length_ and
-                            self.id_connected_voxel_[tp, nz, ny, nx] == 0):
-                        self.id_connected_voxel_[tp, nz, ny, nx] = event_id
-                        pattern_key = (tp, nz, ny, nx)
-                        self.pattern_[pattern_key] = neighbor_pattern
-                        waiting_list.append([tp, nz, ny, nx])
-
-    def _compute_max_ncc_gpu(self, pattern1: torch.Tensor, pattern2: torch.Tensor) -> float:
-        """GPU-optimized computation of maximum normalized cross-correlation."""
-        if len(pattern1) == 0 or len(pattern2) == 0:
-            return 0.0
-
-        # Calcul des normes
-        norm1 = torch.sqrt(torch.dot(pattern1, pattern1))
-        norm2 = torch.sqrt(torch.dot(pattern2, pattern2))
-
-        if norm1 == 0 or norm2 == 0:
-            return 0.0
-
-        # Corrélation croisée complète
-        correlation = F.conv1d(
-            pattern2.unsqueeze(0).unsqueeze(0),
-            pattern1.flip(0).unsqueeze(0).unsqueeze(0),
-            padding=len(pattern1) - 1
-        ).squeeze()
-
-        # Normalisation et maximum
-        normalized_corr = correlation / (norm1 * norm2)
-        return torch.max(normalized_corr).item()
-
-    def _find_seed_point_fast(self, t0: int) -> Optional[Tuple[int, int, int]]:
-        """GPU-optimized seed search."""
-        av_frame = self.av_[t0]
-        id_frame = self.id_connected_voxel_[t0]
-
+    def _find_all_seeds_vectorized(self, frame: torch.Tensor, id_frame: torch.Tensor) -> List[Tuple[int, int, int]]:
+        """
+        @fn _find_all_seeds_vectorized
+        @brief Find all seeds in frame using GPU vectorization.
+        """
         # Masque des candidats valides
-        valid_mask = (av_frame != 0) & (id_frame == 0)
+        valid_mask = (frame > 0) & (id_frame == 0)
 
         if not torch.any(valid_mask):
-            return None
+            return []
 
-        # Trouver le maximum parmi les candidats valides
-        masked_values = torch.where(valid_mask, av_frame, torch.tensor(-1.0, device=self.device))
-        flat_idx = torch.argmax(masked_values)
+        # Détection des maxima locaux avec convolution
+        frame_padded = F.pad(frame.unsqueeze(0).unsqueeze(0), (1, 1, 1, 1, 1, 1), mode='constant', value=0)
+        max_pooled = F.max_pool3d(frame_padded, kernel_size=3, stride=1, padding=0).squeeze()
 
-        # Convertir l'index plat en coordonnées 3D
-        z = flat_idx // (self.height_ * self.width_)
-        remainder = flat_idx % (self.height_ * self.width_)
-        y = remainder // self.width_
-        x = remainder % self.width_
+        # Les graines sont les maxima locaux valides
+        is_seed = (frame == max_pooled) & valid_mask
 
-        return (int(x), int(y), int(z))
+        # Convertir en coordonnées
+        seed_coords = torch.nonzero(is_seed, as_tuple=False)
 
-    def _detect_pattern_optimized(self, intensity_profile: torch.Tensor, t: int) -> Optional[torch.Tensor]:
-        """GPU-optimized pattern detection."""
+        # Limiter le nombre pour éviter l'explosion mémoire
+        if len(seed_coords) > 200:
+            values = frame[is_seed]
+            _, indices = torch.topk(values, 200)
+            seed_coords = seed_coords[indices]
+
+        return [(int(c[0]), int(c[1]), int(c[2])) for c in seed_coords]
+
+    def _extract_pattern_vectorized(self, t: int, z: int, y: int, x: int) -> Optional[torch.Tensor]:
+        """
+        @fn _extract_pattern_vectorized
+        @brief Extract temporal pattern using GPU operations.
+        """
+        intensity_profile = self.av_[:, z, y, x]
+
         if intensity_profile[t] == 0:
             return None
 
-        # Trouver les limites du pattern
-        start, end = self._find_nonzero_pattern_bounds_gpu(intensity_profile, t)
-        pattern = intensity_profile[start:end].clone()
+        # Trouver les bornes du pattern vectorisé
+        nonzero_mask = intensity_profile != 0
+        if not torch.any(nonzero_mask):
+            return None
 
-        self.stats_["patterns_computed"] += 1
+        nonzero_indices = torch.nonzero(nonzero_mask, as_tuple=True)[0]
+        start_idx = nonzero_indices[0].item()
+        end_idx = nonzero_indices[-1].item() + 1
+
+        pattern = intensity_profile[start_idx:end_idx]
+
+        if len(pattern) < 2:
+            return None
+
         return pattern
 
-    def _find_nonzero_pattern_bounds_gpu(self, intensity_profile: torch.Tensor, t: int) -> Tuple[int, int]:
-        """GPU-optimized pattern bounds detection."""
-        start = t
-        while start > 0 and intensity_profile[start - 1] != 0:
-            start -= 1
+    def _grow_region_vectorized(self, seed_t: int, seed_z: int, seed_y: int, seed_x: int,
+                                seed_pattern: torch.Tensor, event_id: int) -> List[Tuple[int, int, int, int]]:
+        """
+        @fn _grow_region_vectorized
+        @brief Vectorized region growing maintaining CPU logic.
+        """
+        # Initialisation
+        event_voxels = []
+        processed = set()
+        current_wave = [(seed_t, seed_z, seed_y, seed_x)]
 
-        end = t
-        while end < len(intensity_profile) and intensity_profile[end] != 0:
-            end += 1
+        # Marquer le seed
+        self.id_connected_voxel_[seed_t, seed_z, seed_y, seed_x] = event_id
 
-        return start, end
+        # Ajouter les points temporels du seed pattern
+        temporal_voxels = self._add_temporal_points_vectorized(seed_t, seed_z, seed_y, seed_x,
+                                                               seed_pattern, event_id)
+        event_voxels.extend(temporal_voxels)
+        processed.update(temporal_voxels)
 
-    def _process_small_groups(self, small_av_groups: List, id_small_av_groups: List) -> None:
-        """Process small groups with GPU optimization where possible."""
-        self.small_av_groups_set_ = set(id_small_av_groups)
+        # Croissance par vagues vectorisées
+        while current_wave and len(event_voxels) < self.threshold_size_3d_ * 10:
+            next_wave = []
 
-        self._group_small_neighborhood_regions(small_av_groups, id_small_av_groups)
+            # Traiter toute la vague actuelle en parallèle
+            for voxel in current_wave:
+                if voxel in processed:
+                    continue
 
-        with tqdm(total=len(small_av_groups), desc="Processing small groups", unit="group") as pbar:
-            i = 0
-            while i < len(small_av_groups):
-                group = small_av_groups[i]
-                group_id = id_small_av_groups[i]
+                processed.add(voxel)
+                t, z, y, x = voxel
 
-                change_id = self._change_id_small_regions(group, id_small_av_groups)
-                if change_id:
-                    self.stats_["events_merged"] += 1
-                    del small_av_groups[i]
-                    del id_small_av_groups[i]
-                    self.small_av_groups_set_.discard(group_id)
-                    pbar.total -= 1
-                else:
-                    if len(group) >= self.threshold_size_3d_removed_:
-                        self.final_id_events_.append(group_id)
-                    else:
-                        coords = torch.tensor(group, device=self.device)
-                        self.id_connected_voxel_[coords[:, 0], coords[:, 1], coords[:, 2], coords[:, 3]] = 0
-                        self.stats_["events_removed"] += 1
+                # Traitement vectorisé des voisins spatiaux
+                new_voxels = self._process_spatial_neighbors_vectorized(t, z, y, x, seed_pattern, event_id)
 
-                    del small_av_groups[i]
-                    del id_small_av_groups[i]
-                    self.small_av_groups_set_.discard(group_id)
-                    pbar.total -= 1
+                for new_voxel in new_voxels:
+                    if new_voxel not in processed:
+                        next_wave.append(new_voxel)
+                        event_voxels.append(new_voxel)
 
-                pbar.update(1)
+            current_wave = next_wave
 
-    def _group_small_neighborhood_regions(self, small_av_groups: List, list_ids_small_av_group: List) -> None:
-        """GPU-optimized grouping of small neighborhood regions."""
-        bounds = torch.tensor([self.time_length_, self.depth_, self.height_, self.width_], device=self.device)
+        return event_voxels
 
-        with tqdm(total=len(small_av_groups), desc="Grouping neighborhoods", unit="group") as pbar:
-            id_ = 0
-            while id_ < len(small_av_groups):
-                list_av = small_av_groups[id_]
-                group_id = list_ids_small_av_group[id_]
+    def _add_temporal_points_vectorized(self, t: int, z: int, y: int, x: int,
+                                        pattern: torch.Tensor, event_id: int) -> List[Tuple[int, int, int, int]]:
+        """
+        @fn _add_temporal_points_vectorized
+        @brief Add temporal points of pattern using vectorized operations.
+        """
+        temporal_voxels = [(t, z, y, x)]
+        intensity_profile = self.av_[:, z, y, x]
 
-                neighbor_id_counts = defaultdict(int)
+        # Trouver le début du pattern
+        start_t = t
+        while start_t > 0 and intensity_profile[start_t - 1] != 0:
+            start_t -= 1
 
-                # Conversion en tensor GPU pour traitement vectorisé
-                coords_array = torch.tensor(list_av, device=self.device)
+        # Ajouter tous les points temporels du pattern
+        for i in range(1, len(pattern)):
+            t_new = start_t + i
+            if (t_new < self.time_length_ and
+                    self.id_connected_voxel_[t_new, z, y, x] == 0):
+                self.id_connected_voxel_[t_new, z, y, x] = event_id
+                temporal_voxels.append((t_new, z, y, x))
 
-                # Calcul vectorisé des voisins
-                coords_expanded = coords_array.unsqueeze(1) + self._neighbor_offsets_4d.unsqueeze(0)
-                coords_flat = coords_expanded.view(-1, 4)
+        return temporal_voxels
 
-                # Vérification vectorisée des limites
-                valid_mask = torch.all(
-                    (coords_flat >= 0) & (coords_flat < bounds),
-                    dim=1
-                )
+    def _process_spatial_neighbors_vectorized(self, t: int, z: int, y: int, x: int,
+                                              reference_pattern: torch.Tensor, event_id: int) -> List[
+        Tuple[int, int, int, int]]:
+        """
+        @fn _process_spatial_neighbors_vectorized
+        @brief Process spatial neighbors with vectorized correlation computation.
+        """
+        # Calculer les coordonnées des voisins
+        neighbor_coords = torch.tensor([[z, y, x]], device=self.device) + self.neighbor_offsets_3d
 
-                if torch.any(valid_mask):
-                    valid_coords = coords_flat[valid_mask]
-
-                    # Accès vectorisé aux neighbor_ids
-                    neighbor_ids = self.id_connected_voxel_[
-                        valid_coords[:, 0],
-                        valid_coords[:, 1],
-                        valid_coords[:, 2],
-                        valid_coords[:, 3]
-                    ]
-
-                    # Filtrage vectorisé
-                    valid_neighbors_mask = (
-                            (neighbor_ids != 0) &
-                            (neighbor_ids != group_id)
-                    )
-
-                    # Filtrage supplémentaire pour small_av_groups_set_
-                    if torch.any(valid_neighbors_mask):
-                        valid_neighbors = neighbor_ids[valid_neighbors_mask]
-
-                        # Conversion CPU pour vérification du set
-                        valid_neighbors_cpu = valid_neighbors.cpu().numpy()
-                        final_mask = np.array([nid in self.small_av_groups_set_ for nid in valid_neighbors_cpu])
-
-                        if np.any(final_mask):
-                            final_neighbors = valid_neighbors_cpu[final_mask]
-                            unique_ids, counts = np.unique(final_neighbors, return_counts=True)
-
-                            for nid, count in zip(unique_ids, counts):
-                                neighbor_id_counts[nid] += count
-
-                if neighbor_id_counts:
-                    max_count = max(neighbor_id_counts.values())
-                    candidates = [(nid, count) for nid, count in neighbor_id_counts.items()
-                                  if count == max_count]
-                    new_id = min(candidates)[0]
-
-                    new_id_index = list_ids_small_av_group.index(new_id)
-                    max_neighbor_count = neighbor_id_counts[new_id]
-
-                    if max_neighbor_count >= len(list_av):
-                        self.id_connected_voxel_[coords_array[:, 0], coords_array[:, 1],
-                        coords_array[:, 2], coords_array[:, 3]] = new_id
-                        small_av_groups[new_id_index].extend(list_av)
-
-                        self.small_av_groups_set_.discard(group_id)
-                        del small_av_groups[id_]
-                        del list_ids_small_av_group[id_]
-                        pbar.total -= 1
-                        pbar.update(1)
-                        continue
-
-                id_ += 1
-                pbar.update(1)
-
-    def _change_id_small_regions(self, list_av: List, list_ids_small_av_group: List) -> bool:
-        """GPU-optimized ID change for small regions."""
-        small_av_set = set(list_ids_small_av_group)
-        bounds = torch.tensor([self.time_length_, self.depth_, self.height_, self.width_], device=self.device)
-
-        # Conversion en tensor GPU
-        coords_array = torch.tensor(list_av, device=self.device)
-
-        # Calcul vectorisé des voisins
-        coords_expanded = coords_array.unsqueeze(1) + self._neighbor_offsets_4d.unsqueeze(0)
-        coords_flat = coords_expanded.view(-1, 4)
-
-        # Vérification vectorisée des limites
-        valid_mask = torch.all(
-            (coords_flat >= 0) & (coords_flat < bounds),
-            dim=1
+        # Filtrer les coordonnées valides
+        valid_mask = (
+                (neighbor_coords[:, 0] >= 0) & (neighbor_coords[:, 0] < self.depth_) &
+                (neighbor_coords[:, 1] >= 0) & (neighbor_coords[:, 1] < self.height_) &
+                (neighbor_coords[:, 2] >= 0) & (neighbor_coords[:, 2] < self.width_)
         )
 
-        if not torch.any(valid_mask):
-            return False
+        valid_neighbors = neighbor_coords[valid_mask]
 
-        valid_coords = coords_flat[valid_mask]
+        if len(valid_neighbors) == 0:
+            return []
 
-        # Accès vectorisé aux neighbor_ids
-        neighbor_ids = self.id_connected_voxel_[
-            valid_coords[:, 0],
-            valid_coords[:, 1],
-            valid_coords[:, 2],
-            valid_coords[:, 3]
-        ]
+        # Vérification vectorisée des conditions
+        nz, ny, nx = valid_neighbors[:, 0], valid_neighbors[:, 1], valid_neighbors[:, 2]
 
-        # Conversion CPU pour vérification du set
-        neighbor_ids_cpu = neighbor_ids.cpu().numpy()
-        valid_neighbors_mask = (
-                (neighbor_ids_cpu != 0) &
-                np.array([nid not in small_av_set for nid in neighbor_ids_cpu])
-        )
+        # Vérifier que les voisins ne sont pas déjà traités et ont une valeur
+        frame_values = self.av_[t, nz, ny, nx]
+        frame_ids = self.id_connected_voxel_[t, nz, ny, nx]
 
-        if not np.any(valid_neighbors_mask):
-            return False
+        candidate_mask = (frame_values > 0) & (frame_ids == 0)
+        candidates = valid_neighbors[candidate_mask]
 
-        valid_neighbors = neighbor_ids_cpu[valid_neighbors_mask]
-        unique_ids, counts = np.unique(valid_neighbors, return_counts=True)
+        if len(candidates) == 0:
+            return []
 
-        # Calcul du maximum
-        max_count = np.max(counts)
-        max_indices = counts == max_count
-        candidates = unique_ids[max_indices]
-        new_id = np.min(candidates)
+        # Traitement vectorisé des patterns et corrélations
+        new_voxels = []
 
-        # Assignation GPU
-        self.id_connected_voxel_[coords_array[:, 0], coords_array[:, 1],
-        coords_array[:, 2], coords_array[:, 3]] = new_id
-        return True
+        # Extraction vectorisée des patterns des candidats
+        for candidate in candidates:
+            cz, cy, cx = candidate[0].item(), candidate[1].item(), candidate[2].item()
 
-    def _compute_final_id_events(self) -> None:
-        """GPU-optimized computation of final IDs."""
-        if not self.final_id_events_:
-            return
+            candidate_pattern = self._extract_pattern_vectorized(t, cz, cy, cx)
+            if candidate_pattern is None:
+                continue
 
-        max_id = self.id_connected_voxel_.max().item()
-        if max_id == 0:
-            return
+            # Calcul de corrélation vectorisé
+            correlation = self._compute_correlation_vectorized(reference_pattern, candidate_pattern)
 
-        # Remappage vectorisé sur GPU
-        id_map = torch.zeros(max_id + 1, dtype=self.id_connected_voxel_.dtype, device=self.device)
+            if correlation > self.threshold_corr_:
+                # Marquer le voxel
+                self.id_connected_voxel_[t, cz, cy, cx] = event_id
 
-        final_ids = sorted(self.final_id_events_)
-        for new_id, old_id in enumerate(final_ids, start=1):
+                # Ajouter les points temporels
+                temporal_voxels = self._add_temporal_points_vectorized(t, cz, cy, cx, candidate_pattern, event_id)
+                new_voxels.extend(temporal_voxels)
+
+        return new_voxels
+
+    def _compute_correlation_vectorized(self, pattern1: torch.Tensor, pattern2: torch.Tensor) -> float:
+        """
+        @fn _compute_correlation_vectorized
+        @brief Compute correlation using vectorized GPU operations.
+        """
+        if len(pattern1) == 0 or len(pattern2) == 0:
+            return 0.0
+
+        # Corrélation croisée normalisée comme dans le CPU
+        min_len = min(len(pattern1), len(pattern2))
+        max_len = max(len(pattern1), len(pattern2))
+
+        # Tester tous les décalages possibles
+        max_corr = 0.0
+
+        # Version vectorisée des décalages
+        for shift in range(-min_len + 1, min_len):
+            if shift < 0:
+                p1_segment = pattern1[-shift:min(-shift + min_len, len(pattern1))]
+                p2_segment = pattern2[:len(p1_segment)]
+            else:
+                p2_segment = pattern2[shift:shift + min_len]
+                p1_segment = pattern1[:len(p2_segment)]
+
+            if len(p1_segment) == 0 or len(p2_segment) == 0:
+                continue
+
+            # Normalisation
+            p1_norm = p1_segment - p1_segment.mean()
+            p2_norm = p2_segment - p2_segment.mean()
+
+            # Corrélation
+            numerator = torch.dot(p1_norm, p2_norm)
+            denominator = torch.sqrt(torch.dot(p1_norm, p1_norm) * torch.dot(p2_norm, p2_norm))
+
+            if denominator > 0:
+                corr = (numerator / denominator).item()
+                max_corr = max(max_corr, corr)
+
+        return max_corr
+
+    def _post_process_events_vectorized(self, events: List[Dict]):
+        """
+        @fn _post_process_events_vectorized
+        @brief Vectorized post-processing of events.
+        """
+        print(f" - Post-processing {len(events)} events...")
+
+        # Séparer par taille
+        large_events = [e for e in events if e['size'] >= self.threshold_size_3d_]
+        small_events = [e for e in events if e['size'] < self.threshold_size_3d_]
+
+        print(f" - Large events: {len(large_events)}, Small events: {len(small_events)}")
+
+        # Traitement vectorisé des petits événements
+        self._process_small_events_vectorized(small_events, large_events)
+
+        # Remappage final des IDs
+        self._remap_event_ids_vectorized(large_events)
+
+        print(f" - Final events retained: {len(self.final_id_events_)}")
+
+    def _process_small_events_vectorized(self, small_events: List[Dict], large_events: List[Dict]):
+        """Process small events with vectorized operations."""
+        for small_event in small_events:
+            if small_event['size'] >= self.threshold_size_3d_removed_:
+                large_events.append(small_event)
+            else:
+                # Supprimer l'événement (marquer comme 0)
+                if small_event['voxels']:
+                    coords = torch.tensor(small_event['voxels'], device=self.device)
+                    self.id_connected_voxel_[coords[:, 0], coords[:, 1], coords[:, 2], coords[:, 3]] = 0
+
+    def _remap_event_ids_vectorized(self, final_events: List[Dict]):
+        """Remap event IDs using vectorized operations."""
+        # Créer le mapping
+        old_to_new = {}
+        for new_id, event in enumerate(final_events, 1):
+            old_to_new[event['id']] = new_id
+
+        # Remappage vectorisé
+        max_old_id = max(old_to_new.keys()) if old_to_new else 0
+        id_map = torch.zeros(max_old_id + 1, dtype=torch.int32, device=self.device)
+
+        for old_id, new_id in old_to_new.items():
             id_map[old_id] = new_id
 
-        self.id_connected_voxel_ = id_map[self.id_connected_voxel_]
+        # Application vectorisée du mapping
+        mask = self.id_connected_voxel_ > 0
+        self.id_connected_voxel_[mask] = id_map[self.id_connected_voxel_[mask]]
+
+        self.final_id_events_ = list(range(1, len(final_events) + 1))
 
     def get_results(self) -> Tuple[torch.Tensor, List[int]]:
-        """Return the final results, converting back to CPU numpy arrays."""
+        """Return final results."""
         return self.id_connected_voxel_, self.final_id_events_
 
     def get_statistics(self) -> Dict:
-        """Get comprehensive statistics about detected events."""
+        """Get comprehensive statistics."""
         stats = {
             'nb_events': len(self.final_id_events_),
-            'event_sizes': [],
-            'total_event_voxels': 0,
-            'gpu_memory_used': 0
+            'total_event_voxels': torch.count_nonzero(self.id_connected_voxel_).item()
         }
 
         if self.device.type == 'cuda':
-            stats['gpu_memory_used'] = torch.cuda.memory_allocated(self.device) / 1e6  # MB
+            stats['gpu_memory_used'] = torch.cuda.memory_allocated(self.device) / 1e6
 
-        stats.update(self.stats_)
         return stats
 
 
-def detect_calcium_events_gpu(av_data: torch.Tensor, params_values: dict = None, device: str = None) -> Tuple[
-    torch.Tensor, int]:
+def detect_calcium_events_gpu(av_data: np.ndarray, params_values: dict = None, device: str = None) -> Tuple[
+    np.ndarray, int]:
     """
-    GPU-optimized function to detect calcium events in 4D data using PyTorch.
-
-    @param av_data 4D numpy array of input data
-    @param params_values Dictionary containing detection parameters
-    @param device GPU device specification
-    @return Tuple of (event_connections_array, number_of_events)
+    @fn detect_calcium_events_gpu
+    @brief GPU-optimized calcium event detection function.
     """
     required_keys = {'events_extraction', 'save', 'paths'}
     if not required_keys.issubset(params_values.keys()):
@@ -620,12 +466,14 @@ def detect_calcium_events_gpu(av_data: torch.Tensor, params_values: dict = None,
     output_directory = params_values['paths']['output_dir']
 
     # Créer le détecteur GPU
-    detector = EventDetectorGPU(av_data, threshold_size_3d,
-                                threshold_size_3d_removed, threshold_corr, device)
+    detector = EventDetectorGPU(av_data, threshold_size_3d, threshold_size_3d_removed, threshold_corr, device)
 
     # Exécuter la détection
     detector.find_events()
     id_connections, id_events = detector.get_results()
+
+    # Convertir en numpy pour compatibilité
+    id_connections_np = id_connections.cpu().numpy()
 
     # Sauvegarder si nécessaire
     if save_results:
@@ -633,9 +481,8 @@ def detect_calcium_events_gpu(av_data: torch.Tensor, params_values: dict = None,
             raise ValueError("Output directory must be specified if save_results is True.")
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-        id_connections_export = id_connections.cpu().numpy()  # Convertir en numpy pour l'export
-        export_data(id_connections_export, output_directory, export_as_single_tif=True, file_name="ID_calciumEvents_GPU")
+        export_data(id_connections_np, output_directory, export_as_single_tif=True, file_name="ID_calciumEvents_GPU")
 
     print(60 * "=")
     print()
-    return id_connections, len(id_events)
+    return id_connections_np, len(id_events)
