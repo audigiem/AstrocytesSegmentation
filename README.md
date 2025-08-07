@@ -28,10 +28,12 @@ The project structure is organized as follows:
 │   │   ├── ./astroca/dynamicImage/backgroundEstimator.py
 │   │   ├── ./astroca/dynamicImage/dynamicImage.py
 │   ├── ./astroca/events
-│   │   ├── ./astroca/events/eventDetectorCorrected.py
+│   │   ├── ./astroca/events/eventDetector.py
 │   │   └── ./astroca/events/tools.py
 │   ├── ./astroca/features
+│   │   ├── ./astroca/features/coactive.py
 │   │   ├── ./astroca/features/featuresComputation.py
+│   │   ├── ./astroca/features/hotspots.py
 │   ├── ./astroca/parametersNoise
 │   │   ├── ./astroca/parametersNoise/parametersNoise.py
 │   ├── ./astroca/tools
