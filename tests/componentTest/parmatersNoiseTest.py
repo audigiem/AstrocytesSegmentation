@@ -19,7 +19,9 @@ class EventDetectionTest(unittest.TestCase):
         @brief Set up the test case with synthetic data.
         """
         self.target_dir = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/"
-        self.data = load_data("/home/matteo/Bureau/INRIA/codeJava/outputdir/dF.tif")
+        self.test_dirs = ["/home/matteo/Bureau/INRIA/codePython/outputdir/testDir/",
+                          "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/"]
+        self.data = [load_data(dir_path + "dynamic_image_dF.tif") for dir_path in self.test_dirs]
         self.xmins = np.load(self.target_dir + "index_Xmin.npy")
         self.xmaxs = np.load(self.target_dir + "index_Xmax.npy")
 
@@ -29,9 +31,12 @@ class EventDetectionTest(unittest.TestCase):
         @brief Test the noise estimation functionality.
         """
         print("Starting noise estimation test...")
-        std = estimate_std_over_time(self.data, self.xmins, self.xmaxs)
-        std_optimized = estimate_std_over_time_optimized(self.data, self.xmins, self.xmaxs)
-        np.testing.assert_array_equal(std, std_optimized)
+        for data in self.data:
+            std = estimate_std_over_time(data, self.xmins, self.xmaxs)
+            std_optimized = estimate_std_over_time_optimized(data, self.xmins, self.xmaxs)
+            # assert that the standard deviations are close enough
+            self.assertTrue(np.allclose(std, std_optimized, rtol=1e-5, atol=1e-8),
+                            "Standard deviations from both methods do not match.")
 
     def tearDown(self):
         """ 

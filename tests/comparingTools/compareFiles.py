@@ -206,13 +206,13 @@ def main():
     OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/testDir/"
 
     expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
-    output_f0_path = OUTPUT_DIR_PATH + "F0_estimated_numba.tif"
+    output_f0_path = OUTPUT_DIR_PATH + "F0.tif"
 
     expected_cropped_path = EXPECTED_DIR_PATH + "data_cropped.tif"
     output_cropped_path = OUTPUT_DIR_PATH + "cropped_image_sequence.tif"
 
     expected_boundaries_path = EXPECTED_DIR_PATH + "data_boundaries.tif"
-    output_boundaries_path = OUTPUT_DIR_PATH + "bounded_image_sequence.tif"
+    output_boundaries_path = OUTPUT_DIR_PATH + "data.tif"
 
     expected_anscombe_path = EXPECTED_DIR_PATH + "anscombeTransform.tif"
     output_anscombe_path = OUTPUT_DIR_PATH + "variance_stabilized_sequence.tif"
@@ -224,10 +224,10 @@ def main():
     output_Zscore_path = OUTPUT_DIR_PATH + "zScore.tif"
 
     expected_closing_path = EXPECTED_DIR_PATH + "Closing_in_space.tif"
-    output_closing_path = OUTPUT_DIR_PATH + "filledSpaceMorphology.tif"
+    output_closing_path = OUTPUT_DIR_PATH + "closing_in_space.tif"
 
     expected_median_path = EXPECTED_DIR_PATH + "Median.tif"
-    output_median_path = OUTPUT_DIR_PATH + "medianFiltered_2.tif"
+    output_median_path = OUTPUT_DIR_PATH + "medianFiltered.tif"
 
     expected_active_voxels_path = EXPECTED_DIR_PATH + "AV.tif"
     output_active_voxels_path = OUTPUT_DIR_PATH + "activeVoxels.tif"
@@ -239,7 +239,7 @@ def main():
     output_anscombe_inverse_path = OUTPUT_DIR_PATH + "inverse_anscombe_transformed_volume.tif"
     
     expected_amplitude_image_path = EXPECTED_DIR_PATH + "amplitude.tif"
-    output_amplitude_image_path = OUTPUT_DIR_PATH + "image_amplitude.tif"
+    output_amplitude_image_path = OUTPUT_DIR_PATH + "amplitude.tif"
     
     expected_csv_path = EXPECTED_DIR_PATH + "Features.csv"
     output_csv_path = OUTPUT_DIR_PATH + "Features.csv"
@@ -283,7 +283,8 @@ def main():
     # print()
     
     print("Step 9: Comparing files after calcium events detection...")
-    compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
+    diff = compare_sequence(expected_ID_calcium_events_path, output_ID_calcium_events_path, save_diff=save_results, percentage_accuracy=1e-6)
+    show_offset_voxels_diff(diff, expected_ID_calcium_events_path, output_ID_calcium_events_path)
     print()
 
     # print("Step 10: Comparing files after Anscombe inverse transform...")

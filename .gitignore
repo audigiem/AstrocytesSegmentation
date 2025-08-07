@@ -13,3 +13,4 @@ astroca.egg-info/
 *.txt
 *.pyc
 .idea/
+runs/

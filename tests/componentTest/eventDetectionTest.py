@@ -6,7 +6,7 @@
 import unittest
 from astroca.tools.loadData import load_data
 from astroca.tools.exportData import export_data
-from astroca.events.eventDetectorCorrected import detect_calcium_events_opti
+from astroca.events.eventDetector import detect_calcium_events_opti
 
 class EventDetectionTest(unittest.TestCase):
     """ 
