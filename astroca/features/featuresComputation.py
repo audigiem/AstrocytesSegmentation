@@ -7,6 +7,9 @@ import numpy as np
 import pandas as pd
 import os
 from tqdm import tqdm
+from astroca.features.coactive import compute_coactive_csv
+from astroca.features.hotspots import compute_hot_spots_from_features, write_csv_hot_spots
+
 
 # @profile
 def save_features_from_events(calcium_events: np.ndarray, events_ids: int, image_amplitude: np.ndarray, params_values: dict=None) -> None:
@@ -38,6 +41,8 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: int, image
     save_result = int(params_values['save']['save_features']) == 1
     output_directory = params_values['paths']['output_dir']
 
+    hot_spots = compute_hot_spots_from_features(features, params_values)
+
     if save_result:
         if output_directory is None:
             raise ValueError("Output directory must be specified when save_result is True.")
@@ -45,6 +50,9 @@ def save_features_from_events(calcium_events: np.ndarray, events_ids: int, image
             os.makedirs(output_directory)
         # write_excel_features(features, output_directory)
         write_csv_features(features, output_directory)
+        compute_coactive_csv(features, output_directory)
+        write_csv_hot_spots(hot_spots, output_directory)
+
     print(60*"=")
     
 # @profile

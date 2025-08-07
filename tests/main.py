@@ -13,7 +13,7 @@ from astroca.dynamicImage.dynamicImage import compute_dynamic_image, compute_ima
 from astroca.dynamicImage.backgroundEstimator import background_estimation_single_block, background_estimation_single_block_numba
 from astroca.parametersNoise.parametersNoise import estimate_std_over_time, estimate_std_over_time_optimized
 from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
-from astroca.events.eventDetectorCorrected import detect_calcium_events_opti
+from astroca.events.eventDetector import detect_calcium_events_opti
 from astroca.features.featuresComputation import save_features_from_events
 from astroca.tools.runLogger import RunLogger
 import time
