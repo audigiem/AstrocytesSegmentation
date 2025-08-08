@@ -8,7 +8,14 @@ from typing import List, Tuple, Optional, Dict
 import time
 import os
 from astroca.tools.exportData import export_data
-from astroca.events.tools import find_seed_fast, get_valid_neighbors, batch_check_conditions, compute_max_ncc_fast, find_nonzero_pattern_bounds, compute_max_ncc_strict
+from astroca.events.tools import (
+    find_seed_fast,
+    get_valid_neighbors,
+    batch_check_conditions,
+    compute_max_ncc_fast,
+    find_nonzero_pattern_bounds,
+    compute_max_ncc_strict,
+)
 from tqdm import tqdm
 from collections import defaultdict
 
@@ -19,9 +26,14 @@ class EventDetectorOptimized:
     @brief Optimized event detector for calcium events in 4D data.
     """
 
-    def __init__(self, av_data: np.ndarray, threshold_size_3d: int = 10,
-                 threshold_size_3d_removed: int = 5, threshold_corr: float = 0.5,
-                 plot: bool = False):
+    def __init__(
+        self,
+        av_data: np.ndarray,
+        threshold_size_3d: int = 10,
+        threshold_size_3d_removed: int = 5,
+        threshold_corr: float = 0.5,
+        plot: bool = False,
+    ):
         """
         @fn __init__
         @brief Initialize the EventDetector with optimizations.
@@ -33,7 +45,9 @@ class EventDetectorOptimized:
         """
         print("=== Finding events in 4D data ===")
         print(f"Input data range: [{av_data.min():.3f}, {av_data.max():.3f}]")
-        print(f"Non-zero voxels density: {np.count_nonzero(av_data) / av_data.size:.5f}")
+        print(
+            f"Non-zero voxels density: {np.count_nonzero(av_data) / av_data.size:.5f}"
+        )
 
         # Convertir en float32 pour économiser la mémoire et améliorer les performances
         self.av_ = av_data.astype(np.float32)
@@ -71,10 +85,10 @@ class EventDetectorOptimized:
             "events_retained": 0,
             "events_merged": 0,
             "events_removed": 0,
-            "cache_hits": 0
+            "cache_hits": 0,
         }
 
-        self.small_av_group_set_ = set()    # Cache pour les ids des petits groupes
+        self.small_av_group_set_ = set()  # Cache pour les ids des petits groupes
 
         # Structures optimisées pour le traitement en batch
         self._batch_size = 1000
@@ -87,9 +101,11 @@ class EventDetectorOptimized:
         @return Dictionary of reusable arrays
         """
         return {
-            'temp_coords': np.zeros((self._batch_size, 3), dtype=np.int32),
-            'temp_patterns': np.zeros((self._batch_size, 50), dtype=np.float32),  # Assume max pattern length 50
-            'temp_correlations': np.zeros(self._batch_size, dtype=np.float32)
+            "temp_coords": np.zeros((self._batch_size, 3), dtype=np.int32),
+            "temp_patterns": np.zeros(
+                (self._batch_size, 50), dtype=np.float32
+            ),  # Assume max pattern length 50
+            "temp_correlations": np.zeros(self._batch_size, dtype=np.float32),
         }
 
     def _generate_neighbor_offsets(self) -> np.ndarray:
@@ -123,7 +139,7 @@ class EventDetectorOptimized:
                         offsets.append([dt, dz, dy, dx])
         return np.array(offsets, dtype=np.int32)
 
-    # @profile 
+    # @profile
     def find_events(self) -> None:
         """
         @fn find_events
@@ -131,7 +147,8 @@ class EventDetectorOptimized:
         @return None
         """
         print(
-            f"Thresholds -> size: {self.threshold_size_3d_}, removed: {self.threshold_size_3d_removed_}, corr: {self.threshold_corr_}")
+            f"Thresholds -> size: {self.threshold_size_3d_}, removed: {self.threshold_size_3d_removed_}, corr: {self.threshold_corr_}"
+        )
         start_time = time.time()
 
         # Vérification préliminaire
@@ -146,7 +163,9 @@ class EventDetectorOptimized:
         id_small_AV_groups = []
 
         # for t in range(self.time_length_):
-        for t in tqdm(range(self.time_length_), desc="Processing time frames", unit="frame"):
+        for t in tqdm(
+            range(self.time_length_), desc="Processing time frames", unit="frame"
+        ):
             # Traitement optimisé des seeds
             while True:
                 seed = self._find_seed_point_fast(t)
@@ -174,7 +193,10 @@ class EventDetectorOptimized:
 
                 for i in range(1, len(pattern)):
                     t0 = start_t + i
-                    if t0 < self.time_length_ and self.id_connected_voxel_[t0, z, y, x] == 0:
+                    if (
+                        t0 < self.time_length_
+                        and self.id_connected_voxel_[t0, z, y, x] == 0
+                    ):
                         self.id_connected_voxel_[t0, z, y, x] = event_id
                         pattern_key = (t0, z, y, x)
                         self.pattern_[pattern_key] = pattern
@@ -199,7 +221,9 @@ class EventDetectorOptimized:
                 # Gestion de la mémoire du cache
                 if len(self.pattern_) > self.pattern_cache_size_limit_:
                     self._cleanup_pattern_cache()
-        print(f" - Found {event_id - 1} events with {len(self.final_id_events_)} retained and {len(small_AV_groups)} small groups.")
+        print(
+            f" - Found {event_id - 1} events with {len(self.final_id_events_)} retained and {len(small_AV_groups)} small groups."
+        )
         # Traitement des petits groupes
         if small_AV_groups:
             self._process_small_groups(small_AV_groups, id_small_AV_groups)
@@ -221,7 +245,6 @@ class EventDetectorOptimized:
                     print(f"  {size}")
             else:
                 print(f" - {key}: {value}")
-                    
 
         print(f"Total time taken: {time.time() - start_time:.2f} seconds")
 
@@ -257,8 +280,10 @@ class EventDetectorOptimized:
 
         return self._frame_cache[t]
 
-    # @profile 
-    def _grow_region_optimized(self, waiting_for_processing: List, event_id: int) -> None:
+    # @profile
+    def _grow_region_optimized(
+        self, waiting_for_processing: List, event_id: int
+    ) -> None:
         """
         @fn _grow_region_optimized
         @brief Optimized region growing with batch processing.
@@ -279,12 +304,19 @@ class EventDetectorOptimized:
             pattern = self.pattern_[pattern_key]
 
             # Traitement optimisé des voisins
-            self._find_connected_AV_optimized(seed, pattern, event_id, waiting_for_processing)
+            self._find_connected_AV_optimized(
+                seed, pattern, event_id, waiting_for_processing
+            )
             index_waiting += 1
 
     # @profile
-    def _find_connected_AV_optimized(self, seed: List[int], pattern: np.ndarray,
-                                     event_id: int, waiting_list: List[List[int]]) -> None:
+    def _find_connected_AV_optimized(
+        self,
+        seed: List[int],
+        pattern: np.ndarray,
+        event_id: int,
+        waiting_list: List[List[int]],
+    ) -> None:
         """
         @fn _find_connected_AV_optimized
         @brief Ultra-optimized search for connected neighbors.
@@ -300,7 +332,9 @@ class EventDetectorOptimized:
         av_frame, id_frame = self._get_frame_cache(t)
 
         # Obtenir les coordonnées des voisins valides
-        valid_coords = get_valid_neighbors(z, y, x, self.depth_, self.height_, self.width_, self._neighbor_offsets)
+        valid_coords = get_valid_neighbors(
+            z, y, x, self.depth_, self.height_, self.width_, self._neighbor_offsets
+        )
 
         if len(valid_coords) == 0:
             return
@@ -354,8 +388,10 @@ class EventDetectorOptimized:
                 temporal_points = []
                 for p in range(len(neighbor_pattern)):
                     tp = start_t + p
-                    if (tp < self.time_length_ and
-                            self.id_connected_voxel_[tp, nz, ny, nx] == 0):
+                    if (
+                        tp < self.time_length_
+                        and self.id_connected_voxel_[tp, nz, ny, nx] == 0
+                    ):
                         temporal_points.append([tp, nz, ny, nx])
 
                 # Assignation en batch
@@ -381,7 +417,9 @@ class EventDetectorOptimized:
         return (x, y, z)
 
     # @profile
-    def _detect_pattern_optimized(self, intensity_profile: np.ndarray, t: int) -> Optional[np.ndarray]:
+    def _detect_pattern_optimized(
+        self, intensity_profile: np.ndarray, t: int
+    ) -> Optional[np.ndarray]:
         """
         @fn _detect_pattern_optimized
         @brief Optimized pattern detection.
@@ -399,13 +437,17 @@ class EventDetectorOptimized:
         return pattern
 
     # @profile
-    def _process_small_groups(self, small_av_groups: List, id_small_av_groups: List) -> None:
+    def _process_small_groups(
+        self, small_av_groups: List, id_small_av_groups: List
+    ) -> None:
         self.small_av_groups_set_ = set(id_small_av_groups)
 
         self._group_small_neighborhood_regions(small_av_groups, id_small_av_groups)
 
         # Optimisation: traitement avec tqdm pour le suivi
-        with tqdm(total=len(small_av_groups), desc="Processing small groups", unit="group") as pbar:
+        with tqdm(
+            total=len(small_av_groups), desc="Processing small groups", unit="group"
+        ) as pbar:
             i = 0
             while i < len(small_av_groups):
                 group = small_av_groups[i]
@@ -423,25 +465,31 @@ class EventDetectorOptimized:
                         self.final_id_events_.append(group_id)
                     else:
                         coords = np.array(group)
-                        self.id_connected_voxel_[coords[:, 0], coords[:, 1], coords[:, 2], coords[:, 3]] = 0
+                        self.id_connected_voxel_[
+                            coords[:, 0], coords[:, 1], coords[:, 2], coords[:, 3]
+                        ] = 0
                         self.stats_["events_removed"] += 1
 
                     del small_av_groups[i]
                     del id_small_av_groups[i]
                     self.small_av_groups_set_.discard(group_id)
                     pbar.total -= 1  # Réduire le total car on a supprimé un élément
-                
+
                 pbar.update(1)
-    
+
     # @profile
-    def _group_small_neighborhood_regions(self, small_av_groups: List, list_ids_small_av_group: List) -> None:
+    def _group_small_neighborhood_regions(
+        self, small_av_groups: List, list_ids_small_av_group: List
+    ) -> None:
         """Version optimisée qui préserve la logique exacte de l'original"""
-        
+
         # Optimisation: pré-calculer les limites et offsets
         bounds = np.array([self.time_length_, self.depth_, self.height_, self.width_])
         neighbor_offsets = np.array(self._neighbor_offsets_4d)
-        
-        with tqdm(total=len(small_av_groups), desc="Grouping neighborhoods", unit="group") as pbar:
+
+        with tqdm(
+            total=len(small_av_groups), desc="Grouping neighborhoods", unit="group"
+        ) as pbar:
             id_ = 0
             while id_ < len(small_av_groups):
                 list_av = small_av_groups[id_]
@@ -452,39 +500,42 @@ class EventDetectorOptimized:
 
                 # Optimisation: conversion en numpy array une seule fois
                 coords_array = np.array(list_av)
-                
+
                 # Optimisation: calcul vectorisé des voisins
-                coords_expanded = coords_array[:, None, :] + neighbor_offsets[None, :, :]
-                coords_flat = coords_expanded.reshape(-1, 4)
-                
-                # Optimisation: vérification vectorisée des limites
-                valid_mask = np.all(
-                    (coords_flat >= 0) & (coords_flat < bounds), 
-                    axis=1
+                coords_expanded = (
+                    coords_array[:, None, :] + neighbor_offsets[None, :, :]
                 )
-                
+                coords_flat = coords_expanded.reshape(-1, 4)
+
+                # Optimisation: vérification vectorisée des limites
+                valid_mask = np.all((coords_flat >= 0) & (coords_flat < bounds), axis=1)
+
                 if np.any(valid_mask):
                     valid_coords = coords_flat[valid_mask]
-                    
+
                     # Optimisation: accès vectorisé aux neighbor_ids
                     neighbor_ids = self.id_connected_voxel_[
-                        valid_coords[:, 0], 
-                        valid_coords[:, 1], 
-                        valid_coords[:, 2], 
-                        valid_coords[:, 3]
+                        valid_coords[:, 0],
+                        valid_coords[:, 1],
+                        valid_coords[:, 2],
+                        valid_coords[:, 3],
                     ]
-                    
+
                     # Optimisation: filtrage vectorisé
                     valid_neighbors_mask = (
-                        (neighbor_ids != 0) & 
-                        (neighbor_ids != group_id) & 
-                        np.array([nid in self.small_av_groups_set_ for nid in neighbor_ids])
+                        (neighbor_ids != 0)
+                        & (neighbor_ids != group_id)
+                        & np.array(
+                            [nid in self.small_av_groups_set_ for nid in neighbor_ids]
+                        )
                     )
-                    
+
                     if np.any(valid_neighbors_mask):
                         valid_neighbors = neighbor_ids[valid_neighbors_mask]
-                        unique_ids, counts = np.unique(valid_neighbors, return_counts=True)
-                        
+                        unique_ids, counts = np.unique(
+                            valid_neighbors, return_counts=True
+                        )
+
                         for nid, count in zip(unique_ids, counts):
                             neighbor_id_counts[nid] += count
 
@@ -492,18 +543,25 @@ class EventDetectorOptimized:
                     # Optimisation: calcul du maximum en une seule passe
                     max_count = max(neighbor_id_counts.values())
                     # Optimisation: filtrage et tri plus efficace
-                    candidates = [(nid, count) for nid, count in neighbor_id_counts.items() 
-                                if count == max_count]
+                    candidates = [
+                        (nid, count)
+                        for nid, count in neighbor_id_counts.items()
+                        if count == max_count
+                    ]
                     new_id = min(candidates)[0]  # Plus petit ID en cas d'égalité
-                    
+
                     new_id_index = list_ids_small_av_group.index(new_id)
                     max_neighbor_count = neighbor_id_counts[new_id]
 
                     # Même logique de comparaison que l'original
                     if max_neighbor_count >= len(list_av):
                         # Optimisation: utiliser le array déjà créé
-                        self.id_connected_voxel_[coords_array[:, 0], coords_array[:, 1], 
-                                            coords_array[:, 2], coords_array[:, 3]] = new_id
+                        self.id_connected_voxel_[
+                            coords_array[:, 0],
+                            coords_array[:, 1],
+                            coords_array[:, 2],
+                            coords_array[:, 3],
+                        ] = new_id
                         small_av_groups[new_id_index].extend(list_av)
 
                         self.small_av_groups_set_.discard(group_id)
@@ -512,14 +570,16 @@ class EventDetectorOptimized:
                         pbar.total -= 1  # Réduire le total
                         pbar.update(1)
                         continue  # Ne pas incrémenter id_ - CRUCIAL pour la logique
-                
+
                 id_ += 1
                 pbar.update(1)
 
     # @profile
-    def _change_id_small_regions(self, list_av: List, list_ids_small_av_group: List) -> bool:
+    def _change_id_small_regions(
+        self, list_av: List, list_ids_small_av_group: List
+    ) -> bool:
         """Version optimisée avec calculs vectorisés"""
-        
+
         # Optimisation: pré-calculer les éléments nécessaires
         small_av_set = set(list_ids_small_av_group)
         bounds = np.array([self.time_length_, self.depth_, self.height_, self.width_])
@@ -527,42 +587,38 @@ class EventDetectorOptimized:
 
         # Optimisation: conversion en numpy array une seule fois
         coords_array = np.array(list_av)
-        
+
         # Optimisation: calcul vectorisé des voisins
         coords_expanded = coords_array[:, None, :] + neighbor_offsets[None, :, :]
         coords_flat = coords_expanded.reshape(-1, 4)
-        
+
         # Optimisation: vérification vectorisée des limites
-        valid_mask = np.all(
-            (coords_flat >= 0) & (coords_flat < bounds), 
-            axis=1
-        )
-        
+        valid_mask = np.all((coords_flat >= 0) & (coords_flat < bounds), axis=1)
+
         if not np.any(valid_mask):
             return False
-        
+
         valid_coords = coords_flat[valid_mask]
-        
+
         # Optimisation: accès vectorisé aux neighbor_ids
         neighbor_ids = self.id_connected_voxel_[
-            valid_coords[:, 0], 
-            valid_coords[:, 1], 
-            valid_coords[:, 2], 
-            valid_coords[:, 3]
+            valid_coords[:, 0],
+            valid_coords[:, 1],
+            valid_coords[:, 2],
+            valid_coords[:, 3],
         ]
-        
+
         # Optimisation: filtrage vectorisé
-        valid_neighbors_mask = (
-            (neighbor_ids != 0) & 
-            np.array([nid not in small_av_set for nid in neighbor_ids])
+        valid_neighbors_mask = (neighbor_ids != 0) & np.array(
+            [nid not in small_av_set for nid in neighbor_ids]
         )
-        
+
         if not np.any(valid_neighbors_mask):
             return False
-        
+
         valid_neighbors = neighbor_ids[valid_neighbors_mask]
         unique_ids, counts = np.unique(valid_neighbors, return_counts=True)
-        
+
         # Optimisation: calcul du maximum en une seule passe
         max_count = np.max(counts)
         max_indices = counts == max_count
@@ -570,11 +626,15 @@ class EventDetectorOptimized:
         new_id = np.min(candidates)  # Plus petit ID en cas d'égalité
 
         # Optimisation: utiliser le array déjà créé
-        self.id_connected_voxel_[coords_array[:, 0], coords_array[:, 1], 
-                            coords_array[:, 2], coords_array[:, 3]] = new_id
+        self.id_connected_voxel_[
+            coords_array[:, 0],
+            coords_array[:, 1],
+            coords_array[:, 2],
+            coords_array[:, 3],
+        ] = new_id
         return True
 
-    # @profile 
+    # @profile
     def _compute_final_id_events(self) -> None:
         """Calcul optimisé des IDs finaux."""
         if not self.final_id_events_:
@@ -600,10 +660,10 @@ class EventDetectorOptimized:
     def get_statistics(self) -> Dict:
         """Get comprehensive statistics about detected events."""
         stats = {
-            'nb_events': len(self.final_id_events_),
-            'event_sizes': [],
-            'total_event_voxels': 0,
-            'cache_hits': 0
+            "nb_events": len(self.final_id_events_),
+            "event_sizes": [],
+            "total_event_voxels": 0,
+            "cache_hits": 0,
         }
 
         # for event in range(1,len(self.final_id_events_)+1):
@@ -611,39 +671,51 @@ class EventDetectorOptimized:
         #     stats['event_sizes'].append(size)
         #     stats['total_event_voxels'] += size
 
-
         stats.update(self.stats_)
         return stats
 
 
-def detect_calcium_events_opti(av_data: np.ndarray, params_values: dict = None) -> Tuple[np.ndarray, List[int]]:
+def detect_calcium_events_opti(
+    av_data: np.ndarray, params_values: dict = None
+) -> Tuple[np.ndarray, List[int]]:
     """
     Fonction optimisée pour détecter les événements calcium dans des données 4D.
     """
-    required_keys = {'events_extraction', 'save', 'paths'}
+    required_keys = {"events_extraction", "save", "paths"}
     if not required_keys.issubset(params_values.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
-    threshold_size_3d = int(params_values['events_extraction']['threshold_size_3d'])
-    threshold_size_3d_removed = int(params_values['events_extraction']['threshold_size_3d_removed'])
-    threshold_corr = float(params_values['events_extraction']['threshold_corr'])
-    save_results = int(params_values['save']['save_events']) == 1
-    output_directory = params_values['paths']['output_dir']
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params_values.keys()}"
+        )
+    threshold_size_3d = int(params_values["events_extraction"]["threshold_size_3d"])
+    threshold_size_3d_removed = int(
+        params_values["events_extraction"]["threshold_size_3d_removed"]
+    )
+    threshold_corr = float(params_values["events_extraction"]["threshold_corr"])
+    save_results = int(params_values["save"]["save_events"]) == 1
+    output_directory = params_values["paths"]["output_dir"]
 
-    detector = EventDetectorOptimized(av_data, threshold_size_3d,
-                                      threshold_size_3d_removed, threshold_corr)
+    detector = EventDetectorOptimized(
+        av_data, threshold_size_3d, threshold_size_3d_removed, threshold_corr
+    )
 
     detector.find_events()
     id_connections, id_events = detector.get_results()
 
     if save_results:
         if output_directory is None:
-            raise ValueError("Output directory must be specified if save_results is True.")
+            raise ValueError(
+                "Output directory must be specified if save_results is True."
+            )
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         id_connections = id_connections.astype(np.float32)
-        export_data(id_connections, output_directory, export_as_single_tif=True, file_name="ID_calciumEvents")
+        export_data(
+            id_connections,
+            output_directory,
+            export_as_single_tif=True,
+            file_name="ID_calciumEvents",
+        )
 
     print(60 * "=")
     print()
     return id_connections, len(id_events)
-

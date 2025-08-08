@@ -10,7 +10,10 @@ from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
 from astroca.activeVoxels.medianFilter import generate_spherical_offsets
 
-def closing_morphology_in_space(data: np.ndarray, radius: int, border_mode: str = 'constant') -> np.ndarray:
+
+def closing_morphology_in_space(
+    data: np.ndarray, radius: int, border_mode: str = "constant"
+) -> np.ndarray:
     """
     @fn closing_morphology_in_space
     @brief Apply 3D morphological closing with a spherical structuring element to each time frame of a 4D sequence (T, Z, Y, X).
@@ -19,16 +22,20 @@ def closing_morphology_in_space(data: np.ndarray, radius: int, border_mode: str 
     @param border_mode 'constant', 'reflect', etc. OR 'ignore' to skip voxels near borders
     @return 4D numpy array (T, Z, Y, X) after closing
     """
-    if border_mode == 'ignore':
+    if border_mode == "ignore":
         return closing_morphology_in_space_ignore_border(data, radius)
 
-    print(f" - Apply morphological closing with radius={radius} and border mode='{border_mode}'")
+    print(
+        f" - Apply morphological closing with radius={radius} and border mode='{border_mode}'"
+    )
     struct_elem = ball(radius)
-    print(f"Structuring element shape: {struct_elem.shape}, active pixels: {struct_elem.sum()}")
+    print(
+        f"Structuring element shape: {struct_elem.shape}, active pixels: {struct_elem.sum()}"
+    )
     result = np.zeros_like(data, dtype=np.uint8)
 
     # Ensure binary input
-    binary = (data > 0)
+    binary = data > 0
 
     for t in tqdm(range(binary.shape[0]), desc="Morphological closing", unit="frame"):
         pad_width = ((radius, radius), (radius, radius), (radius, radius))
@@ -39,8 +46,11 @@ def closing_morphology_in_space(data: np.ndarray, radius: int, border_mode: str 
 
     return result
 
+
 @njit(parallel=True)
-def morphological_erosion_ignore_border(frame: np.ndarray, offsets: np.ndarray) -> np.ndarray:
+def morphological_erosion_ignore_border(
+    frame: np.ndarray, offsets: np.ndarray
+) -> np.ndarray:
     """
     @fn morphological_erosion_ignore_border
     @brief Morphological erosion: take the minimum in the spherical neighborhood. Only considers valid voxels (inside the volume).
@@ -68,8 +78,11 @@ def morphological_erosion_ignore_border(frame: np.ndarray, offsets: np.ndarray) 
                 eroded[z, y, x] = min_val
     return eroded
 
+
 @njit(parallel=True)
-def morphological_dilation_ignore_border(frame: np.ndarray, offsets: np.ndarray) -> np.ndarray:
+def morphological_dilation_ignore_border(
+    frame: np.ndarray, offsets: np.ndarray
+) -> np.ndarray:
     """
     @fn morphological_dilation_ignore_border
     @brief Morphological dilation: take the maximum in the spherical neighborhood. Only considers valid voxels (inside the volume).
@@ -97,10 +110,9 @@ def morphological_dilation_ignore_border(frame: np.ndarray, offsets: np.ndarray)
                 dilated[z, y, x] = max_val
     return dilated
 
+
 def closing_morphology_in_space_ignore_border(
-    data: np.ndarray,
-    radius: int,
-    n_workers: int = None
+    data: np.ndarray, radius: int, n_workers: int = None
 ) -> np.ndarray:
     """
     @fn closing_morphology_in_space_ignore_border
@@ -110,7 +122,9 @@ def closing_morphology_in_space_ignore_border(
     @param n_workers Number of parallel workers (default: None)
     @return 4D numpy array (T, Z, Y, X) after closing
     """
-    print(f" - Fast morphological closing with radius={radius} and border mode='ignore'")
+    print(
+        f" - Fast morphological closing with radius={radius} and border mode='ignore'"
+    )
 
     binary = (data > 0).astype(np.uint8)
     T, Z, Y, X = binary.shape
@@ -129,11 +143,13 @@ def closing_morphology_in_space_ignore_border(
 
     # Process all frames
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
-        list(tqdm(
-            executor.map(process, range(T)),
-            total=T,
-            desc="Morphological closing (ignore border)",
-            unit="frame"
-        ))
+        list(
+            tqdm(
+                executor.map(process, range(T)),
+                total=T,
+                desc="Morphological closing (ignore border)",
+                unit="frame",
+            )
+        )
 
     return result

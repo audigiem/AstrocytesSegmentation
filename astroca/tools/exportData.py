@@ -8,11 +8,14 @@ import os
 import numpy as np
 from tifffile import imwrite
 
-def export_data(data: np.ndarray,
-                output_path: str,
-                export_as_single_tif: bool = True,
-                file_name: str = "exported_sequence",
-                directory_name: str = "exported_data"):
+
+def export_data(
+    data: np.ndarray,
+    output_path: str,
+    export_as_single_tif: bool = True,
+    file_name: str = "exported_sequence",
+    directory_name: str = "exported_data",
+):
     """
     Export 3D image sequence data to .tif files, readable as T-Z-X-Y in FIJI.
 
@@ -30,19 +33,14 @@ def export_data(data: np.ndarray,
 
         # Reshape into a 5D array for ImageJ: (T, Z, C=1, Y, X)
         data_5d = data[:, :, np.newaxis, :, :]  # (T, Z, 1, Y, X)
-        if not file_name.endswith('.tif'):
-            file_name += '.tif'
-        
+        if not file_name.endswith(".tif"):
+            file_name += ".tif"
+
         imwrite(
             os.path.join(output_path, file_name),
             data_5d,
             imagej=True,
-            metadata={
-                'axes': 'TZCYX',
-                'Frames': T,
-                'Slices': Z,
-                'Channels': 1
-            }
+            metadata={"axes": "TZCYX", "Frames": T, "Slices": Z, "Channels": 1},
         )
         print(f"Exported all time frames to {os.path.join(output_path, file_name)}")
     else:
@@ -52,11 +50,15 @@ def export_data(data: np.ndarray,
             os.makedirs(directory_path)
 
         for t in range(data.shape[0]):
-            imwrite(os.path.join(directory_path, f'time_frame_{t}.tif'), data[t])
-            print(f"Exported time frame {t} to {os.path.join(directory_path, f'time_frame_{t}.tif')}")
+            imwrite(os.path.join(directory_path, f"time_frame_{t}.tif"), data[t])
+            print(
+                f"Exported time frame {t} to {os.path.join(directory_path, f'time_frame_{t}.tif')}"
+            )
 
 
-def save_numpy_tab(data: np.ndarray, output_path: str, file_name: str = "exported_data.npy"):
+def save_numpy_tab(
+    data: np.ndarray, output_path: str, file_name: str = "exported_data.npy"
+):
     """
     Save a numpy array to a .npy file.
 

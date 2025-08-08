@@ -12,7 +12,7 @@ HIDE_UNDOC_CLASSES     = YES
 HIDE_UNDOC_RELATIONS   = YES
 
 # Exclusions spécifiques
-EXCLUDE                = venv/ .venv/ __pycache__/ build/ dist/ tests/ examples/ docs/
+EXCLUDE                = venv/ .venv/ __pycache__/ build/ dist/ examples/ docs/
 EXCLUDE_PATTERNS       = */test_*.py */setup.py __init__.py
 
 GENERATE_HTML          = YES

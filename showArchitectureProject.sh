@@ -2,7 +2,7 @@
 
 # 1. Générer l'arborescence complète dans un fichier tmp
 TMP_TREE=$(mktemp)
-tree -L 6 -f --noreport > "$TMP_TREE"
+tree -L 2 -f --noreport > "$TMP_TREE"
 
 # 2. Appeler un script Python pour le filtrage
 python3 - <<EOF

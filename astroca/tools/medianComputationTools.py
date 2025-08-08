@@ -2,7 +2,6 @@ from numba import njit, prange
 import numpy as np
 
 
-
 @njit
 def quickselect_median(arr, n):
     """
