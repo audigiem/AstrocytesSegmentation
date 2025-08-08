@@ -9,12 +9,14 @@ import pandas as pd
 import numpy as np
 import csv
 
+
 def detect_separator(file_path: str) -> str:
-    with open(file_path, newline='') as f:
+    with open(file_path, newline="") as f:
         sample = f.read(2048)
         sniffer = csv.Sniffer()
         dialect = sniffer.sniff(sample)
         return dialect.delimiter
+
 
 def normalize_dataframe(df: pd.DataFrame, float_precision: int = 5) -> pd.DataFrame:
     # Convert all numeric columns to float64 and round them
@@ -24,6 +26,7 @@ def normalize_dataframe(df: pd.DataFrame, float_precision: int = 5) -> pd.DataFr
         else:
             df[col] = df[col].astype(str)
     return df
+
 
 def compare_csv_files(file1: str, file2: str, float_precision: int = 5) -> None:
     sep1 = detect_separator(file1)
@@ -40,7 +43,9 @@ def compare_csv_files(file1: str, file2: str, float_precision: int = 5) -> None:
     df2 = normalize_dataframe(df2, float_precision)
 
     diffs = []
-    for i, (row1, row2) in enumerate(zip(df1.itertuples(index=False), df2.itertuples(index=False))):
+    for i, (row1, row2) in enumerate(
+        zip(df1.itertuples(index=False), df2.itertuples(index=False))
+    ):
         if tuple(row1) != tuple(row2):
             diffs.append((i, tuple(row1), tuple(row2)))
 
@@ -55,12 +60,15 @@ def compare_csv_files(file1: str, file2: str, float_precision: int = 5) -> None:
                 if val1 != val2:
                     print(f"  Column '{col}': Target file: {val1}, Output file: {val2}")
 
+
 if __name__ == "__main__":
     if len(sys.argv) == 1:
         expected_CSV = "/home/matteo/Bureau/INRIA/codeJava/outputdir20/Features.csv"
-        actual_CSV = "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/Features.csv"
+        actual_CSV = (
+            "/home/matteo/Bureau/INRIA/codePython/outputdir/checkDir20/Features.csv"
+        )
         compare_csv_files(expected_CSV, actual_CSV)
-    
+
     elif len(sys.argv) != 3:
         print("Usage: python compareCSVFiles.py <file1.csv> <file2.csv>")
         sys.exit(1)

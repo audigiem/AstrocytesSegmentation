@@ -33,3 +33,6 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.group.dev.dependencies]
 pyinstrument = "^5.0.3"
 line-profiler = "^4.2.0"
+flake8 = "^6.0.0"
+black = "^23.0.0"
+pytest = "^7.0.0"

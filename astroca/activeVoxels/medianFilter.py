@@ -11,10 +11,10 @@ from numba import njit, prange
 
 
 def unified_median_filter_3d(
-        data: np.ndarray,
-        radius: float = 1.5,
-        border_mode: str = 'reflect',
-        n_workers: int = None
+    data: np.ndarray,
+    radius: float = 1.5,
+    border_mode: str = "reflect",
+    n_workers: int = None,
 ) -> np.ndarray:
     """
     @brief Unified 3D median filter for 4D stacks (T,Z,Y,X)
@@ -29,15 +29,19 @@ def unified_median_filter_3d(
 
     @return Filtered 4D stack with same dimensions as input
     """
-    print(f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'")
-    if border_mode == 'ignore':
+    print(
+        f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'"
+    )
+    if border_mode == "ignore":
         T, Z, Y, X = data.shape
         data_3D = data.reshape(T * Z, Y, X)  # Reshape to treat as 3D
         offsets = generate_spherical_offsets(radius)
         median_filtered = apply_median_filter_3d_ignore_border(data_3D, offsets)
         data_filtered_4D = median_filtered.reshape(T, Z, Y, X)
         return data_filtered_4D
-    print(f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'")
+    print(
+        f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'"
+    )
     r = int(np.ceil(radius))
 
     # Create spherical mask
@@ -60,27 +64,27 @@ def unified_median_filter_3d(
 
         @param t Frame index to process
         """
-        result = median_filter(
-            padded[t], footprint=mask, mode=border_mode
-        )
+        result = median_filter(padded[t], footprint=mask, mode=border_mode)
         # Remove padding
         filtered[t] = result[r:-r, r:-r, r:-r]
 
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
-        list(tqdm(
-            executor.map(process_frame, range(data.shape[0])),
-            total=data.shape[0], desc=f"Processing frames with median filter and {border_mode} border condition",
-            unit="frame"
-        ))
+        list(
+            tqdm(
+                executor.map(process_frame, range(data.shape[0])),
+                total=data.shape[0],
+                desc=f"Processing frames with median filter and {border_mode} border condition",
+                unit="frame",
+            )
+        )
 
     return filtered
 
 
-
-
-
 @njit(parallel=True)
-def apply_median_filter_3d_ignore_border(frame: np.ndarray, offsets: np.ndarray) -> np.ndarray:
+def apply_median_filter_3d_ignore_border(
+    frame: np.ndarray, offsets: np.ndarray
+) -> np.ndarray:
     """
     @brief Applies 3D median filter while ignoring borders
 

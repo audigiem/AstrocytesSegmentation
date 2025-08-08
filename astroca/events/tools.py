@@ -15,7 +15,9 @@ from collections import deque
 
 
 @njit
-def find_nonzero_pattern_bounds(intensity_profile: np.ndarray, t: int) -> Tuple[int, int]:
+def find_nonzero_pattern_bounds(
+    intensity_profile: np.ndarray, t: int
+) -> Tuple[int, int]:
     """
     @fn _find_nonzero_pattern_bounds
     @brief Find start and end indices of non-zero pattern around time t.
@@ -33,6 +35,7 @@ def find_nonzero_pattern_bounds(intensity_profile: np.ndarray, t: int) -> Tuple[
 
     return start, end
 
+
 @njit
 def compute_ncc_fast(pattern1: np.ndarray, pattern2: np.ndarray) -> np.ndarray:
     """
@@ -42,7 +45,7 @@ def compute_ncc_fast(pattern1: np.ndarray, pattern2: np.ndarray) -> np.ndarray:
     @param pattern2 Second 1D numpy array
     @return 1D numpy array of normalized cross-correlation values
     """
-    vout = np.correlate(pattern1, pattern2, 'full')
+    vout = np.correlate(pattern1, pattern2, "full")
 
     auto_corr_v1 = np.dot(pattern1, pattern1)
     auto_corr_v2 = np.dot(pattern2, pattern2)
@@ -83,7 +86,7 @@ def compute_max_ncc_fast(pattern1: np.ndarray, pattern2: np.ndarray) -> float:
             # Forward correlation
             end_idx = min(len(pattern1), len(pattern2) - offset)
             if end_idx > 0:
-                corr = np.dot(pattern1[:end_idx], pattern2[offset:offset + end_idx])
+                corr = np.dot(pattern1[:end_idx], pattern2[offset : offset + end_idx])
                 corr = corr / (norm1 * norm2)
                 if corr > max_corr:
                     max_corr = corr
@@ -92,12 +95,13 @@ def compute_max_ncc_fast(pattern1: np.ndarray, pattern2: np.ndarray) -> float:
             # Backward correlation
             end_idx = min(len(pattern1) - offset, len(pattern2))
             if end_idx > 0:
-                corr = np.dot(pattern1[offset:offset + end_idx], pattern2[:end_idx])
+                corr = np.dot(pattern1[offset : offset + end_idx], pattern2[:end_idx])
                 corr = corr / (norm1 * norm2)
                 if corr > max_corr:
                     max_corr = corr
 
     return max_corr
+
 
 @njit
 def correlation_zero_boundary_conditions(v1, v2):
@@ -115,6 +119,7 @@ def correlation_zero_boundary_conditions(v1, v2):
         vout[n + nV2 - 1] = sum_val
 
     return vout
+
 
 @njit
 def compute_max_ncc_strict(v1, v2):
@@ -140,7 +145,9 @@ def compute_max_ncc_strict(v1, v2):
 
 
 @njit
-def batch_check_conditions(av_frame: np.ndarray, id_frame: np.ndarray, coords: np.ndarray) -> np.ndarray:
+def batch_check_conditions(
+    av_frame: np.ndarray, id_frame: np.ndarray, coords: np.ndarray
+) -> np.ndarray:
     """
     @fn _batch_check_conditions
     @brief Batch check of conditions for multiple coordinates.
@@ -158,8 +165,11 @@ def batch_check_conditions(av_frame: np.ndarray, id_frame: np.ndarray, coords: n
 
     return valid_mask
 
+
 @njit
-def find_seed_fast(frame_data: np.ndarray, id_mask: np.ndarray) -> Tuple[int, int, int, float]:
+def find_seed_fast(
+    frame_data: np.ndarray, id_mask: np.ndarray
+) -> Tuple[int, int, int, float]:
     """
     @fn _find_seed_fast
     @brief Fast seed finding using numba.
@@ -184,9 +194,14 @@ def find_seed_fast(frame_data: np.ndarray, id_mask: np.ndarray) -> Tuple[int, in
 
 
 @njit
-def process_neighbors_batch(av_data: np.ndarray, id_mask: np.ndarray,
-                            neighbor_coords: np.ndarray, t: int,
-                            pattern: np.ndarray, threshold_corr: float) -> np.ndarray:
+def process_neighbors_batch(
+    av_data: np.ndarray,
+    id_mask: np.ndarray,
+    neighbor_coords: np.ndarray,
+    t: int,
+    pattern: np.ndarray,
+    threshold_corr: float,
+) -> np.ndarray:
     """
     @fn _process_neighbors_batch
     @brief Process multiple neighbors in batch for better performance.
@@ -223,8 +238,15 @@ def process_neighbors_batch(av_data: np.ndarray, id_mask: np.ndarray,
 
 
 @njit
-def get_valid_neighbors(z: int, y: int, x: int, depth: int, height: int, width: int,
-                         neighbor_offsets: np.ndarray) -> np.ndarray:
+def get_valid_neighbors(
+    z: int,
+    y: int,
+    x: int,
+    depth: int,
+    height: int,
+    width: int,
+    neighbor_offsets: np.ndarray,
+) -> np.ndarray:
     """
     @fn _get_valid_neighbors
     @brief Get valid neighbor coordinates using pre-computed offsets.
@@ -243,7 +265,7 @@ def get_valid_neighbors(z: int, y: int, x: int, depth: int, height: int, width: 
         dz, dy, dx = neighbor_offsets[i]
         nz, ny, nx = z + dz, y + dy, x + dx
 
-        if (0 <= nz < depth and 0 <= ny < height and 0 <= nx < width):
+        if 0 <= nz < depth and 0 <= ny < height and 0 <= nx < width:
             valid_coords.append((nz, ny, nx))
 
     return np.array(valid_coords)

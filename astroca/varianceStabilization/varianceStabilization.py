@@ -10,10 +10,10 @@ import os
 from astroca.tools.exportData import export_data
 from tqdm import tqdm
 
-def compute_variance_stabilization(data: np.ndarray,
-                                   index_xmin: np.ndarray,
-                                   index_xmax: np.ndarray,
-                                   params: dict) -> np.ndarray:
+
+def compute_variance_stabilization(
+    data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, params: dict
+) -> np.ndarray:
     """
     @brief Applies the Anscombe variance stabilization transform in-place to the image sequence.
     The Anscombe transform is applied as follows:
@@ -27,18 +27,20 @@ def compute_variance_stabilization(data: np.ndarray,
         - save_results: Boolean indicating whether to save the transformed data.
         - output_directory: Directory to save the transformed data if save_results is True.
     @return: The transformed data with stabilized variance.
-    
+
     """
     print("=== Applying variance stabilization using Anscombe transform... ===")
-    
+
     # extract necessary parameters
-    required_keys = {'save', 'paths'}
+    required_keys = {"save", "paths"}
     if not required_keys.issubset(params.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
-    
-    save_results = int(params['save']['save_variance_stabilization']) == 1
-    output_directory = params['paths']['output_dir']
-    
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params.keys()}"
+        )
+
+    save_results = int(params["save"]["save_variance_stabilization"]) == 1
+    output_directory = params["paths"]["output_dir"]
+
     T, Z, Y, X = data.shape
     data = data.astype(np.float32)
 
@@ -54,16 +56,24 @@ def compute_variance_stabilization(data: np.ndarray,
 
     if save_results:
         if output_directory is None:
-            raise ValueError("Output directory must be specified when save_results is True.")
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
         os.makedirs(output_directory, exist_ok=True)
-        export_data(data, output_directory, export_as_single_tif=True, file_name="variance_stabilized_sequence")
-    print(60*"=")
+        export_data(
+            data,
+            output_directory,
+            export_as_single_tif=True,
+            file_name="variance_stabilized_sequence",
+        )
+    print(60 * "=")
     print()
     return data
 
-def check_variance(data: np.ndarray,
-                   index_xmin: np.ndarray,
-                   index_xmax: np.ndarray) -> bool:
+
+def check_variance(
+    data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray
+) -> bool:
     """
     @brief Checks if the variance of the transformed data is approximately 1.
     @param data: 4D numpy array of shape (T, Z, Y, X)
@@ -89,7 +99,9 @@ def check_variance(data: np.ndarray,
     return True
 
 
-def anscombe_inverse(data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, param_values: dict) -> np.ndarray:
+def anscombe_inverse(
+    data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, param_values: dict
+) -> np.ndarray:
     """
     Compute inverse of Anscombe transform to compute the amplitude of the image
         A⁻¹(x) = (x / 2)^2 - 3/8
@@ -103,12 +115,14 @@ def anscombe_inverse(data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.nd
     @return: Transformed image of same shape as input
     """
     print(" - Applying inverse Anscombe transform on 3D volume...")
-    required_keys = {'save', 'paths'}
+    required_keys = {"save", "paths"}
     if not required_keys.issubset(param_values.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - param_values.keys()}")
+        raise ValueError(
+            f"Missing required parameters: {required_keys - param_values.keys()}"
+        )
 
-    save_results = int(param_values['save']['save_anscombe_inverse']) == 1
-    output_directory = param_values['paths']['output_dir']
+    save_results = int(param_values["save"]["save_anscombe_inverse"]) == 1
+    output_directory = param_values["paths"]["output_dir"]
     _, Z, Y, X = data.shape
     data = data.astype(np.float32)
 
@@ -131,9 +145,15 @@ def anscombe_inverse(data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.nd
 
     if save_results:
         if output_directory is None:
-            raise ValueError("Output directory must be specified when save_results is True.")
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
         os.makedirs(output_directory, exist_ok=True)
-        export_data(data_out, output_directory, export_as_single_tif=True,
-                    file_name="inverse_anscombe_transformed_volume")
+        export_data(
+            data_out,
+            output_directory,
+            export_as_single_tif=True,
+            file_name="inverse_anscombe_transformed_volume",
+        )
 
     return data_out

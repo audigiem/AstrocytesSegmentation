@@ -7,12 +7,14 @@ import numpy as np
 from tqdm import tqdm
 from numba import njit, prange
 
+
 # @profile
 def compute_pseudo_residuals(data: np.ndarray) -> np.ndarray:
     """
     r(t) = (data[t] - data[t-1]) / sqrt(2)
     """
     return (np.diff(data, axis=0) / np.sqrt(2)).astype(np.float32)
+
 
 # @profile
 def mad_with_pseudo_residual(residuals: np.ndarray) -> np.ndarray:
@@ -24,8 +26,11 @@ def mad_with_pseudo_residual(residuals: np.ndarray) -> np.ndarray:
     abs_res[abs_res == 0.0] = np.nan  # Ignore zeros using NaN
     return 1.4826 * np.nanmedian(abs_res, axis=0)
 
+
 # @profile
-def estimate_std_map_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray) -> np.ndarray:
+def estimate_std_map_over_time(
+    data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray
+) -> np.ndarray:
     """
     For each voxel (x,y,z), compute the MAD-based std estimation.
     @param data: 4D numpy array of shape (T, Z, Y, X) representing the image sequence.
@@ -36,18 +41,21 @@ def estimate_std_map_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndar
     T, Z, Y, X = data.shape
     residuals = compute_pseudo_residuals(data)  # Shape: (T-1, Z, Y, X)
     std_map = np.full((Z, Y, X), np.nan, dtype=np.float32)
-    
+
     for z in tqdm(range(Z), desc="Estimating std over time", unit="slice"):
         x0, x1 = xmin[z], xmax[z] + 1
-        if x0 >= x1: 
+        if x0 >= x1:
             continue
         res_slice = residuals[:, z, :, x0:x1]  # (T-1, Y, Xroi)
         std_map[z, :, x0:x1] = mad_with_pseudo_residual(res_slice)
-    
+
     return std_map
 
+
 # @profile
-def estimate_std_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray) -> float:
+def estimate_std_over_time(
+    data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray
+) -> float:
     """
     Final std estimation as the median of the 3D map excluding zeros.
     @param data: 4D numpy array of shape (T, Z, Y, X) representing the image sequence.
@@ -60,9 +68,10 @@ def estimate_std_over_time(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray)
     valid = std_map[~np.isnan(std_map) & (std_map > 0)]
     std = float(np.median(valid)) if valid.size else 0.0
     print(f"    std_noise = {std:.7f}")
-    print(60*"=")
+    print(60 * "=")
     print()
     return std
+
 
 # @njit
 # def quickselect_median_exact(arr, n):
@@ -265,7 +274,9 @@ def mad_with_pseudo_residual_numba(residuals):
     return result
 
 
-def estimate_std_map_over_time_optimized(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray) -> np.ndarray:
+def estimate_std_map_over_time_optimized(
+    data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray
+) -> np.ndarray:
     """
     @fn estimate_std_map_over_time_optimized
     @brief Optimized version of estimate_std_map_over_time using Numba.
@@ -286,7 +297,7 @@ def estimate_std_map_over_time_optimized(data: np.ndarray, xmin: np.ndarray, xma
         res_slice = residuals[:, z, :, x0:x1]  # (T-1, Y, Xroi)
 
         # S'assurer que res_slice est contigu en mémoire pour Numba
-        if not res_slice.flags['C_CONTIGUOUS']:
+        if not res_slice.flags["C_CONTIGUOUS"]:
             res_slice = np.ascontiguousarray(res_slice)
 
         # Utiliser la version Numba optimisée
@@ -296,7 +307,9 @@ def estimate_std_map_over_time_optimized(data: np.ndarray, xmin: np.ndarray, xma
     return std_map
 
 
-def estimate_std_over_time_optimized(data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray) -> float:
+def estimate_std_over_time_optimized(
+    data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray
+) -> float:
     """
     @fn estimate_std_over_time_optimized
     @brief Optimized version of estimate_std_over_time.

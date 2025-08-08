@@ -19,24 +19,27 @@ def load_data(file_path: str) -> np.ndarray:
     """
     if os.path.isdir(file_path):
         # Load all .tif files in the directory
-        file_list = sorted(glob.glob(os.path.join(file_path, '*.tif')))
+        file_list = sorted(glob.glob(os.path.join(file_path, "*.tif")))
         if not file_list:
             raise ValueError(f"No .tif files found in directory: {file_path}")
         data = [tif.imread(f) for f in file_list]
         return np.array(data)
-    elif os.path.isfile(file_path) and file_path.endswith('.tif'):
+    elif os.path.isfile(file_path) and file_path.endswith(".tif"):
         # Load single .tif file
         data = tif.imread(file_path)
         # prevent (1, T, Z, Y, X) shape
         if data.ndim == 5 and data.shape[0] == 1:
             data = np.squeeze(data, axis=0)
         if len(data.shape) != 4 and len(data.shape) != 3:
-            raise ValueError(f"Loaded data must be a 4D array (T, Z, Y, X) or 3D array (Z, Y, X), but got shape {data.shape}.")
+            raise ValueError(
+                f"Loaded data must be a 4D array (T, Z, Y, X) or 3D array (Z, Y, X), but got shape {data.shape}."
+            )
         return data
 
     else:
-        raise ValueError(f"Invalid file path: {file_path}. Must be a .tif file or a directory containing .tif files.")
-
+        raise ValueError(
+            f"Invalid file path: {file_path}. Must be a .tif file or a directory containing .tif files."
+        )
 
 
 def read_config(config_file: str = None) -> dict:
@@ -59,4 +62,3 @@ def read_config(config_file: str = None) -> dict:
         raise ValueError(f"No sections found in configuration file: {config_file}")
 
     return {section: dict(config.items(section)) for section in config.sections()}
-

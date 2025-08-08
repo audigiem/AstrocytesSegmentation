@@ -17,8 +17,18 @@ from qtpy.QtWidgets import QMainWindow, QAction, QFileDialog
 
 from pandas import DataFrame
 from qtpy.QtCore import QTimer, Qt, QSortFilterProxyModel
-from qtpy.QtWidgets import QLabel, QLineEdit, QTableWidget, QHBoxLayout, QTableWidgetItem, QWidget, QGridLayout, \
-    QPushButton, QFileDialog, QComboBox
+from qtpy.QtWidgets import (
+    QLabel,
+    QLineEdit,
+    QTableWidget,
+    QHBoxLayout,
+    QTableWidgetItem,
+    QWidget,
+    QGridLayout,
+    QPushButton,
+    QFileDialog,
+    QComboBox,
+)
 
 from typing import Union
 import matplotlib.pyplot as plt
@@ -60,21 +70,25 @@ def load_csv():
     global path_csv
     path_csv, _ = QFileDialog.getOpenFileName(None, "Select CSv file", ".", "*.csv")
     if path_csv:
-        reg_props = pd.read_csv(path_csv, sep=';')
+        reg_props = pd.read_csv(path_csv, sep=";")
 
         # Vérifier que la couche 'labels' est présente
-        if 'labels' in viewer.layers:
-            label_layer = viewer.layers['labels']
+        if "labels" in viewer.layers:
+            label_layer = viewer.layers["labels"]
             label_layer.properties = reg_props
             add_table(label_layer, viewer)
 
             # Optionnel : colorer les labels selon une propriété
-            if 'Class' in reg_props.columns:
+            if "Class" in reg_props.columns:
                 from napari.utils.colormaps import label_colormap
-                unique_classes = reg_props['Class'].unique()
+
+                unique_classes = reg_props["Class"].unique()
                 class_to_color = {c: i + 1 for i, c in enumerate(unique_classes)}
 
-                label_colors = {int(row["Label"]): class_to_color[row["Class"]] for _, row in reg_props.iterrows()}
+                label_colors = {
+                    int(row["Label"]): class_to_color[row["Class"]]
+                    for _, row in reg_props.iterrows()
+                }
                 label_layer.color = label_colors
         else:
             print("No 'labels' layer found in the viewer. Please load labels first.")
@@ -197,7 +211,9 @@ class TableWidget(QWidget):
         try:
             labels_to_show = [int(x.strip()) for x in text.split(",")]
         except ValueError:
-            print("Invalid label format. Please enter integers separated by commas: 12, 15, 18")
+            print(
+                "Invalid label format. Please enter integers separated by commas: 12, 15, 18"
+            )
             return
 
         labels_data = self._layer.data
@@ -208,32 +224,40 @@ class TableWidget(QWidget):
         if "label_selected" in self._viewer.layers:
             self._viewer.layers["label_selected"].data = filtered_labels
         else:
-            self._viewer.add_labels(filtered_labels, name="label_selected", scale=scale_voxel, opacity=1)
+            self._viewer.add_labels(
+                filtered_labels, name="label_selected", scale=scale_voxel, opacity=1
+            )
 
     def _generate_class_mask(self):
         """Génère un masque contenant tous les événements d'une classe donnée"""
         selected_class = self._class_combo.currentText()
 
-        if not selected_class or selected_class == "Sélectionner une classe":
+        if not selected_class or selected_class == "Select a class":
             print("No class selected for mask generation.")
             return
 
         # Vérifier que les données nécessaires sont disponibles
-        if not hasattr(self, '_table') or 'Class' not in self._table or 'Label' not in self._table:
+        if (
+            not hasattr(self, "_table")
+            or "Class" not in self._table
+            or "Label" not in self._table
+        ):
             print("Unable to generate mask: missing class or label data.")
             return
 
         # Trouver tous les labels correspondant à la classe sélectionnée
         labels_of_class = []
-        for i, class_name in enumerate(self._table['Class']):
+        for i, class_name in enumerate(self._table["Class"]):
             if class_name == selected_class:
-                labels_of_class.append(self._table['Label'][i])
+                labels_of_class.append(self._table["Label"][i])
 
         if not labels_of_class:
             print(f"No labels found for class '{selected_class}'.")
             return
 
-        print(f"Mask generation for class '{selected_class}' with {len(labels_of_class)} labels.")
+        print(
+            f"Mask generation for class '{selected_class}' with {len(labels_of_class)} labels."
+        )
         print(f"Labels of class '{selected_class}': {labels_of_class}")
 
         # Créer le masque
@@ -247,7 +271,9 @@ class TableWidget(QWidget):
         if layer_name in self._viewer.layers:
             self._viewer.layers[layer_name].data = class_mask
         else:
-            self._viewer.add_labels(class_mask, name=layer_name, scale=scale_voxel, opacity=0.7)
+            self._viewer.add_labels(
+                class_mask, name=layer_name, scale=scale_voxel, opacity=0.7
+            )
 
         print(f"Successfully generated mask for class '{selected_class}'.")
 
@@ -256,8 +282,8 @@ class TableWidget(QWidget):
         self._class_combo.clear()
         self._class_combo.addItem("Sélectionner une classe")
 
-        if hasattr(self, '_table') and 'Class' in self._table:
-            unique_classes = sorted(set(self._table['Class']))
+        if hasattr(self, "_table") and "Class" in self._table:
+            unique_classes = sorted(set(self._table["Class"]))
             for class_name in unique_classes:
                 self._class_combo.addItem(str(class_name))
 
@@ -289,7 +315,9 @@ class TableWidget(QWidget):
 
             if label != self._layer.selected_label:
                 if frame_column is not None and self._viewer is not None:
-                    for r, (l, f) in enumerate(zip(self._table["Label"], self._table[frame_column])):
+                    for r, (l, f) in enumerate(
+                        zip(self._table["Label"], self._table[frame_column])
+                    ):
                         if l == self._layer.selected_label and f == frame:
                             self._view.setCurrentCell(r, self._view.currentColumn())
                             break
@@ -304,7 +332,10 @@ class TableWidget(QWidget):
         QTimer.singleShot(200, self._after_labels_clicked)
 
     def _save_clicked(self, event=None, filename=None):
-        if filename is None: filename, _ = QFileDialog.getSaveFileName(self, "Save as csv...", ".", "*.csv")
+        if filename is None:
+            filename, _ = QFileDialog.getSaveFileName(
+                self, "Save as csv...", ".", "*.csv"
+            )
         DataFrame(self._table).to_csv(filename)
 
     def _copy_clicked(self):
@@ -320,8 +351,12 @@ class TableWidget(QWidget):
             string = "No label provided!"
             print(string)
             self._label_text_box.setText(string)
-        elif float(label_value) > len(self._table['index']):
-            string = "Provided label should be inferior to " + str(len(self._table['index']) + 1) + "!"
+        elif float(label_value) > len(self._table["index"]):
+            string = (
+                "Provided label should be inferior to "
+                + str(len(self._table["index"]) + 1)
+                + "!"
+            )
             print(string)
             self._label_text_box.setText(string)
         elif float(label_value) == 0:
@@ -330,11 +365,11 @@ class TableWidget(QWidget):
             self._label_text_box.setText(string)
         else:
             # Compute silmutaneous event: events starting at the same frame
-            start_frame = self._table['T0 [frame]'][int(label_value) - 1]
+            start_frame = self._table["T0 [frame]"][int(label_value) - 1]
 
-            for index in self._table['index']:
+            for index in self._table["index"]:
                 index = int(index)
-                if (self._table['T0 [frame]'][index - 1] != start_frame):
+                if self._table["T0 [frame]"][index - 1] != start_frame:
                     self._hidden_rows.append(int(index) - 1)
 
             for row in self._hidden_rows:
@@ -366,14 +401,14 @@ class TableWidget(QWidget):
 
             # workaround until this issue is fixed:
             # https://github.com/napari/napari/issues/4342
-            if len(np.unique(table['index'])) != len(table['index']):
+            if len(np.unique(table["index"])) != len(table["index"]):
                 # indices exist multiple times, presumably because it's timelapse data
                 def get_status(
-                        position,
-                        *,
-                        view_direction=None,
-                        dims_displayed=None,
-                        world: bool = False,
+                    position,
+                    *,
+                    view_direction=None,
+                    dims_displayed=None,
+                    world: bool = False,
                 ) -> str:
                     value = self._layer.get_value(
                         position,
@@ -383,14 +418,17 @@ class TableWidget(QWidget):
                     )
 
                     from napari.utils.status_messages import generate_layer_status
+
                     msg = generate_layer_status(self._layer.name, position, value)
                     return msg
 
                 self._layer.get_status = get_status
 
                 import warnings
+
                 warnings.warn(
-                    'Status bar display of label properties disabled because labels/indices exist multiple times (napari-skimage-regionprops)')
+                    "Status bar display of label properties disabled because labels/indices exist multiple times (napari-skimage-regionprops)"
+                )
 
         self._table = table
 
@@ -404,7 +442,6 @@ class TableWidget(QWidget):
             pass
 
         for i, column in enumerate(table.keys()):
-
             self._view.setHorizontalHeaderItem(i, QTableWidgetItem(column))
             for j, value in enumerate(table.get(column)):
                 # self._view.setItem(j, i, QTableWidgetItem(str(value)))
@@ -434,7 +471,7 @@ class TableWidget(QWidget):
         """
         self.set_content(self._layer.properties)
 
-    def append_content(self, table: Union[dict, DataFrame], how: str = 'outer'):
+    def append_content(self, table: Union[dict, DataFrame], how: str = "outer"):
         """
         Append data to table.
 
@@ -461,7 +498,7 @@ class TableWidget(QWidget):
         else:
             table = pd.merge(table, _table, how=how, copy=False)
 
-        self.set_content(table.to_dict('list'))
+        self.set_content(table.to_dict("list"))
 
 
 def generate_label_colors(labels):
@@ -482,7 +519,9 @@ def add_table(labels_layer: napari.layers.Layer, viewer: napari.Viewer) -> Table
     if dock_widget is None:
         dock_widget = TableWidget(labels_layer, viewer)
         # add widget to napari
-        viewer.window.add_dock_widget(dock_widget, area='right', name="Properties of " + labels_layer.name)
+        viewer.window.add_dock_widget(
+            dock_widget, area="right", name="Properties of " + labels_layer.name
+        )
     else:
         dock_widget.set_content(labels_layer.properties)
         if not dock_widget.parent().isVisible():
@@ -497,6 +536,7 @@ def get_table(labels_layer: napari.layers.Layer, viewer: napari.Viewer) -> Table
     it will return None.
     """
     import warnings
+
     # see: https://github.com/napari/napari/issues/3944
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

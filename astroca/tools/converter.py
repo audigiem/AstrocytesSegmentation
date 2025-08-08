@@ -9,7 +9,10 @@ from tifffile import imread, imwrite
 from astroca.tools.loadData import load_data
 from astroca.tools.exportData import export_data
 
-def convert_tif_series_to_single_tif(input_folder: str, output_path: str, output_file_name: str) -> None:
+
+def convert_tif_series_to_single_tif(
+    input_folder: str, output_path: str, output_file_name: str
+) -> None:
     """
     @brief Convert a series of .tif files in a folder to a single .tif file.
     @param input_folder: Path to the folder containing the .tif files.
@@ -17,7 +20,9 @@ def convert_tif_series_to_single_tif(input_folder: str, output_path: str, output
     @param output_file_name: Path to the output .tif file.
     """
     image_seq = load_data(input_folder)
-    export_data(image_seq, output_path, export_as_single_tif=True, file_name=output_file_name)
+    export_data(
+        image_seq, output_path, export_as_single_tif=True, file_name=output_file_name
+    )
 
 
 def convert_single_tif_to_series(input_file: str, output_folder: str) -> None:
@@ -41,5 +46,5 @@ if __name__ == "__main__":
     # convert_tif_series_to_single_tif(input_folder, output_path, output_file_name)
     input_file = "/home/matteo/Bureau/INRIA/assets/20stepsTimeScene.tif"
     output_folder = "/home/matteo/Bureau/INRIA/assets/20timeSteps/"
-    
+
     convert_single_tif_to_series(input_file, output_folder)

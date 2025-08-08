@@ -8,13 +8,15 @@ the first and last non-empty band in each z-slice.
 """
 
 import numpy as np
-from astroca.tools.exportData import export_data, save_numpy_tab 
+from astroca.tools.exportData import export_data, save_numpy_tab
 import os
 from tqdm import tqdm
 from typing import List, Dict, Tuple, Any
 
 
-def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+def compute_boundaries(
+    data: np.ndarray, params: dict
+) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
     """
     Compute cropping boundaries in X for each Z slice based on background values.
     Sets boundary pixels to default_value and saves results optionally.
@@ -27,15 +29,17 @@ def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.n
     @return: (index_xmin, index_xmax, default_value)
     """
     print(" - Computing cropping boundaries in X for each Z slice...")
-    
+
     # extract necessary parameters
-    required_keys = {'preprocessing', 'save', 'paths'}
+    required_keys = {"preprocessing", "save", "paths"}
     if not required_keys.issubset(params.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
-    pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    save_results = int(params['save']['save_boundaries']) == 1
-    output_directory = params['paths']['output_dir']
-    
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params.keys()}"
+        )
+    pixel_cropped = int(params["preprocessing"]["pixel_cropped"])
+    save_results = int(params["save"]["save_boundaries"]) == 1
+    output_directory = params["paths"]["output_dir"]
+
     T, Z, Y, X = data.shape
     t = 0  # analyse du premier temps uniquement
 
@@ -69,23 +73,26 @@ def compute_boundaries(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.n
             crop_start = x_start
             crop_end = x_end + 1
 
-            data[t, z, :, crop_start:crop_start + pixel_cropped] = default_value
-            data[t, z, :, crop_end - pixel_cropped:crop_end] = default_value
-
+            data[t, z, :, crop_start : crop_start + pixel_cropped] = default_value
+            data[t, z, :, crop_end - pixel_cropped : crop_end] = default_value
 
     index_xmin += pixel_cropped
     index_xmax -= pixel_cropped
 
-    print(f"    index_xmin = {index_xmin}\n     index_xmax = {index_xmax}\n     default_value = {default_value}")
+    print(
+        f"    index_xmin = {index_xmin}\n     index_xmax = {index_xmax}\n     default_value = {default_value}"
+    )
 
     if save_results:
         if output_directory is None:
-            raise ValueError("output_directory must be specified if save_results is True.")
+            raise ValueError(
+                "output_directory must be specified if save_results is True."
+            )
         os.makedirs(output_directory, exist_ok=True)
         export_data(data, output_directory, export_as_single_tif=True, file_name="data")
         save_numpy_tab(index_xmin, output_directory, file_name="index_Xmin.npy")
         save_numpy_tab(index_xmax, output_directory, file_name="index_Xmax.npy")
-        
-    print(60*"=")
+
+    print(60 * "=")
     print()
     return index_xmin, index_xmax, default_value, data
