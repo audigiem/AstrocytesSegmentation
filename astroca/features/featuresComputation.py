@@ -50,12 +50,13 @@ def save_features_from_events(
         calcium_events, events_ids, image_amplitude, params_values
     )
 
-    save_result = int(params_values["save"]["save_features"]) == 1
+    save_result_features = int(params_values["save"]["save_features"]) == 1
+    save_result_quantification = int(params_values["save"]["save_quantification"]) == 1
     output_directory = params_values["paths"]["output_dir"]
 
     hot_spots = compute_hot_spots_from_features(features, params_values)
 
-    if save_result:
+    if save_result_features:
         if output_directory is None:
             raise ValueError(
                 "Output directory must be specified when save_result is True."
@@ -64,8 +65,18 @@ def save_features_from_events(
             os.makedirs(output_directory)
         # write_excel_features(features, output_directory)
         write_csv_features(features, output_directory)
-        compute_coactive_csv(features, output_directory)
-        write_csv_hot_spots(hot_spots, output_directory)
+    elif save_result_quantification:
+        if output_directory is None:
+            raise ValueError(
+                "Output directory must be specified when save_result is True."
+            )
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        try:
+            compute_coactive_csv(features, output_directory)
+            write_csv_hot_spots(hot_spots, output_directory)
+        except Exception as e:
+            print(f"Error during coactive computation or writing hot spots: {e}")
 
     print(60 * "=")
 

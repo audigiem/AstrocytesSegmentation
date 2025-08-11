@@ -32,8 +32,7 @@ def compute_hot_spots_from_features(features_dict: Dict, params: Dict) -> List[D
     # Extract localized events directly from features dictionary
     localized_data = _extract_localized_events(features_dict)
     if not localized_data:
-        print("No localized events found in features dictionary")
-        return []
+        raise ValueError("No localized events found in features data")
 
     # Extract coordinates, labels and time information
     event_data = []
