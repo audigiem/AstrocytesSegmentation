@@ -71,7 +71,7 @@ def find_active_voxels(
     border_condition = params_values["active_voxels"]["border_condition"]
 
     data = compute_z_score(
-        dF, std_noise, gaussian_noise_mean, threshold, index_xmin, index_xmax
+        dF, std_noise, gaussian_noise_mean, threshold, index_xmin, index_xmax, GPU_AVAILABLE
     )
     if save_results:
         if output_directory is None:

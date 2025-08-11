@@ -40,7 +40,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     @param enable_memory_profiling: If True, enables memory profiling using tracemalloc.
     """
 
-    logger = RunLogger(config_path="config.ini", base_dir="runs")
+    # logger = RunLogger(config_path="config.ini", base_dir="runs")
 
     def run_step(name, func, *args, **kwargs) -> Any:
         """
@@ -104,14 +104,6 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     # === Background estimation (F0) ===
     F0 = run_step(
         "background_estimation",
-        background_estimation_single_block_numba,
-        data,
-        index_xmin,
-        index_xmax,
-        params,
-    )
-    F0 = run_step(
-        "background_estimation",
         background_estimation_single_block,
         data,
         index_xmin,
@@ -132,7 +124,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     )
     std_noise = run_step(
         "estimate_std_noise",
-        estimate_std_over_time_optimized,
+        estimate_std_over_time,
         dF,
         index_xmin,
         index_xmax,
@@ -151,6 +143,10 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     )
 
     # === Detect events ===
+    if GPU_AVAILABLE:
+        print("GPU is available, forcing event detection on CPU for compatibility.")
+        torch_device = torch.device("cpu")
+        active_voxels = active_voxels.to(torch_device)
     id_connections, ids_events = run_step(
         "detect_calcium_events",
         detect_calcium_events_opti,
@@ -209,7 +205,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
         else:
             print(f"{step}: {step_time:.2f}s ({percent:.2f}%)")
 
-    logger.save_summary(summary)
+    # logger.save_summary(summary)
 
 
 def run_pipeline():
@@ -218,7 +214,7 @@ def run_pipeline():
     @brief Run the main pipeline with logging support.
     @return None
     """
-    logger = RunLogger(config_path="config.ini", base_dir="runs")
+    # logger = RunLogger(config_path="config.ini", base_dir="runs")
 
     time_start = time.time()
     params = read_config()
@@ -255,7 +251,11 @@ def run_pipeline():
         dF, std_noise, mean_noise, index_xmin, index_xmax, params
     )
 
-    # === Detect calcium events ===
+    # === Detect calcium events (force this step on CPU) ===
+    if GPU_AVAILABLE:
+        print("GPU is available, forcing event detection on CPU for compatibility.")
+        torch_device = torch.device("cpu")
+        active_voxels = active_voxels.to(torch_device)
     id_connections, ids_events = detect_calcium_events_opti(
         active_voxels, params_values=params
     )
@@ -284,7 +284,7 @@ def run_pipeline():
         "memory_profiling": False,
     }
 
-    logger.save_summary(summary)
+    # logger.save_summary(summary)
 
 
 def main():

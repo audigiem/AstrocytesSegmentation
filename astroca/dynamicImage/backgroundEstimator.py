@@ -43,7 +43,7 @@ def background_estimation_single_block(
 
 
 # @profile
-def background_estimation_single_block(
+def background_estimation_single_block_cpu(
     data: np.ndarray,
     index_xmin: np.ndarray,
     index_xmax: np.ndarray,

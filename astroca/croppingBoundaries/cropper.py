@@ -128,8 +128,7 @@ def crop_boundaries_GPU(data: torch.Tensor, params: dict) -> torch.Tensor:
             f"Missing required parameters: {required_keys - params.keys()}"
         )
 
-    x_min = int(params["preprocessing"]["x_min"])
-    x_max = int(params["preprocessing"]["x_max"])
+    x_min, x_max = detect_null_band_X_dir(data.cpu().numpy())
     pixel_cropped = int(params["preprocessing"]["pixel_cropped"])
     save_results = int(params["save"]["save_cropp_boundaries"]) == 1
     output_directory = params["paths"]["output_dir"]

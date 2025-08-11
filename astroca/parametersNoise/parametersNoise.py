@@ -56,7 +56,7 @@ def estimate_std_map_over_time(
 
 
 # @profile
-def estimate_std_over_time(
+def estimate_std_over_time_cpu(
     data: np.ndarray, xmin: np.ndarray, xmax: np.ndarray
 ) -> float:
     """
