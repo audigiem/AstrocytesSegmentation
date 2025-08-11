@@ -30,8 +30,7 @@ def compute_coactive_csv(
     # Extract localized events from features dictionary
     localized_events = _extract_localized_events(features)
     if not localized_events:
-        print("No localized events found in features dictionary")
-        return
+        raise ValueError("No localized events found in features data")
 
     # Optimized data structures
     list_list_label: List[List[int]] = []
