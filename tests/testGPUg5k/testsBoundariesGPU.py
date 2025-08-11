@@ -4,7 +4,9 @@ from astroca.croppingBoundaries.cropper import crop_boundaries
 import torch
 
 
-def test_boundariesGPU(file_path: str = "/home/maudigie/data/inputData/20stepsTimeScene.tif") -> None:
+def test_boundariesGPU(
+    file_path: str = "/home/maudigie/data/inputData/20stepsTimeScene.tif",
+) -> None:
     """
     Test the boundaries function using GPU if available.
     """
@@ -26,7 +28,9 @@ def test_boundariesGPU(file_path: str = "/home/maudigie/data/inputData/20stepsTi
     cropped_data = crop_boundaries(data, params)
 
     # Calcul des bornes utiles sur les données rognées
-    index_xmin, index_xmax, default_value, data = compute_boundaries(cropped_data, params)
+    index_xmin, index_xmax, default_value, data = compute_boundaries(
+        cropped_data, params
+    )
 
 
 if __name__ == "__main__":

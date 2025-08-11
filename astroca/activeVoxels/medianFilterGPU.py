@@ -10,16 +10,18 @@ from astroca.tools.medianComputationTools import generate_spherical_offsets
 
 
 def unified_median_filter_3d_gpu(
-        data: torch.Tensor,
-        radius: float = 1.5,
-        border_mode: str = 'reflect',
+    data: torch.Tensor,
+    radius: float = 1.5,
+    border_mode: str = "reflect",
 ) -> torch.Tensor:
     """
     @brief GPU version of 3D median filter using PyTorch
     """
-    print(f" - Apply 3D median filter (GPU) with radius={radius}, border mode='{border_mode}'")
+    print(
+        f" - Apply 3D median filter (GPU) with radius={radius}, border mode='{border_mode}'"
+    )
 
-    if border_mode == 'ignore':
+    if border_mode == "ignore":
         T, Z, Y, X = data.shape
         data3D = data.reshape(T * Z, Y, X)  # Reshape to treat as 3D
         radius = int(np.ceil(radius))
@@ -33,7 +35,9 @@ def unified_median_filter_3d_gpu(
         return apply_median_filter_3d_gpu_with_padding(data, radius, border_mode)
 
 
-def generate_spherical_offsets_torch(radius: float, device: torch.device = None) -> torch.Tensor:
+def generate_spherical_offsets_torch(
+    radius: float, device: torch.device = None
+) -> torch.Tensor:
     """
     Génère les offsets pour un voisinage sphérique avec PyTorch
 
@@ -45,7 +49,7 @@ def generate_spherical_offsets_torch(radius: float, device: torch.device = None)
         Tensor d'offsets (N, 3) avec (dz, dy, dx)
     """
     if device is None:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     radx = rady = radz = radius
 
@@ -72,12 +76,12 @@ def generate_spherical_offsets_torch(radius: float, device: torch.device = None)
     return torch.tensor(offsets, dtype=torch.long, device=device)
 
 
-
-
-def apply_median_filter_3d_gpu_memory_efficient(data_3d: torch.Tensor,
-                                                offsets: torch.Tensor,
-                                                chunk_size: int = None,
-                                                batch_size: int = None) -> torch.Tensor:
+def apply_median_filter_3d_gpu_memory_efficient(
+    data_3d: torch.Tensor,
+    offsets: torch.Tensor,
+    chunk_size: int = None,
+    batch_size: int = None,
+) -> torch.Tensor:
     """
     Version mémoire-efficiente pour très gros volumes avec double chunking
 
@@ -104,7 +108,9 @@ def apply_median_filter_3d_gpu_memory_efficient(data_3d: torch.Tensor,
         if chunk_size is None:
             # Chunk size basé sur la mémoire disponible
             estimated_memory_per_z = N * Y * X * memory_per_element
-            chunk_size = max(1, min(Z, int(available_memory * 0.7 / estimated_memory_per_z)))
+            chunk_size = max(
+                1, min(Z, int(available_memory * 0.7 / estimated_memory_per_z))
+            )
 
         if batch_size is None:
             # Batch size pour les mini-chunks dans le plan XY
@@ -120,7 +126,9 @@ def apply_median_filter_3d_gpu_memory_efficient(data_3d: torch.Tensor,
         z_slice = slice(z_start, z_end)
 
         # Extraire le chunk avec padding pour les voisins
-        max_offset_z = max(abs(offsets[:, 0].max().item()), abs(offsets[:, 0].min().item()))
+        max_offset_z = max(
+            abs(offsets[:, 0].max().item()), abs(offsets[:, 0].min().item())
+        )
         z_start_padded = max(0, z_start - max_offset_z)
         z_end_padded = min(Z, z_end + max_offset_z)
 
@@ -137,11 +145,13 @@ def apply_median_filter_3d_gpu_memory_efficient(data_3d: torch.Tensor,
     return result
 
 
-def apply_median_filter_3d_gpu_optimized_chunk_batched(data_chunk: torch.Tensor,
-                                                       offsets: torch.Tensor,
-                                                       target_z_slice: slice,
-                                                       z_offset: int,
-                                                       batch_size: int) -> torch.Tensor:
+def apply_median_filter_3d_gpu_optimized_chunk_batched(
+    data_chunk: torch.Tensor,
+    offsets: torch.Tensor,
+    target_z_slice: slice,
+    z_offset: int,
+    batch_size: int,
+) -> torch.Tensor:
     """
     Applique le filtre médian sur un chunk avec mini-batching dans le plan XY
     """
@@ -171,10 +181,12 @@ def apply_median_filter_3d_gpu_optimized_chunk_batched(data_chunk: torch.Tensor,
             z_global = z_local + z_offset
 
             # Créer les coordonnées pour ce mini-batch
-            batch_neighborhoods = torch.empty((N, batch_end - batch_start),
-                                              device=device, dtype=dtype)
-            batch_valid_mask = torch.empty((N, batch_end - batch_start),
-                                           device=device, dtype=torch.bool)
+            batch_neighborhoods = torch.empty(
+                (N, batch_end - batch_start), device=device, dtype=dtype
+            )
+            batch_valid_mask = torch.empty(
+                (N, batch_end - batch_start), device=device, dtype=torch.bool
+            )
 
             # Pour chaque offset, calculer les voisins
             for i, (dz, dy, dx) in enumerate(offsets):
@@ -183,9 +195,14 @@ def apply_median_filter_3d_gpu_optimized_chunk_batched(data_chunk: torch.Tensor,
                 neighbor_x = x_indices + dx.item()
 
                 # Masque de validité
-                valid = ((neighbor_z >= 0) & (neighbor_z < Z_chunk) &
-                         (neighbor_y >= 0) & (neighbor_y < Y) &
-                         (neighbor_x >= 0) & (neighbor_x < X))
+                valid = (
+                    (neighbor_z >= 0)
+                    & (neighbor_z < Z_chunk)
+                    & (neighbor_y >= 0)
+                    & (neighbor_y < Y)
+                    & (neighbor_x >= 0)
+                    & (neighbor_x < X)
+                )
 
                 batch_valid_mask[i] = valid
 
@@ -196,8 +213,11 @@ def apply_median_filter_3d_gpu_optimized_chunk_batched(data_chunk: torch.Tensor,
 
                 # Récupérer les valeurs
                 values = data_chunk[neighbor_z_safe, neighbor_y_safe, neighbor_x_safe]
-                batch_neighborhoods[i] = torch.where(valid, values,
-                                                     torch.tensor(float('nan'), device=device, dtype=dtype))
+                batch_neighborhoods[i] = torch.where(
+                    valid,
+                    values,
+                    torch.tensor(float("nan"), device=device, dtype=dtype),
+                )
 
             # Calculer la médiane
             batch_medians = torch.nanmedian(batch_neighborhoods, dim=0).values
@@ -214,9 +234,9 @@ def apply_median_filter_3d_gpu_optimized_chunk_batched(data_chunk: torch.Tensor,
 
 
 def apply_median_filter_3d_gpu_with_padding(
-        data: torch.Tensor,
-        radius: float,
-        border_mode: str,
+    data: torch.Tensor,
+    radius: float,
+    border_mode: str,
 ) -> torch.Tensor:
     """
     @brief GPU implementation with padding for standard border modes
@@ -225,14 +245,14 @@ def apply_median_filter_3d_gpu_with_padding(
     r = int(np.ceil(radius))
 
     # Convert border_mode to PyTorch padding mode
-    if border_mode == 'reflect':
-        padding_mode = 'reflect'
-    elif border_mode == 'nearest' or border_mode == 'edge':
-        padding_mode = 'replicate'
-    elif border_mode == 'constant':
-        padding_mode = 'constant'
+    if border_mode == "reflect":
+        padding_mode = "reflect"
+    elif border_mode == "nearest" or border_mode == "edge":
+        padding_mode = "replicate"
+    elif border_mode == "constant":
+        padding_mode = "constant"
     else:
-        padding_mode = 'reflect'  # fallback
+        padding_mode = "reflect"  # fallback
 
     # Create spherical offsets
     offsets = generate_spherical_offsets(radius)
@@ -245,7 +265,10 @@ def apply_median_filter_3d_gpu_with_padding(
     batch_size = min(T, 4)  # Smaller batch for padded version due to memory
     result = torch.empty_like(data)
 
-    for i in tqdm(range(0, T, batch_size), desc=f"Processing frames (GPU) with {border_mode} border"):
+    for i in tqdm(
+        range(0, T, batch_size),
+        desc=f"Processing frames (GPU) with {border_mode} border",
+    ):
         end_idx = min(i + batch_size, T)
         batch_padded = padded[i:end_idx]
         batch_result = median_filter_batch_gpu_padded(batch_padded, offsets, r)
@@ -254,7 +277,9 @@ def apply_median_filter_3d_gpu_with_padding(
     return result
 
 
-def median_filter_batch_gpu_padded(batch_padded: torch.Tensor, offsets: torch.Tensor, r: int) -> torch.Tensor:
+def median_filter_batch_gpu_padded(
+    batch_padded: torch.Tensor, offsets: torch.Tensor, r: int
+) -> torch.Tensor:
     """
     @brief Process a batch of padded frames with median filter
     """
@@ -263,7 +288,9 @@ def median_filter_batch_gpu_padded(batch_padded: torch.Tensor, offsets: torch.Te
     n_offsets = offsets.shape[0]
 
     # Create output tensor
-    result = torch.empty((batch_size, Z, Y, X), dtype=batch_padded.dtype, device=batch_padded.device)
+    result = torch.empty(
+        (batch_size, Z, Y, X), dtype=batch_padded.dtype, device=batch_padded.device
+    )
 
     # Process each position in the original (unpadded) space
     for b in range(batch_size):
@@ -287,7 +314,7 @@ def median_filter_batch_gpu_padded(batch_padded: torch.Tensor, offsets: torch.Te
                         values_tensor = torch.stack(values)
                         median_val = torch.median(values_tensor)
                         # Handle different PyTorch versions
-                        if hasattr(median_val, 'values'):
+                        if hasattr(median_val, "values"):
                             result[b, z, y, x] = median_val.values
                         else:
                             result[b, z, y, x] = median_val
@@ -295,7 +322,9 @@ def median_filter_batch_gpu_padded(batch_padded: torch.Tensor, offsets: torch.Te
     return result
 
 
-def median_filter_batch_gpu_vectorized(batch_data: torch.Tensor, offsets: torch.Tensor) -> torch.Tensor:
+def median_filter_batch_gpu_vectorized(
+    batch_data: torch.Tensor, offsets: torch.Tensor
+) -> torch.Tensor:
     """
     @brief Vectorized GPU implementation for better performance (ignore border mode)
     """
@@ -312,7 +341,7 @@ def median_filter_batch_gpu_vectorized(batch_data: torch.Tensor, offsets: torch.
 
     for b in range(batch_size):
         # For each offset, create the shifted coordinates
-        neighbor_values = torch.full((Z, Y, X, n_offsets), float('nan'), device=device)
+        neighbor_values = torch.full((Z, Y, X, n_offsets), float("nan"), device=device)
         valid_mask = torch.zeros((Z, Y, X, n_offsets), dtype=torch.bool, device=device)
 
         for i, (dz, dy, dx) in enumerate(offsets):
@@ -323,9 +352,12 @@ def median_filter_batch_gpu_vectorized(batch_data: torch.Tensor, offsets: torch.
 
             # Create validity mask
             valid = (
-                    (neighbor_z >= 0) & (neighbor_z < Z) &
-                    (neighbor_y >= 0) & (neighbor_y < Y) &
-                    (neighbor_x >= 0) & (neighbor_x < X)
+                (neighbor_z >= 0)
+                & (neighbor_z < Z)
+                & (neighbor_y >= 0)
+                & (neighbor_y < Y)
+                & (neighbor_x >= 0)
+                & (neighbor_x < X)
             )
 
             # Clamp coordinates to valid range for indexing
@@ -334,10 +366,14 @@ def median_filter_batch_gpu_vectorized(batch_data: torch.Tensor, offsets: torch.
             neighbor_x_clamped = torch.clamp(neighbor_x, 0, X - 1)
 
             # Extract values
-            values = batch_data[b, neighbor_z_clamped, neighbor_y_clamped, neighbor_x_clamped]
+            values = batch_data[
+                b, neighbor_z_clamped, neighbor_y_clamped, neighbor_x_clamped
+            ]
 
             # Apply validity mask
-            neighbor_values[:, :, :, i] = torch.where(valid, values, torch.tensor(float('nan'), device=device))
+            neighbor_values[:, :, :, i] = torch.where(
+                valid, values, torch.tensor(float("nan"), device=device)
+            )
             valid_mask[:, :, :, i] = valid
 
         # Compute median for each position
@@ -351,6 +387,3 @@ def median_filter_batch_gpu_vectorized(batch_data: torch.Tensor, offsets: torch.
                         result[b, z, y, x] = batch_data[b, z, y, x]
 
     return result
-
-
-

@@ -12,8 +12,15 @@ from numpy.lib.stride_tricks import sliding_window_view
 from tqdm import tqdm
 from numba import njit, prange
 import torch
+
+
 # @profile
-def background_estimation_single_block(data: np.ndarray | torch.Tensor, index_xmin: np.ndarray, index_xmax: np.ndarray, params_values: dict) -> np.ndarray | torch.Tensor:
+def background_estimation_single_block(
+    data: np.ndarray | torch.Tensor,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    params_values: dict,
+) -> np.ndarray | torch.Tensor:
     """
     Estimate the background F0 using the entire time sequence as a single block.
 
@@ -30,15 +37,18 @@ def background_estimation_single_block(data: np.ndarray | torch.Tensor, index_xm
     if int(params_values.get("GPU_AVAILABLE", 0)) == 1:
         return background_estimation_GPU(data, index_xmin, index_xmax, params_values)
     else:
-        return background_estimation_single_block_numba(data, index_xmin, index_xmax, params_values)
+        return background_estimation_single_block_numba(
+            data, index_xmin, index_xmax, params_values
+        )
 
 
-
-
-def background_estimation_CPU(data: np.ndarray,
-                                       index_xmin: np.ndarray,
-                                       index_xmax: np.ndarray,
-                                       params_values: dict) -> np.ndarray:
+# @profile
+def background_estimation_single_block(
+    data: np.ndarray,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    params_values: dict,
+) -> np.ndarray:
     """
     Estimate the background F0 using the entire time sequence as a single block.
 
@@ -53,24 +63,30 @@ def background_estimation_CPU(data: np.ndarray,
     @return: Background array of shape (1, Z, Y, X)
     """
     print("=== Fluorescence baseline F0 estimation ===")
-    required_keys = {'background_estimation', 'save', 'paths'}
+    required_keys = {"background_estimation", "save", "paths"}
     if not required_keys.issubset(params_values.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params_values.keys()}"
+        )
 
-    acquisition_frequency = float(params_values['background_estimation']['acquisition_frequency'])
-    amplification_factor = float(params_values['background_estimation']['amplification_factor'])
+    acquisition_frequency = float(
+        params_values["background_estimation"]["acquisition_frequency"]
+    )
+    amplification_factor = float(
+        params_values["background_estimation"]["amplification_factor"]
+    )
     # moving_window = int(params_values['background_estimation']['moving_window'])
-    method = params_values['background_estimation']['method']
-    method2 = params_values['background_estimation']['method2']
-    percentile = float(params_values['background_estimation']['percentile'])
-    save_results = int(params_values['save']['save_background_estimation']) == 1
-    output_directory = params_values['paths']['output_dir']
+    method = params_values["background_estimation"]["method"]
+    method2 = params_values["background_estimation"]["method2"]
+    percentile = float(params_values["background_estimation"]["percentile"])
+    save_results = int(params_values["save"]["save_background_estimation"]) == 1
+    output_directory = params_values["paths"]["output_dir"]
 
     moving_window = int(np.ceil(acquisition_frequency * amplification_factor + 1))
 
-    if method not in {'min', 'percentile'}:
+    if method not in {"min", "percentile"}:
         raise ValueError("method must be 'min' or 'percentile'")
-    if method2 not in {'Mean', 'Med'}:
+    if method2 not in {"Mean", "Med"}:
         raise ValueError("method2 must be 'Mean' or 'Med'")
     if not (0 <= percentile <= 100):
         raise ValueError("percentile must be between 0 and 100")
@@ -92,11 +108,15 @@ def background_estimation_CPU(data: np.ndarray,
         if not (0 <= x_min < x_max < X):
             continue
 
-        roi = data[:, z, :, x_min:x_max + 1]  # shape: (T, Y, X_roi)
-        windowed = sliding_window_view(roi, window_shape=moving_window, axis=0)  # shape: (num_iter, Y, X_roi, moving_window)
+        roi = data[:, z, :, x_min : x_max + 1]  # shape: (T, Y, X_roi)
+        windowed = sliding_window_view(
+            roi, window_shape=moving_window, axis=0
+        )  # shape: (num_iter, Y, X_roi, moving_window)
 
         # Move the window dimension to the last axis for easier reduction
-        windowed = np.moveaxis(windowed, -1, 0)  # shape: (moving_window, num_iter, Y, X_roi)
+        windowed = np.moveaxis(
+            windowed, -1, 0
+        )  # shape: (moving_window, num_iter, Y, X_roi)
 
         if method2 == "Mean":
             moving_vals = np.mean(windowed, axis=0)  # shape: (num_iter, Y, X_roi)
@@ -111,8 +131,7 @@ def background_estimation_CPU(data: np.ndarray,
             sorted_vals = np.sort(moving_vals, axis=0)
             result = sorted_vals[k - 1]  # kth smallest
 
-        F0[0, z, :, x_min:x_max + 1] = result
-
+        F0[0, z, :, x_min : x_max + 1] = result
 
     if save_results:
         if output_directory is None:
@@ -120,14 +139,16 @@ def background_estimation_CPU(data: np.ndarray,
         os.makedirs(output_directory, exist_ok=True)
         export_data(F0, output_directory, export_as_single_tif=True, file_name="F0")
 
-    print(60*"=")
+    print(60 * "=")
     print()
 
     return F0
 
 
 @njit(parallel=True)
-def process_windowed_data_numba(windowed, moving_window, num_iter, Y, X_roi, method2, method, k):
+def process_windowed_data_numba(
+    windowed, moving_window, num_iter, Y, X_roi, method2, method, k
+):
     """
     @brief Numba-optimized core computation for windowed data processing
     @param windowed: Shape (moving_window, num_iter, Y, X_roi)
@@ -141,20 +162,20 @@ def process_windowed_data_numba(windowed, moving_window, num_iter, Y, X_roi, met
     @return: Result array of shape (Y, X_roi)
     """
     result = np.zeros((Y, X_roi), dtype=np.float32)
-    
+
     # Process each pixel independently with parallel loops
     for y in prange(Y):
         for x in prange(X_roi):
             # Extract time series for this pixel across all windows
             temp_array = np.zeros(moving_window, dtype=np.float32)
             moving_vals = np.zeros(num_iter, dtype=np.float32)
-            
+
             # For each window position
             for iter_idx in range(num_iter):
                 # Extract values for this window
                 for w in range(moving_window):
                     temp_array[w] = windowed[w, iter_idx, y, x]
-                
+
                 # Apply method2 (Mean or Median)
                 if method2 == 0:  # Mean
                     moving_vals[iter_idx] = np.mean(temp_array)
@@ -162,7 +183,7 @@ def process_windowed_data_numba(windowed, moving_window, num_iter, Y, X_roi, met
                     # Create a copy for quickselect (it modifies the array)
                     temp_copy = temp_array.copy()
                     moving_vals[iter_idx] = quickselect_median(temp_copy, moving_window)
-            
+
             # Apply final method (min or percentile)
             if method == 0:  # min
                 result[y, x] = np.min(moving_vals)
@@ -170,17 +191,20 @@ def process_windowed_data_numba(windowed, moving_window, num_iter, Y, X_roi, met
                 # Create a copy for quickselect
                 moving_copy = moving_vals.copy()
                 result[y, x] = quickselect_kth(moving_copy, num_iter, k)
-    
+
     return result
 
-def background_estimation_single_block_numba(data: np.ndarray,
-                                           index_xmin: np.ndarray,
-                                           index_xmax: np.ndarray,
-                                           params_values: dict) -> np.ndarray:
+
+def background_estimation_single_block_numba(
+    data: np.ndarray,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    params_values: dict,
+) -> np.ndarray:
     """
     Version ultra-optimisée avec Numba pour l'estimation du background F0.
     Utilise les fonctions quickselect personnalisées pour des gains de performance maximaux.
-    
+
     @param data: 4D image sequence (T, Z, Y, X)
     @param index_xmin: Array of cropping bounds (left) for each Z
     @param index_xmax: Array of cropping bounds (right) for each Z
@@ -188,24 +212,30 @@ def background_estimation_single_block_numba(data: np.ndarray,
     @return: Background array of shape (1, Z, Y, X)
     """
     print("=== Fluorescence baseline F0 estimation (NUMBA OPTIMIZED) ===")
-    required_keys = {'background_estimation', 'save', 'paths'}
+    required_keys = {"background_estimation", "save", "paths"}
     if not required_keys.issubset(params_values.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params_values.keys()}"
+        )
 
-    acquisition_frequency = float(params_values['background_estimation']['acquisition_frequency'])
-    amplification_factor = float(params_values['background_estimation']['amplification_factor'])
+    acquisition_frequency = float(
+        params_values["background_estimation"]["acquisition_frequency"]
+    )
+    amplification_factor = float(
+        params_values["background_estimation"]["amplification_factor"]
+    )
     # moving_window = int(params_values['background_estimation']['moving_window'])
-    method = params_values['background_estimation']['method']
-    method2 = params_values['background_estimation']['method2']
-    percentile = float(params_values['background_estimation']['percentile'])
-    save_results = int(params_values['save']['save_background_estimation']) == 1
-    output_directory = params_values['paths']['output_dir']
+    method = params_values["background_estimation"]["method"]
+    method2 = params_values["background_estimation"]["method2"]
+    percentile = float(params_values["background_estimation"]["percentile"])
+    save_results = int(params_values["save"]["save_background_estimation"]) == 1
+    output_directory = params_values["paths"]["output_dir"]
 
     moving_window = int(np.ceil(acquisition_frequency * amplification_factor + 1))
 
-    if method not in {'min', 'percentile'}:
+    if method not in {"min", "percentile"}:
         raise ValueError("method must be 'min' or 'percentile'")
-    if method2 not in {'Mean', 'Med'}:
+    if method2 not in {"Mean", "Med"}:
         raise ValueError("method2 must be 'Mean' or 'Med'")
     if not (0 <= percentile <= 100):
         raise ValueError("percentile must be between 0 and 100")
@@ -222,8 +252,8 @@ def background_estimation_single_block_numba(data: np.ndarray,
 
     # Convert string parameters to integers for Numba
     method2_int = 0 if method2 == "Mean" else 1  # 0 = Mean, 1 = Med
-    method_int = 0 if method == "min" else 1     # 0 = min, 1 = percentile
-    
+    method_int = 0 if method == "min" else 1  # 0 = min, 1 = percentile
+
     # Pre-calculate k for percentiles (convert to 0-indexed)
     k = 0
     if method == "percentile":
@@ -237,22 +267,27 @@ def background_estimation_single_block_numba(data: np.ndarray,
         if not (0 <= x_min < x_max < X):
             continue
 
-        roi = data[:, z, :, x_min:x_max + 1].astype(np.float32)  # shape: (T, Y, X_roi)
+        roi = data[:, z, :, x_min : x_max + 1].astype(
+            np.float32
+        )  # shape: (T, Y, X_roi)
         X_roi = roi.shape[2]
-        
+
         # Create sliding windows
-        windowed = sliding_window_view(roi, window_shape=moving_window, axis=0)  # shape: (num_iter, Y, X_roi, moving_window)
-        
+        windowed = sliding_window_view(
+            roi, window_shape=moving_window, axis=0
+        )  # shape: (num_iter, Y, X_roi, moving_window)
+
         # Move the window dimension to the first axis for Numba processing
-        windowed = np.moveaxis(windowed, -1, 0)  # shape: (moving_window, num_iter, Y, X_roi)
-        
+        windowed = np.moveaxis(
+            windowed, -1, 0
+        )  # shape: (moving_window, num_iter, Y, X_roi)
+
         # Use Numba-optimized processing
         result = process_windowed_data_numba(
-            windowed, moving_window, num_iter, Y, X_roi, 
-            method2_int, method_int, k
+            windowed, moving_window, num_iter, Y, X_roi, method2_int, method_int, k
         )
-        
-        F0[0, z, :, x_min:x_max + 1] = result
+
+        F0[0, z, :, x_min : x_max + 1] = result
 
     if save_results:
         if output_directory is None:
@@ -260,11 +295,15 @@ def background_estimation_single_block_numba(data: np.ndarray,
         os.makedirs(output_directory, exist_ok=True)
         export_data(F0, output_directory, export_as_single_tif=True, file_name="F0")
 
-    print(60*"=")
+    print(60 * "=")
     print()
 
     return F0
-def sliding_window_view_torch(input_tensor: torch.Tensor, window_shape: int, axis: int = 0) -> torch.Tensor:
+
+
+def sliding_window_view_torch(
+    input_tensor: torch.Tensor, window_shape: int, axis: int = 0
+) -> torch.Tensor:
     """
     PyTorch implementation of numpy.lib.stride_tricks.sliding_window_view
     that produces identical results to NumPy version.
@@ -279,15 +318,19 @@ def sliding_window_view_torch(input_tensor: torch.Tensor, window_shape: int, axi
     # Use unfold to create sliding windows
     # input_tensor shape: (T, Y, X)
     # unfold(dim, size, step) creates windows of size 'size' with step 'step' along dimension 'dim'
-    windowed = input_tensor.unfold(axis, window_shape, 1)  # (T-window_shape+1, Y, X, window_shape)
+    windowed = input_tensor.unfold(
+        axis, window_shape, 1
+    )  # (T-window_shape+1, Y, X, window_shape)
 
     return windowed
 
 
-def background_estimation_GPU(data: torch.Tensor,
-                              index_xmin: np.ndarray,
-                              index_xmax: np.ndarray,
-                              params_values: dict) -> torch.Tensor:
+def background_estimation_GPU(
+    data: torch.Tensor,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    params_values: dict,
+) -> torch.Tensor:
     """
     Estimate the background F0 using the entire time sequence as a single block on GPU.
     Full GPU implementation that guarantees identical results to CPU version.
@@ -304,24 +347,30 @@ def background_estimation_GPU(data: torch.Tensor,
     """
     print("=== Fluorescence baseline F0 estimation (GPU) ===")
 
-    required_keys = {'background_estimation', 'save', 'paths'}
+    required_keys = {"background_estimation", "save", "paths"}
     if not required_keys.issubset(params_values.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params_values.keys()}")
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params_values.keys()}"
+        )
 
     device = data.device
-    acquisition_frequency = float(params_values['background_estimation']['acquisition_frequency'])
-    amplification_factor = float(params_values['background_estimation']['amplification_factor'])
+    acquisition_frequency = float(
+        params_values["background_estimation"]["acquisition_frequency"]
+    )
+    amplification_factor = float(
+        params_values["background_estimation"]["amplification_factor"]
+    )
     # moving_window = int(params_values['background_estimation']['moving_window'])
-    method = params_values['background_estimation']['method']
-    method2 = params_values['background_estimation']['method2']
-    percentile = float(params_values['background_estimation']['percentile'])
-    save_results = int(params_values['save']['save_background_estimation']) == 1
-    output_directory = params_values['paths']['output_dir']
+    method = params_values["background_estimation"]["method"]
+    method2 = params_values["background_estimation"]["method2"]
+    percentile = float(params_values["background_estimation"]["percentile"])
+    save_results = int(params_values["save"]["save_background_estimation"]) == 1
+    output_directory = params_values["paths"]["output_dir"]
 
     moving_window = int(np.ceil(acquisition_frequency * amplification_factor + 1))
-    if method not in {'min', 'percentile'}:
+    if method not in {"min", "percentile"}:
         raise ValueError("method must be 'min' or 'percentile'")
-    if method2 not in {'Mean', 'Med'}:
+    if method2 not in {"Mean", "Med"}:
         raise ValueError("method2 must be 'Mean' or 'Med'")
     if not (0 <= percentile <= 100):
         raise ValueError("percentile must be between 0 and 100")
@@ -335,28 +384,35 @@ def background_estimation_GPU(data: torch.Tensor,
     num_iter = T - moving_window + 1
     F0 = torch.zeros((1, Z, Y, X), dtype=torch.float32, device=device)
 
-    for z in tqdm(range(Z), desc="Estimating background per Z-slice (GPU)", unit="slice"):
+    for z in tqdm(
+        range(Z), desc="Estimating background per Z-slice (GPU)", unit="slice"
+    ):
         x_min = int(index_xmin[z])
         x_max = int(index_xmax[z])
 
         if not (0 <= x_min < x_max < X):
             continue
 
-        roi = data[:, z, :, x_min:x_max + 1]  # shape: (T, Y, X_roi)
+        roi = data[:, z, :, x_min : x_max + 1]  # shape: (T, Y, X_roi)
 
         # Use our custom sliding window function that mimics NumPy exactly
-        windowed = sliding_window_view_torch(roi, window_shape=moving_window,
-                                             axis=0)  # shape: (num_iter, Y, X_roi, moving_window)
+        windowed = sliding_window_view_torch(
+            roi, window_shape=moving_window, axis=0
+        )  # shape: (num_iter, Y, X_roi, moving_window)
 
         # Move the window dimension to match NumPy's moveaxis(-1, 0)
         # NumPy: (num_iter, Y, X_roi, moving_window) -> (moving_window, num_iter, Y, X_roi)
-        windowed = windowed.permute(3, 0, 1, 2)  # shape: (moving_window, num_iter, Y, X_roi)
+        windowed = windowed.permute(
+            3, 0, 1, 2
+        )  # shape: (moving_window, num_iter, Y, X_roi)
 
         if method2 == "Mean":
             moving_vals = torch.mean(windowed, dim=0)  # shape: (num_iter, Y, X_roi)
         else:  # Med
             # Use quantile for exact NumPy median behavior
-            moving_vals = torch.quantile(windowed, 0.5, dim=0, interpolation='linear')  # shape: (num_iter, Y, X_roi)
+            moving_vals = torch.quantile(
+                windowed, 0.5, dim=0, interpolation="linear"
+            )  # shape: (num_iter, Y, X_roi)
 
         if method == "min":
             result = torch.min(moving_vals, dim=0).values  # (Y, X_roi)
@@ -369,14 +425,19 @@ def background_estimation_GPU(data: torch.Tensor,
             sorted_vals, _ = torch.sort(moving_vals, dim=0)
             result = sorted_vals[k - 1]  # kth smallest (Y, X_roi)
 
-        F0[0, z, :, x_min:x_max + 1] = result
+        F0[0, z, :, x_min : x_max + 1] = result
 
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified.")
         os.makedirs(output_directory, exist_ok=True)
         F0_cpu = F0.detach().cpu().numpy()
-        export_data(F0_cpu, output_directory, export_as_single_tif=True, file_name="F0_estimated")
+        export_data(
+            F0_cpu,
+            output_directory,
+            export_as_single_tif=True,
+            file_name="F0_estimated",
+        )
 
     print("=" * 60)
     print()

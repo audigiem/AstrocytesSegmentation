@@ -5,6 +5,7 @@ import logging
 import json
 import sys
 
+
 class RunLogger:
     def __init__(self, config_path="config.ini", base_dir="runs"):
         self.start_time = datetime.datetime.now()
@@ -21,8 +22,8 @@ class RunLogger:
         logging.basicConfig(
             filename=self.log_path,
             level=logging.INFO,
-            format='%(asctime)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
+            format="%(asctime)s - %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
         self.logger = logging.getLogger()
 
@@ -46,7 +47,10 @@ class RunLogger:
     class _StreamToLogger:
         def __init__(self, log_func):
             self.log_func = log_func
+
         def write(self, message):
             if message.strip():
                 self.log_func(message.strip())
-        def flush(self): pass
+
+        def flush(self):
+            pass

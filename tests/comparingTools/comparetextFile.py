@@ -1,14 +1,21 @@
 import numpy as np
 
+
 def lire_fichier(fichier):
-    with open(fichier, 'r') as f:
+    with open(fichier, "r") as f:
         lignes = f.readlines()
-    donnees = [list(map(np.float32, ligne.strip().split())) for ligne in lignes if ligne.strip()]
+    donnees = [
+        list(map(np.float32, ligne.strip().split()))
+        for ligne in lignes
+        if ligne.strip()
+    ]
     return donnees
+
 
 def somme_par_colonne(donnees):
     # Transpose puis somme par colonne
     return [sum(col) for col in zip(*donnees)]
+
 
 def comparer_fichiers(fichier1, fichier2, epsilon=1e-6):
     # Lire les fichiers
@@ -17,7 +24,9 @@ def comparer_fichiers(fichier1, fichier2, epsilon=1e-6):
 
     # Vérification du nombre de lignes
     if len(data1) != len(data2):
-        print(f"Les fichiers n'ont pas le même nombre de lignes : {len(data1)} vs {len(data2)}")
+        print(
+            f"Les fichiers n'ont pas le même nombre de lignes : {len(data1)} vs {len(data2)}"
+        )
         return
 
     # Calcul des sommes par colonne
@@ -34,5 +43,9 @@ def comparer_fichiers(fichier1, fichier2, epsilon=1e-6):
     else:
         print("❌ Les sommes par colonne diffèrent.")
 
+
 # Exemple d'utilisation
-comparer_fichiers('/home/matteo/Bureau/INRIA/codeJava/AnalyzeAstroCaSignals/output.txt', '/home/matteo/Bureau/INRIA/codePython/AstrocytesSegmentation/output.txt')
+comparer_fichiers(
+    "/home/matteo/Bureau/INRIA/codeJava/AnalyzeAstroCaSignals/output.txt",
+    "/home/matteo/Bureau/INRIA/codePython/AstrocytesSegmentation/output.txt",
+)

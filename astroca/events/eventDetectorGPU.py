@@ -18,15 +18,19 @@ class EventDetectorGPUEquivalent:
     mais adapte l'implémentation pour tirer parti du GPU.
     """
 
-    def __init__(self, av_data: torch.Tensor, threshold_size_3d: int = 10,
-                 threshold_size_3d_removed: int = 5, threshold_corr: float = 0.5,
-                 device: str = None):
-
+    def __init__(
+        self,
+        av_data: torch.Tensor,
+        threshold_size_3d: int = 10,
+        threshold_size_3d_removed: int = 5,
+        threshold_corr: float = 0.5,
+        device: str = None,
+    ):
         print("=== GPU Event Detector (Equivalent Logic) ===")
 
         # Setup device
         if device is None:
-            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         else:
             self.device = torch.device(device)
 
@@ -47,7 +51,9 @@ class EventDetectorGPUEquivalent:
 
         # GPU structures
         self.nonzero_mask_ = self.av_ != 0
-        self.id_connected_voxel_ = torch.zeros_like(self.av_, dtype=torch.int32, device=self.device)
+        self.id_connected_voxel_ = torch.zeros_like(
+            self.av_, dtype=torch.int32, device=self.device
+        )
         self.final_id_events_ = []
 
         # Cache patterns (comme CPU mais sur GPU)
@@ -57,7 +63,9 @@ class EventDetectorGPUEquivalent:
         self._setup_neighbor_offsets()
 
         print(f"Input data range: [{self.av_.min():.3f}, {self.av_.max():.3f}]")
-        print(f"Non-zero density: {torch.count_nonzero(self.av_).item() / self.av_.numel():.4f}")
+        print(
+            f"Non-zero density: {torch.count_nonzero(self.av_).item() / self.av_.numel():.4f}"
+        )
 
     def _setup_neighbor_offsets(self):
         """Setup des offsets de voisinage (identique au CPU)"""
@@ -70,7 +78,9 @@ class EventDetectorGPUEquivalent:
                         continue
                     offsets_3d.append([dz, dy, dx])
 
-        self.neighbor_offsets_3d = torch.tensor(offsets_3d, dtype=torch.int32, device=self.device)
+        self.neighbor_offsets_3d = torch.tensor(
+            offsets_3d, dtype=torch.int32, device=self.device
+        )
 
     def find_events(self) -> None:
         """
@@ -78,7 +88,8 @@ class EventDetectorGPUEquivalent:
         mais optimise le traitement interne de chaque frame.
         """
         print(
-            f"Thresholds -> size: {self.threshold_size_3d_}, removed: {self.threshold_size_3d_removed_}, corr: {self.threshold_corr_}")
+            f"Thresholds -> size: {self.threshold_size_3d_}, removed: {self.threshold_size_3d_removed_}, corr: {self.threshold_corr_}"
+        )
         start_time = time.time()
 
         if not torch.any(self.nonzero_mask_):
@@ -91,14 +102,17 @@ class EventDetectorGPUEquivalent:
 
         # Traitement par frame (comme CPU) mais optimisé GPU
         for t in tqdm(range(self.time_length_), desc="Processing frames"):
-            frame_events, frame_small_events = self._process_frame_cpu_logic(t, event_id)
+            frame_events, frame_small_events = self._process_frame_cpu_logic(
+                t, event_id
+            )
 
             all_events.extend(frame_events)
             small_events.extend(frame_small_events)
             event_id += len(frame_events) + len(frame_small_events)
 
         print(
-            f" - Found {len(all_events) + len(small_events)} events with {len(all_events)} retained and {len(small_events)} small groups")
+            f" - Found {len(all_events) + len(small_events)} events with {len(all_events)} retained and {len(small_events)} small groups"
+        )
 
         # Post-processing des petits événements (logique CPU)
         if small_events:
@@ -109,7 +123,9 @@ class EventDetectorGPUEquivalent:
 
         print(f"Total time: {time.time() - start_time:.2f}s")
 
-    def _process_frame_cpu_logic(self, t: int, start_event_id: int) -> Tuple[List[Dict], List[Dict]]:
+    def _process_frame_cpu_logic(
+        self, t: int, start_event_id: int
+    ) -> Tuple[List[Dict], List[Dict]]:
         """
         Traite une frame en conservant la logique CPU :
         - Trouve un seed à la fois
@@ -133,13 +149,15 @@ class EventDetectorGPUEquivalent:
                 continue
 
             # Region growing (logique CPU mais sur GPU)
-            event_voxels = self._grow_region_cpu_logic(t, z, y, x, pattern, current_event_id)
+            event_voxels = self._grow_region_cpu_logic(
+                t, z, y, x, pattern, current_event_id
+            )
 
             # Classification comme CPU
             event_info = {
-                'id': current_event_id,
-                'voxels': event_voxels,
-                'size': len(event_voxels)
+                "id": current_event_id,
+                "voxels": event_voxels,
+                "size": len(event_voxels),
             }
 
             if len(event_voxels) >= self.threshold_size_3d_:
@@ -182,7 +200,9 @@ class EventDetectorGPUEquivalent:
         first_pos = max_positions[0]
         return (int(first_pos[0]), int(first_pos[1]), int(first_pos[2]))
 
-    def _extract_pattern_gpu(self, t: int, z: int, y: int, x: int) -> Optional[torch.Tensor]:
+    def _extract_pattern_gpu(
+        self, t: int, z: int, y: int, x: int
+    ) -> Optional[torch.Tensor]:
         """
         Extraction de pattern GPU (identique à la logique CPU)
         """
@@ -207,8 +227,15 @@ class EventDetectorGPUEquivalent:
 
         return pattern
 
-    def _grow_region_cpu_logic(self, seed_t: int, seed_z: int, seed_y: int, seed_x: int,
-                               pattern: torch.Tensor, event_id: int) -> List[Tuple[int, int, int, int]]:
+    def _grow_region_cpu_logic(
+        self,
+        seed_t: int,
+        seed_z: int,
+        seed_y: int,
+        seed_x: int,
+        pattern: torch.Tensor,
+        event_id: int,
+    ) -> List[Tuple[int, int, int, int]]:
         """
         Croissance de région qui suit la logique CPU exacte :
         - Queue FIFO
@@ -223,7 +250,9 @@ class EventDetectorGPUEquivalent:
         self.id_connected_voxel_[seed_t, seed_z, seed_y, seed_x] = event_id
 
         # Ajouter les points temporels du seed
-        temporal_voxels = self._add_temporal_points_gpu(seed_t, seed_z, seed_y, seed_x, pattern, event_id)
+        temporal_voxels = self._add_temporal_points_gpu(
+            seed_t, seed_z, seed_y, seed_x, pattern, event_id
+        )
         event_voxels.extend(temporal_voxels)
         waiting_queue.extend(temporal_voxels[1:])  # Exclure le seed déjà ajouté
 
@@ -252,8 +281,9 @@ class EventDetectorGPUEquivalent:
 
         return event_voxels
 
-    def _add_temporal_points_gpu(self, t: int, z: int, y: int, x: int,
-                                 pattern: torch.Tensor, event_id: int) -> List[Tuple[int, int, int, int]]:
+    def _add_temporal_points_gpu(
+        self, t: int, z: int, y: int, x: int, pattern: torch.Tensor, event_id: int
+    ) -> List[Tuple[int, int, int, int]]:
         """
         Ajout des points temporels (logique identique CPU mais sur GPU)
         """
@@ -268,16 +298,21 @@ class EventDetectorGPUEquivalent:
         # Ajouter tous les points temporels
         for i in range(1, len(pattern)):
             t_new = start_t + i
-            if (t_new < self.time_length_ and
-                    self.id_connected_voxel_[t_new, z, y, x] == 0):
+            if (
+                t_new < self.time_length_
+                and self.id_connected_voxel_[t_new, z, y, x] == 0
+            ):
                 self.id_connected_voxel_[t_new, z, y, x] = event_id
                 temporal_voxels.append((t_new, z, y, x))
 
         return temporal_voxels
 
-    def _process_spatial_neighbors_cpu_logic(self, voxel: Tuple[int, int, int, int],
-                                             reference_pattern: torch.Tensor, event_id: int) -> List[
-        Tuple[int, int, int, int]]:
+    def _process_spatial_neighbors_cpu_logic(
+        self,
+        voxel: Tuple[int, int, int, int],
+        reference_pattern: torch.Tensor,
+        event_id: int,
+    ) -> List[Tuple[int, int, int, int]]:
         """
         Traitement des voisins spatiaux avec logique CPU exacte
         """
@@ -291,12 +326,18 @@ class EventDetectorGPUEquivalent:
             nx = x + offset[2].item()
 
             # Vérification des limites
-            if not (0 <= nz < self.depth_ and 0 <= ny < self.height_ and 0 <= nx < self.width_):
+            if not (
+                0 <= nz < self.depth_
+                and 0 <= ny < self.height_
+                and 0 <= nx < self.width_
+            ):
                 continue
 
             # Vérifications comme CPU
-            if (self.av_[t, nz, ny, nx] == 0 or
-                    self.id_connected_voxel_[t, nz, ny, nx] != 0):
+            if (
+                self.av_[t, nz, ny, nx] == 0
+                or self.id_connected_voxel_[t, nz, ny, nx] != 0
+            ):
                 continue
 
             # Extract neighbor pattern
@@ -305,19 +346,25 @@ class EventDetectorGPUEquivalent:
                 continue
 
             # Calcul de corrélation (identique CPU)
-            correlation = self._compute_correlation_cpu_logic(reference_pattern, neighbor_pattern)
+            correlation = self._compute_correlation_cpu_logic(
+                reference_pattern, neighbor_pattern
+            )
 
             if correlation > self.threshold_corr_:
                 # Marquer le voxel
                 self.id_connected_voxel_[t, nz, ny, nx] = event_id
 
                 # Ajouter les points temporels
-                temporal_voxels = self._add_temporal_points_gpu(t, nz, ny, nx, neighbor_pattern, event_id)
+                temporal_voxels = self._add_temporal_points_gpu(
+                    t, nz, ny, nx, neighbor_pattern, event_id
+                )
                 new_voxels.extend(temporal_voxels)
 
         return new_voxels
 
-    def _compute_correlation_cpu_logic(self, pattern1: torch.Tensor, pattern2: torch.Tensor) -> float:
+    def _compute_correlation_cpu_logic(
+        self, pattern1: torch.Tensor, pattern2: torch.Tensor
+    ) -> float:
         """
         Calcul de corrélation identique au CPU mais sur GPU
         """
@@ -331,11 +378,11 @@ class EventDetectorGPUEquivalent:
         # Tester tous les décalages
         for shift in range(-min_len + 1, min_len):
             if shift < 0:
-                p1_seg = pattern1[-shift:min(-shift + min_len, len(pattern1))]
-                p2_seg = pattern2[:len(p1_seg)]
+                p1_seg = pattern1[-shift : min(-shift + min_len, len(pattern1))]
+                p2_seg = pattern2[: len(p1_seg)]
             else:
-                p2_seg = pattern2[shift:shift + min_len]
-                p1_seg = pattern1[:len(p2_seg)]
+                p2_seg = pattern2[shift : shift + min_len]
+                p1_seg = pattern1[: len(p2_seg)]
 
             if len(p1_seg) == 0 or len(p2_seg) == 0:
                 continue
@@ -361,7 +408,9 @@ class EventDetectorGPUEquivalent:
 
         return max_corr
 
-    def _process_small_events_cpu_logic(self, small_events: List[Dict], large_events: List[Dict]):
+    def _process_small_events_cpu_logic(
+        self, small_events: List[Dict], large_events: List[Dict]
+    ):
         """
         Post-processing des petits événements (logique CPU adaptée)
         """
@@ -370,26 +419,29 @@ class EventDetectorGPUEquivalent:
         # Simplification : traitement direct sans la logique complexe de groupement
         # pour garder des performances GPU raisonnables
         for small_event in small_events:
-            if small_event['size'] >= self.threshold_size_3d_removed_:
+            if small_event["size"] >= self.threshold_size_3d_removed_:
                 large_events.append(small_event)
             else:
                 # Supprimer l'événement
-                if small_event['voxels']:
-                    for voxel in small_event['voxels']:
+                if small_event["voxels"]:
+                    for voxel in small_event["voxels"]:
                         t, z, y, x = voxel
                         self.id_connected_voxel_[t, z, y, x] = 0
 
     def _compute_final_id_events(self):
         """Calcul des IDs finaux (identique CPU)"""
         # Collecter tous les IDs non-zéro
-        unique_ids = torch.unique(self.id_connected_voxel_[self.id_connected_voxel_ > 0])
+        unique_ids = torch.unique(
+            self.id_connected_voxel_[self.id_connected_voxel_ > 0]
+        )
 
         if len(unique_ids) == 0:
             return
 
         # Remappage
-        id_map = torch.zeros(torch.max(unique_ids).item() + 1,
-                             dtype=torch.int32, device=self.device)
+        id_map = torch.zeros(
+            torch.max(unique_ids).item() + 1, dtype=torch.int32, device=self.device
+        )
 
         for new_id, old_id in enumerate(unique_ids, 1):
             id_map[old_id] = new_id
@@ -407,27 +459,31 @@ class EventDetectorGPUEquivalent:
     def get_statistics(self) -> Dict:
         """Statistiques de détection"""
         stats = {
-            'nb_events': len(self.final_id_events_),
-            'total_event_voxels': torch.count_nonzero(self.id_connected_voxel_).item()
+            "nb_events": len(self.final_id_events_),
+            "total_event_voxels": torch.count_nonzero(self.id_connected_voxel_).item(),
         }
 
-        if self.device.type == 'cuda':
-            stats['gpu_memory_used'] = torch.cuda.memory_allocated(self.device) / 1e6
+        if self.device.type == "cuda":
+            stats["gpu_memory_used"] = torch.cuda.memory_allocated(self.device) / 1e6
 
         return stats
 
 
 # Fonction d'interface principale
-def detect_calcium_events_gpu_equivalent(av_data, params_values: dict = None, device: str = None):
+def detect_calcium_events_gpu_equivalent(
+    av_data, params_values: dict = None, device: str = None
+):
     """
     Détection GPU avec logique équivalente au CPU
     """
     # Extract parameters
-    threshold_size_3d = int(params_values['events_extraction']['threshold_size_3d'])
-    threshold_size_3d_removed = int(params_values['events_extraction']['threshold_size_3d_removed'])
-    threshold_corr = float(params_values['events_extraction']['threshold_corr'])
-    output_dir = params_values['paths']['output_dir']
-    save_events = params_values['save']['save_events']
+    threshold_size_3d = int(params_values["events_extraction"]["threshold_size_3d"])
+    threshold_size_3d_removed = int(
+        params_values["events_extraction"]["threshold_size_3d_removed"]
+    )
+    threshold_corr = float(params_values["events_extraction"]["threshold_corr"])
+    output_dir = params_values["paths"]["output_dir"]
+    save_events = params_values["save"]["save_events"]
 
     # Convert to tensor if needed
     if isinstance(av_data, np.ndarray):
@@ -437,8 +493,7 @@ def detect_calcium_events_gpu_equivalent(av_data, params_values: dict = None, de
 
     # Create detector
     detector = EventDetectorGPUEquivalent(
-        av_tensor, threshold_size_3d, threshold_size_3d_removed,
-        threshold_corr, device
+        av_tensor, threshold_size_3d, threshold_size_3d_removed, threshold_corr, device
     )
 
     # Run detection
@@ -449,10 +504,16 @@ def detect_calcium_events_gpu_equivalent(av_data, params_values: dict = None, de
     id_connections_np = id_connections.cpu().numpy()
     if save_events:
         if output_dir is None:
-            raise ValueError("Output directory must be specified if save_results is True.")
+            raise ValueError(
+                "Output directory must be specified if save_results is True."
+            )
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
-        export_data(id_connections_np, output_dir, export_as_single_tif=True, file_name="ID_calciumEvents")
-
+        export_data(
+            id_connections_np,
+            output_dir,
+            export_as_single_tif=True,
+            file_name="ID_calciumEvents",
+        )
 
     return id_connections, len(id_events)

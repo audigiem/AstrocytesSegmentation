@@ -13,38 +13,50 @@ import torch
 
 
 class EventDetectionTest(unittest.TestCase):
-    """ 
+    """
     @brief Test case for event detection functionality.
     """
-    
+
     def setUp(self):
-        """ 
+        """
         @brief Set up the test case with synthetic data.
         """
         self.target_dir = "/home/maudigie/data/outputData/testGPU/"
         self.src_dir = "/home/maudigie/data/outputData/testCPU/"
         self.gpu_available = True
         self.save_results = True
-        self.data = load_data(self.target_dir + "filledSpaceMorphology.tif", self.gpu_available)
-        self.border_condition = 'ignore'
+        self.data = load_data(
+            self.target_dir + "filledSpaceMorphology.tif", self.gpu_available
+        )
+        self.border_condition = "ignore"
         self.radius = 1.5
 
     def test_median_filter(self):
-        """ 
+        """
         @brief Test the median filter functionality.
         """
         print("Testing median filter functionality...")
-        data = unified_median_filter_3d(self.data, self.radius, self.border_condition, use_gpu=self.gpu_available)
+        data = unified_median_filter_3d(
+            self.data, self.radius, self.border_condition, use_gpu=self.gpu_available
+        )
         if self.save_results:
             if isinstance(data, torch.Tensor):
                 data_to_export = data.cpu().numpy()
             else:
                 data_to_export = data
-            export_data(data_to_export, self.target_dir, export_as_single_tif=True, file_name="medianFiltered_2")
-        compare_sequence(self.src_dir + "medianFiltered_2.tif", self.target_dir + "medianFiltered_2.tif")
+            export_data(
+                data_to_export,
+                self.target_dir,
+                export_as_single_tif=True,
+                file_name="medianFiltered_2",
+            )
+        compare_sequence(
+            self.src_dir + "medianFiltered_2.tif",
+            self.target_dir + "medianFiltered_2.tif",
+        )
 
     def tearDown(self):
-        """ 
+        """
         @brief Clean up after the test case.
         """
         pass

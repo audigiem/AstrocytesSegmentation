@@ -14,24 +14,36 @@ from tqdm import tqdm
 import torch
 from typing import Union, Tuple
 
-def compute_dynamic_image(data: Union[np.ndarray, torch.Tensor], F0: Union[np.ndarray, torch.Tensor],
-                            index_xmin: np.ndarray, index_xmax: np.ndarray,
-                            time_window: int, params: dict) -> Tuple[Union[np.ndarray, torch.Tensor], float]:
+
+def compute_dynamic_image(
+    data: Union[np.ndarray, torch.Tensor],
+    F0: Union[np.ndarray, torch.Tensor],
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    time_window: int,
+    params: dict,
+) -> Tuple[Union[np.ndarray, torch.Tensor], float]:
     """
     Wrapper function to compute the dynamic image (dF = F - F0) and estimate the noise level.
     """
     if params.get("GPU_AVAILABLE", 0) == 1:
-        return compute_dynamic_image_GPU(data, F0, index_xmin, index_xmax, time_window, params)
+        return compute_dynamic_image_GPU(
+            data, F0, index_xmin, index_xmax, time_window, params
+        )
     else:
-        return compute_dynamic_image_CPU(data, F0, index_xmin, index_xmax, time_window, params)
+        return compute_dynamic_image_CPU(
+            data, F0, index_xmin, index_xmax, time_window, params
+        )
 
 
-def compute_dynamic_image_CPU(data: np.ndarray,
-                          F0: np.ndarray,
-                          index_xmin: np.ndarray,
-                          index_xmax: np.ndarray,
-                          time_window: int,
-                          params: dict) -> tuple[np.ndarray, float]:
+def compute_dynamic_image_CPU(
+    data: np.ndarray,
+    F0: np.ndarray,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    time_window: int,
+    params: dict,
+) -> tuple[np.ndarray, float]:
     """
     Compute ΔF = F - F0 and estimate the noise level as the median of ΔF.
 
@@ -49,19 +61,23 @@ def compute_dynamic_image_CPU(data: np.ndarray,
     print(" - Computing dynamic image...")
 
     # Extract necessary parameters
-    required_keys = {'save', 'paths'}
+    required_keys = {"save", "paths"}
     if not required_keys.issubset(params.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
-    save_results = int(params['save']['save_df']) == 1
-    output_directory = params['paths']['output_dir']
-    
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params.keys()}"
+        )
+    save_results = int(params["save"]["save_df"]) == 1
+    output_directory = params["paths"]["output_dir"]
+
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
 
     dF = np.copy(data)
 
     # Préallocation avec estimation maximale
-    width_without_zeros = sum(max(0, index_xmax[z] - index_xmin[z] + 1) for z in range(Z))
+    width_without_zeros = sum(
+        max(0, index_xmax[z] - index_xmin[z] + 1) for z in range(Z)
+    )
     flattened_dF = np.empty(T * Y * width_without_zeros, dtype=np.float32)
     k = 0
 
@@ -75,7 +91,7 @@ def compute_dynamic_image_CPU(data: np.ndarray,
             delta = data[t, z, :, x_min:x_max] - F0[it, z, :, x_min:x_max]
             dF[t, z, :, x_min:x_max] = delta
             n = x_max - x_min
-            flattened_dF[k:k + Y * n] = delta.reshape(-1)
+            flattened_dF[k : k + Y * n] = delta.reshape(-1)
             k += Y * n
 
     mean_noise = float(np.median(flattened_dF[:k]))
@@ -83,14 +99,29 @@ def compute_dynamic_image_CPU(data: np.ndarray,
 
     if save_results:
         if output_directory is None:
-            raise ValueError("Output directory must be specified when save_results is True.")
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
         os.makedirs(output_directory, exist_ok=True)
-        export_data(dF, output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
+        export_data(
+            dF,
+            output_directory,
+            export_as_single_tif=True,
+            file_name="dynamic_image_dF",
+        )
 
     print()
     return dF, mean_noise
 
-def compute_dynamic_image_GPU(data: torch.Tensor, F0: torch.Tensor, index_xmin: np.ndarray, index_xmax: np.ndarray, time_window: int, params: dict) -> tuple[torch.Tensor, float]:
+
+def compute_dynamic_image_GPU(
+    data: torch.Tensor,
+    F0: torch.Tensor,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    time_window: int,
+    params: dict,
+) -> tuple[torch.Tensor, float]:
     """
     Compute ΔF = F - F0 and estimate the noise level as the median of ΔF using PyTorch on GPU.
 
@@ -104,15 +135,19 @@ def compute_dynamic_image_GPU(data: torch.Tensor, F0: torch.Tensor, index_xmin: 
         - output_directory: Directory to save the result if save_results is True
     @return: (dF: tensor of shape (T, Z, Y, X), mean_noise: float)
     """
-    print("=== Computing dynamic image (dF = F - F0) and estimating noise on GPU... ===")
+    print(
+        "=== Computing dynamic image (dF = F - F0) and estimating noise on GPU... ==="
+    )
     print(" - Computing dynamic image...")
 
     # Extract necessary parameters
-    required_keys = {'save', 'paths'}
+    required_keys = {"save", "paths"}
     if not required_keys.issubset(params.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
-    save_results = int(params['save']['save_df']) == 1
-    output_directory = params['paths']['output_dir']
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params.keys()}"
+        )
+    save_results = int(params["save"]["save_df"]) == 1
+    output_directory = params["paths"]["output_dir"]
 
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
@@ -122,8 +157,12 @@ def compute_dynamic_image_GPU(data: torch.Tensor, F0: torch.Tensor, index_xmin: 
     dF = data.clone()
 
     # Préallocation avec estimation maximale
-    width_without_zeros = sum(max(0, index_xmax[z] - index_xmin[z] + 1) for z in range(Z))
-    flattened_dF = torch.empty(T * Y * width_without_zeros, dtype=torch.float32, device=data.device)
+    width_without_zeros = sum(
+        max(0, index_xmax[z] - index_xmin[z] + 1) for z in range(Z)
+    )
+    flattened_dF = torch.empty(
+        T * Y * width_without_zeros, dtype=torch.float32, device=data.device
+    )
     k = 0
 
     for t in tqdm(range(T), desc="Computing ΔF over time", unit="frame"):
@@ -138,7 +177,7 @@ def compute_dynamic_image_GPU(data: torch.Tensor, F0: torch.Tensor, index_xmin: 
             n = x_max - x_min
             # CORRECTION 3: Utiliser reshape(-1) au lieu de view(-1)
             # pour être cohérent avec NumPy
-            flattened_dF[k:k + Y * n] = delta.reshape(-1)
+            flattened_dF[k : k + Y * n] = delta.reshape(-1)
             k += Y * n
 
     # CORRECTION 4: S'assurer que le calcul de médiane est identique
@@ -147,16 +186,29 @@ def compute_dynamic_image_GPU(data: torch.Tensor, F0: torch.Tensor, index_xmin: 
 
     if save_results:
         if output_directory is None:
-            raise ValueError("Output directory must be specified when save_results is True.")
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
         os.makedirs(output_directory, exist_ok=True)
         # CORRECTION 5: Convertir en NumPy avec le bon dtype
-        export_data(dF.cpu().numpy().astype(np.float32), output_directory, export_as_single_tif=True, file_name="dynamic_image_dF")
+        export_data(
+            dF.cpu().numpy().astype(np.float32),
+            output_directory,
+            export_as_single_tif=True,
+            file_name="dynamic_image_dF",
+        )
 
     print()
     return dF, mean_noise
 
 
-def compute_image_amplitude(data_cropped: np.ndarray, F0: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, param_values: dict) -> np.ndarray:
+def compute_image_amplitude(
+    data_cropped: np.ndarray,
+    F0: np.ndarray,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    param_values: dict,
+) -> np.ndarray:
     """
     @brief Compute the amplitude of the image using the Anscombe inverse transform.
     result -> (data_cropped - f0_inv)/f0_inv
@@ -170,11 +222,13 @@ def compute_image_amplitude(data_cropped: np.ndarray, F0: np.ndarray, index_xmin
     @return: 4D numpy array of shape (T, Z, Y, X) with the amplitude values.
     """
     print("=== Computing image amplitude... ===")
-    required_keys = {'save', 'paths'}
+    required_keys = {"save", "paths"}
     if not required_keys.issubset(param_values.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - param_values.keys()}")
-    save_results_amplitude = int(param_values['save']['save_amplitude']) == 1
-    output_directory = param_values['paths']['output_dir']
+        raise ValueError(
+            f"Missing required parameters: {required_keys - param_values.keys()}"
+        )
+    save_results_amplitude = int(param_values["save"]["save_amplitude"]) == 1
+    output_directory = param_values["paths"]["output_dir"]
 
     f0_inv = anscombe_inverse(F0, index_xmin, index_xmax, param_values=param_values)
 
@@ -198,9 +252,16 @@ def compute_image_amplitude(data_cropped: np.ndarray, F0: np.ndarray, index_xmin
 
     if save_results_amplitude:
         if output_directory is None:
-            raise ValueError("Output directory must be specified when save_results is True.")
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
         os.makedirs(output_directory, exist_ok=True)
-        export_data(image_amplitude, output_directory, export_as_single_tif=True, file_name="amplitude")
+        export_data(
+            image_amplitude,
+            output_directory,
+            export_as_single_tif=True,
+            file_name="amplitude",
+        )
 
     print(60 * "=")
     print()

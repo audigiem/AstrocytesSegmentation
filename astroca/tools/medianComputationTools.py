@@ -2,7 +2,6 @@ from numba import njit, prange
 import numpy as np
 
 
-
 @njit
 def quickselect_median(arr, n):
     """
@@ -89,7 +88,6 @@ def partition(arr, left, right):
 
     arr[i + 1], arr[right] = arr[right], arr[i + 1]
     return i + 1
-
 
 
 def generate_spherical_offsets(radius: float):

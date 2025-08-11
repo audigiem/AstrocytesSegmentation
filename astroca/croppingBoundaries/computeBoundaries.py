@@ -8,17 +8,19 @@ the first and last non-empty band in each z-slice.
 """
 
 import numpy as np
-from astroca.tools.exportData import export_data, save_numpy_tab 
+from astroca.tools.exportData import export_data, save_numpy_tab
 import os
 from tqdm import tqdm
 from typing import List, Dict, Tuple, Any
+
 # import cupy as cp
 from numba import cuda
 import torch
 
 
-
-def compute_boundaries_CPU(data: np.ndarray, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+def compute_boundaries_CPU(
+    data: np.ndarray, params: dict
+) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
     """
     Compute cropping boundaries in X for each Z slice based on background values.
     Sets boundary pixels to default_value and saves results optionally.
@@ -30,16 +32,18 @@ def compute_boundaries_CPU(data: np.ndarray, params: dict) -> Tuple[np.ndarray, 
         - output_directory: Directory to save the results if save_results is True.
     @return: (index_xmin, index_xmax, default_value)
     """
-    print(" - Computing cropping boundaries in X for each Z slice (CPU version)...")
-    
+    print(" - Computing cropping boundaries in X for each Z slice...")
+
     # extract necessary parameters
-    required_keys = {'preprocessing', 'save', 'paths'}
+    required_keys = {"preprocessing", "save", "paths"}
     if not required_keys.issubset(params.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
-    pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    save_results = int(params['save']['save_boundaries']) == 1
-    output_directory = params['paths']['output_dir']
-    
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params.keys()}"
+        )
+    pixel_cropped = int(params["preprocessing"]["pixel_cropped"])
+    save_results = int(params["save"]["save_boundaries"]) == 1
+    output_directory = params["paths"]["output_dir"]
+
     T, Z, Y, X = data.shape
     t = 0  # analyse du premier temps uniquement
 
@@ -73,29 +77,34 @@ def compute_boundaries_CPU(data: np.ndarray, params: dict) -> Tuple[np.ndarray, 
             crop_start = x_start
             crop_end = x_end + 1
 
-            data[t, z, :, crop_start:crop_start + pixel_cropped] = default_value
-            data[t, z, :, crop_end - pixel_cropped:crop_end] = default_value
-
+            data[t, z, :, crop_start : crop_start + pixel_cropped] = default_value
+            data[t, z, :, crop_end - pixel_cropped : crop_end] = default_value
 
     index_xmin += pixel_cropped
     index_xmax -= pixel_cropped
 
-    print(f"    index_xmin = {index_xmin}\n     index_xmax = {index_xmax}\n     default_value = {default_value}")
+    print(
+        f"    index_xmin = {index_xmin}\n     index_xmax = {index_xmax}\n     default_value = {default_value}"
+    )
 
     if save_results:
         if output_directory is None:
-            raise ValueError("output_directory must be specified if save_results is True.")
+            raise ValueError(
+                "output_directory must be specified if save_results is True."
+            )
         os.makedirs(output_directory, exist_ok=True)
         export_data(data, output_directory, export_as_single_tif=True, file_name="data")
         save_numpy_tab(index_xmin, output_directory, file_name="index_Xmin.npy")
         save_numpy_tab(index_xmax, output_directory, file_name="index_Xmax.npy")
-        
-    print(60*"=")
+
+    print(60 * "=")
     print()
     return index_xmin, index_xmax, default_value, data
 
 
-def compute_boundaries_GPU(data: torch.Tensor, params: dict) -> Tuple[np.ndarray, np.ndarray, float, torch.Tensor]:
+def compute_boundaries_GPU(
+    data: torch.Tensor, params: dict
+) -> Tuple[np.ndarray, np.ndarray, float, torch.Tensor]:
     """
     Compute cropping boundaries in X for each Z slice using PyTorch on GPU.
 
@@ -109,9 +118,9 @@ def compute_boundaries_GPU(data: torch.Tensor, params: dict) -> Tuple[np.ndarray
     print(" - Computing cropping boundaries in X for each Z slice (PyTorch GPU)...")
 
     # Extract params
-    pixel_cropped = int(params['preprocessing']['pixel_cropped'])
-    save_results = int(params['save']['save_boundaries']) == 1
-    out_dir = params['paths']['output_dir']
+    pixel_cropped = int(params["preprocessing"]["pixel_cropped"])
+    save_results = int(params["save"]["save_boundaries"]) == 1
+    out_dir = params["paths"]["output_dir"]
 
     # # Ensure tensor format on GPU
     # if isinstance(data, np.ndarray):
@@ -122,11 +131,11 @@ def compute_boundaries_GPU(data: torch.Tensor, params: dict) -> Tuple[np.ndarray
     T, Z, Y, X = data.shape
     default_val = float(data[0, 0, 0, X - 1].item())
 
-    xmin = torch.full((Z,), -1, dtype=torch.int32, device='cuda')
-    xmax = torch.full((Z,), X - 1, dtype=torch.int32, device='cuda')
+    xmin = torch.full((Z,), -1, dtype=torch.int32, device="cuda")
+    xmax = torch.full((Z,), X - 1, dtype=torch.int32, device="cuda")
 
     y_sample_size = max(1, Y // 10)
-    y_indices = torch.randperm(Y, device='cuda')[:y_sample_size]
+    y_indices = torch.randperm(Y, device="cuda")[:y_sample_size]
 
     for z in range(Z):
         found = False
@@ -144,7 +153,7 @@ def compute_boundaries_GPU(data: torch.Tensor, params: dict) -> Tuple[np.ndarray
     xmin += pixel_cropped
     xmax -= pixel_cropped
 
-    x_range = torch.arange(X, device='cuda').unsqueeze(0)  # (1, X)
+    x_range = torch.arange(X, device="cuda").unsqueeze(0)  # (1, X)
     mask_zx = (x_range < xmin[:, None]) | (x_range >= (xmax[:, None] + 1))  # (Z, X)
     mask = mask_zx.unsqueeze(0).unsqueeze(2)  # (1, Z, 1, X)
     data[mask.expand(T, Z, Y, X)] = default_val
@@ -156,16 +165,25 @@ def compute_boundaries_GPU(data: torch.Tensor, params: dict) -> Tuple[np.ndarray
 
     if save_results:
         if out_dir is None:
-            raise ValueError("output_directory must be specified if save_results is True.")
+            raise ValueError(
+                "output_directory must be specified if save_results is True."
+            )
         os.makedirs(out_dir, exist_ok=True)
-        export_data(data_result, out_dir, export_as_single_tif=True, file_name="bounded_image_sequence")
+        export_data(
+            data_result,
+            out_dir,
+            export_as_single_tif=True,
+            file_name="bounded_image_sequence",
+        )
         save_numpy_tab(index_xmin, out_dir, file_name="index_Xmin.npy")
         save_numpy_tab(index_xmax, out_dir, file_name="index_Xmax.npy")
 
     return index_xmin, index_xmax, default_val, data
 
 
-def compute_boundaries(data: np.ndarray | torch.Tensor, params: dict) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray | torch.Tensor]:
+def compute_boundaries(
+    data: np.ndarray | torch.Tensor, params: dict
+) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray | torch.Tensor]:
     """
     Compute cropping boundaries in X for each Z slice based on background values.
     Sets boundary pixels to default_value and saves results optionally.
@@ -177,10 +195,12 @@ def compute_boundaries(data: np.ndarray | torch.Tensor, params: dict) -> Tuple[n
         - output_directory: Directory to save the results if save_results is True.
     @return: (index_xmin, index_xmax, default_value, data)
     """
-    required_keys = {'GPU_AVAILABLE'}
+    required_keys = {"GPU_AVAILABLE"}
     if not required_keys.issubset(params.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
-    _GPU_AVAILABLE = int(params['GPU_AVAILABLE']) == 1  # Convert to boolean
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params.keys()}"
+        )
+    _GPU_AVAILABLE = int(params["GPU_AVAILABLE"]) == 1  # Convert to boolean
     if _GPU_AVAILABLE:
         return compute_boundaries_GPU(data, params)
     else:

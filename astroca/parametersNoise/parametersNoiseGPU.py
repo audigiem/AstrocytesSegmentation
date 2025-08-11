@@ -14,7 +14,10 @@ def compute_pseudo_residuals_GPU(data: torch.Tensor) -> torch.Tensor:
     @return: 4D tensor of shape (T-1, Z, Y, X)
     """
     # torch.diff is equivalent to np.diff along axis=0
-    return torch.diff(data, dim=0) / torch.sqrt(torch.tensor(2.0, device=data.device, dtype=data.dtype))
+    return torch.diff(data, dim=0) / torch.sqrt(
+        torch.tensor(2.0, device=data.device, dtype=data.dtype)
+    )
+
 
 def mad_with_pseudo_residual_GPU(residuals: torch.Tensor) -> torch.Tensor:
     """
@@ -26,7 +29,9 @@ def mad_with_pseudo_residual_GPU(residuals: torch.Tensor) -> torch.Tensor:
     abs_res = torch.abs(residuals)
 
     # Replace zeros with NaN (equivalent to np.nan)
-    abs_res = torch.where(abs_res == 0.0, torch.tensor(float('nan'), device=abs_res.device), abs_res)
+    abs_res = torch.where(
+        abs_res == 0.0, torch.tensor(float("nan"), device=abs_res.device), abs_res
+    )
 
     # Compute nanmedian along time axis (dim=0)
     # PyTorch doesn't have nanmedian, so we need to implement it
@@ -34,7 +39,10 @@ def mad_with_pseudo_residual_GPU(residuals: torch.Tensor) -> torch.Tensor:
 
     return 1.4826 * median_vals
 
-def estimate_std_map_over_time_GPU(data: torch.Tensor, xmin: np.ndarray, xmax: np.ndarray) -> torch.Tensor:
+
+def estimate_std_map_over_time_GPU(
+    data: torch.Tensor, xmin: np.ndarray, xmax: np.ndarray
+) -> torch.Tensor:
     """
     GPU version: For each voxel (x,y,z), compute the MAD-based std estimation.
     @param data: 4D tensor of shape (T, Z, Y, X) representing the image sequence.
@@ -46,7 +54,9 @@ def estimate_std_map_over_time_GPU(data: torch.Tensor, xmin: np.ndarray, xmax: n
     residuals = compute_pseudo_residuals_GPU(data)  # Shape: (T-1, Z, Y, X)
 
     # Initialize std_map with NaN (equivalent to np.full with np.nan)
-    std_map = torch.full((Z, Y, X), float('nan'), dtype=torch.float32, device=data.device)
+    std_map = torch.full(
+        (Z, Y, X), float("nan"), dtype=torch.float32, device=data.device
+    )
 
     for z in tqdm(range(Z), desc="Estimating std over time (GPU)", unit="slice"):
         x0, x1 = int(xmin[z]), int(xmax[z]) + 1
@@ -58,7 +68,10 @@ def estimate_std_map_over_time_GPU(data: torch.Tensor, xmin: np.ndarray, xmax: n
 
     return std_map
 
-def estimate_std_over_time_GPU(data: torch.Tensor, xmin: np.ndarray, xmax: np.ndarray) -> float:
+
+def estimate_std_over_time_GPU(
+    data: torch.Tensor, xmin: np.ndarray, xmax: np.ndarray
+) -> float:
     """
     GPU version: Final std estimation as the median of the 3D map excluding zeros.
     @param data: 4D tensor of shape (T, Z, Y, X) representing the image sequence.
@@ -85,6 +98,6 @@ def estimate_std_over_time_GPU(data: torch.Tensor, xmin: np.ndarray, xmax: np.nd
         std = 0.0
 
     print(f" std_noise = {std:.7f}")
-    print(60*"=")
+    print(60 * "=")
     print()
     return std

@@ -6,7 +6,10 @@ GPU and CPU versions with identical results
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
 from astroca.activeVoxels.medianFilterGPU import unified_median_filter_3d_gpu
-from astroca.tools.medianComputationTools import generate_spherical_offsets, quickselect_median
+from astroca.tools.medianComputationTools import (
+    generate_spherical_offsets,
+    quickselect_median,
+)
 from tqdm import tqdm
 from scipy.ndimage import median_filter
 from numba import njit, prange
@@ -14,11 +17,11 @@ import torch
 
 
 def unified_median_filter_3d(
-        data: np.ndarray | torch.Tensor,
-        radius: float = 1.5,
-        border_mode: str = 'reflect',
-        n_workers: int = None,
-        use_gpu: bool = False,
+    data: np.ndarray | torch.Tensor,
+    radius: float = 1.5,
+    border_mode: str = "reflect",
+    n_workers: int = None,
+    use_gpu: bool = False,
 ) -> torch.Tensor | np.ndarray:
     """
     @brief Unified 3D median filter for 4D stacks (T,Z,Y,X)
@@ -41,24 +44,28 @@ def unified_median_filter_3d(
 
 
 def unified_median_filter_3d_cpu(
-        data: np.ndarray,
-        radius: float = 1.5,
-        border_mode: str = 'reflect',
-        n_workers: int = None
+    data: np.ndarray,
+    radius: float = 1.5,
+    border_mode: str = "reflect",
+    n_workers: int = None,
 ) -> np.ndarray:
     """
     @brief CPU version of 3D median filter (original implementation)
     """
-    print(f" - Apply 3D median filter (CPU) with radius={radius}, border mode='{border_mode}'")
-    
-    if border_mode == 'ignore':
+    print(
+        f" - Apply 3D median filter (CPU) with radius={radius}, border mode='{border_mode}'"
+    )
+
+    if border_mode == "ignore":
         T, Z, Y, X = data.shape
         data_3D = data.reshape(T * Z, Y, X)  # Reshape to treat as 3D
         offsets = generate_spherical_offsets(radius)
         median_filtered = apply_median_filter_3d_ignore_border(data_3D, offsets)
         data_filtered_4D = median_filtered.reshape(T, Z, Y, X)
         return data_filtered_4D
-    
+    print(
+        f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'"
+    )
     r = int(np.ceil(radius))
 
     # Create spherical mask
@@ -76,26 +83,32 @@ def unified_median_filter_3d_cpu(
     filtered = np.empty_like(data)
 
     def process_frame(t):
-        """Process a single frame with median filter"""
-        result = median_filter(
-            padded[t], footprint=mask, mode=border_mode
-        )
+        """
+        @brief Process a single frame with median filter
+
+        @param t Frame index to process
+        """
+        result = median_filter(padded[t], footprint=mask, mode=border_mode)
         # Remove padding
         filtered[t] = result[r:-r, r:-r, r:-r]
 
     with ThreadPoolExecutor(max_workers=n_workers) as executor:
-        list(tqdm(
-            executor.map(process_frame, range(data.shape[0])),
-            total=data.shape[0], desc=f"Processing frames (CPU) with median filter and {border_mode} border condition",
-            unit="frame"
-        ))
+        list(
+            tqdm(
+                executor.map(process_frame, range(data.shape[0])),
+                total=data.shape[0],
+                desc=f"Processing frames with median filter and {border_mode} border condition",
+                unit="frame",
+            )
+        )
 
     return filtered
 
 
-
 @njit(parallel=True)
-def apply_median_filter_3d_ignore_border(frame: np.ndarray, offsets: np.ndarray) -> np.ndarray:
+def apply_median_filter_3d_ignore_border(
+    frame: np.ndarray, offsets: np.ndarray
+) -> np.ndarray:
     """
     @brief Applies 3D median filter while ignoring borders
 
@@ -136,4 +149,3 @@ def apply_median_filter_3d_ignore_border(frame: np.ndarray, offsets: np.ndarray)
                     result[z, y, x] = frame[z, y, x]
 
     return result
-
