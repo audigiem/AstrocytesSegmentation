@@ -219,15 +219,15 @@ def write_csv_hot_spots(hot_spot_groups: List[Dict], path_output_dir: str) -> No
                 "CentroidX [voxel]",
                 "CentroidY [voxel]",
                 "CentroidZ [voxel]",
-                "Nb localized events",
-                "Label(s) event(s)",
-                "time_points",
-                "temporal_span",
-                "mean_time_interval",
-                "median_time_interval",
-                "std_time_interval",
-                "min_time_interval",
-                "max_time_interval",
+                "Nb localized events [count]",
+                "Label(s) event(s) [IDs]",
+                "time_points [frames]",
+                "temporal_span [frames]",
+                "mean_time_interval [frames]",
+                "median_time_interval [frames]",
+                "std_time_interval [frames]",
+                "min_time_interval [frames]",
+                "max_time_interval [frames]",
             ]
 
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames, delimiter=";")
@@ -253,23 +253,167 @@ def write_csv_hot_spots(hot_spot_groups: List[Dict], path_output_dir: str) -> No
                         "CentroidX [voxel]": group["CentroidX [voxel]"],
                         "CentroidY [voxel]": group["CentroidY [voxel]"],
                         "CentroidZ [voxel]": group["CentroidZ [voxel]"],
-                        "Nb localized events": group["Nb localized events"],
-                        "Label(s) event(s)": labels_str,
-                        "time_points": time_points_str,
-                        "temporal_span": group["temporal_span"],
-                        "mean_time_interval": group["mean_time_interval"],
-                        "median_time_interval": group["median_time_interval"],
-                        "std_time_interval": group["std_time_interval"],
-                        "min_time_interval": group["min_time_interval"],
-                        "max_time_interval": group["max_time_interval"],
+                        "Nb localized events [count]": group["Nb localized events"],
+                        "Label(s) event(s) [IDs]": labels_str,
+                        "time_points [frames]": time_points_str,
+                        "temporal_span [frames]": group["temporal_span"],
+                        "mean_time_interval [frames]": group["mean_time_interval"],
+                        "median_time_interval [frames]": group["median_time_interval"],
+                        "std_time_interval [frames]": group["std_time_interval"],
+                        "min_time_interval [frames]": group["min_time_interval"],
+                        "max_time_interval [frames]": group["max_time_interval"],
                     }
                 )
 
         print(f"Hot spots written to {output_file}")
         print(f"COMPLETED - Found {len(hot_spot_groups)} hot spots")
 
+        # Créer le fichier de documentation
+        _create_hotspots_documentation_file(path_output_dir)
+
     except IOError as e:
         print(f"Error writing hot spots file: {e}")
+
+
+def _create_hotspots_documentation_file(path_output_dir: str) -> None:
+    """
+    Creates a documentation file explaining the hot spots CSV columns.
+
+    Args:
+        path_output_dir: Output directory path
+    """
+    doc_path = os.path.join(path_output_dir, "hotspots_columns_documentation.txt")
+
+    documentation = """DOCUMENTATION - FICHIER HOTSPOTS.CSV
+====================================
+
+Ce fichier contient l'analyse des hot spots (zones de forte activité) identifiées par clustering spatial des événements localisés.
+
+DESCRIPTION DES COLONNES :
+-------------------------
+
+CentroidX [voxel] :
+- Description : Coordonnée X du centroïde du hot spot
+- Unité : voxel (coordonnée en voxels)
+- Calcul : Moyenne des coordonnées X de tous les événements du cluster
+- Formule : mean(X₁, X₂, ..., Xₙ) où n = nombre d'événements dans le hot spot
+
+CentroidY [voxel] :
+- Description : Coordonnée Y du centroïde du hot spot
+- Unité : voxel (coordonnée en voxels)
+- Calcul : Moyenne des coordonnées Y de tous les événements du cluster
+- Formule : mean(Y₁, Y₂, ..., Yₙ)
+
+CentroidZ [voxel] :
+- Description : Coordonnée Z du centroïde du hot spot
+- Unité : voxel (coordonnée en voxels)
+- Calcul : Moyenne des coordonnées Z de tous les événements du cluster
+- Formule : mean(Z₁, Z₂, ..., Zₙ)
+
+Nb localized events [count] :
+- Description : Nombre d'événements localisés regroupés dans ce hot spot
+- Unité : count (nombre d'événements)
+- Calcul : Comptage direct des événements dans le cluster spatial
+- Valeur minimale : 1 (un hot spot contient au moins un événement)
+
+Label(s) event(s) [IDs] :
+- Description : Identifiants des événements constituant le hot spot
+- Unité : IDs (identifiants numériques)
+- Format : [ID1; ID2; ID3] pour plusieurs événements, ou ID unique pour un événement isolé
+- Calcul : Liste des labels des événements dont la distance mutuelle ≤ seuil
+
+time_points [frames] :
+- Description : Instants temporels (T0) auxquels se produisent les événements du hot spot
+- Unité : frames (numéros de frames)
+- Format : [T0₁; T0₂; T0₃] pour plusieurs événements, ou T0 unique
+- Calcul : Extraction directe des valeurs T0 des événements du cluster
+
+temporal_span [frames] :
+- Description : Étendue temporelle du hot spot (durée entre premier et dernier événement)
+- Unité : frames (nombre de frames)
+- Calcul : max(T0) - min(T0) pour les événements du hot spot
+- Valeur : 0 pour les hot spots à événement unique
+
+mean_time_interval [frames] :
+- Description : Intervalle temporel moyen entre événements consécutifs
+- Unité : frames (nombre de frames)
+- Calcul : Moyenne des différences entre T0 consécutifs triés par ordre temporel
+- Valeur : 0.0 pour les hot spots à événement unique
+
+median_time_interval [frames] :
+- Description : Intervalle temporel médian entre événements consécutifs
+- Unité : frames (nombre de frames)
+- Calcul : Médiane des différences entre T0 consécutifs
+- Valeur : 0.0 pour les hot spots à événement unique
+
+std_time_interval [frames] :
+- Description : Écart-type des intervalles temporels entre événements
+- Unité : frames (nombre de frames)
+- Calcul : Écart-type des différences entre T0 consécutifs
+- Valeur : 0.0 pour les hot spots à événement unique
+- Utilité : Indicateur de régularité temporelle (faible = régulier, élevé = irrégulier)
+
+min_time_interval [frames] :
+- Description : Intervalle temporel minimal entre événements consécutifs
+- Unité : frames (nombre de frames)
+- Calcul : Minimum des différences entre T0 consécutifs
+- Valeur : 0 pour les hot spots à événement unique
+
+max_time_interval [frames] :
+- Description : Intervalle temporel maximal entre événements consécutifs
+- Unité : frames (nombre de frames)
+- Calcul : Maximum des différences entre T0 consécutifs
+- Valeur : 0 pour les hot spots à événement unique
+
+MÉTHODE DE DÉTECTION DES HOT SPOTS :
+-----------------------------------
+
+1. CLUSTERING SPATIAL :
+   - Algorithme : Clustering par seuil de distance euclidienne
+   - Critère : Distance 3D ≤ threshold_hot_spots (paramètre configurable)
+   - Formule de distance : √[(X₁-X₂)²×voxel_size_x² + (Y₁-Y₂)²×voxel_size_y² + (Z₁-Z₂)²×voxel_size_z²]
+
+2. ANALYSE TEMPORELLE :
+   - Tri des événements par T0 croissant
+   - Calcul des intervalles entre événements consécutifs
+   - Statistiques temporelles (moyenne, médiane, écart-type, min, max)
+
+3. CRITÈRES D'INCLUSION :
+   - Tous les événements localisés sont considérés
+   - Un événement isolé forme un hot spot de taille 1
+   - Pas de seuil minimal sur le nombre d'événements
+
+INTERPRÉTATION DES RÉSULTATS :
+-----------------------------
+
+- Hot spots de grande taille (Nb events élevé) : Zones d'activité intense
+- Temporal_span élevé : Activité persistante dans le temps
+- std_time_interval faible : Activité régulière/périodique
+- std_time_interval élevé : Activité en rafales ou irrégulière
+- min_time_interval très faible : Événements quasi-simultanés possibles
+
+PARAMETRES UTILISÉS :
+--------------------
+- threshold_hot_spots : Seuil de distance pour le clustering (en µm)
+- voxel_size_x/y/z : Tailles des voxels pour conversion spatiale
+- Coordonnées en voxels converties en distances physiques pour le clustering
+
+NOTES TECHNIQUES :
+-----------------
+- Le délimiteur du CSV est le point-virgule (;)
+- Les coordonnées de centroïdes restent en voxels pour cohérence avec les données d'entrée
+- Les distances de clustering sont calculées en micromètres
+- Algorithme optimisé pour traiter de grands volumes de données
+
+Généré automatiquement par le module hotspots.py
+"""
+
+    try:
+        with open(doc_path, "w", encoding="utf-8") as f:
+            f.write(documentation)
+        print(f"Documentation hot spots créée : {doc_path}")
+    except IOError as e:
+        print(f"Erreur lors de la création de la documentation hot spots : {e}")
 
 
 def get_hot_spot_statistics(hot_spot_groups: List[Dict]) -> Dict:

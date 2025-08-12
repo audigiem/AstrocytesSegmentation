@@ -65,7 +65,7 @@ def save_features_from_events(
             os.makedirs(output_directory)
         # write_excel_features(features, output_directory)
         write_csv_features(features, output_directory)
-    elif save_result_quantification:
+    if save_result_quantification:
         if output_directory is None:
             raise ValueError(
                 "Output directory must be specified when save_result is True."

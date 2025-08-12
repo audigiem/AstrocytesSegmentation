@@ -207,30 +207,29 @@ def write_csv_coactive(
         with open(output_path, "w", newline="", encoding="utf-8") as file:
             csv_writer = csv.writer(file, delimiter=";")
 
-            # Header
+            # Header with units
             csv_writer.writerow(
                 [
-                    "T0",
-                    "Coactive Labels",
-                    "Event Count",
+                    "T0 [frame]",
+                    "Coactive Labels [IDs]",
+                    "Event Count [count]",
                     "All Distances [µm]",
                     "Mean Distance [µm]",
                     "Median Distance [µm]",
                     "Std Distance [µm]",
                     "Min Distance [µm]",
                     "Max Distance [µm]",
-                    "Mean Centroid X",
-                    "Mean Centroid Y",
-                    "Mean Centroid Z",
+                    "Mean Centroid X [voxel]",
+                    "Mean Centroid Y [voxel]",
+                    "Mean Centroid Z [voxel]",
                     "Spatial Span X [µm]",
                     "Spatial Span Y [µm]",
                     "Spatial Span Z [µm]",
                 ]
             )
 
-            # Write data
+            # Write data (reste inchangé)
             for t0, labels, stats in zip(list_t0, list_list_label, list_coactive_stats):
-                # Convert label list to string
                 if len(labels) > 1:
                     labels_str = "[" + "; ".join(f"{i}" for i in labels) + "]"
                     distances_str = (
@@ -263,8 +262,135 @@ def write_csv_coactive(
 
         print(f"Coactive events written to: {output_path}")
 
+        # Créer le fichier de documentation
+        _create_documentation_file(path_output_dir)
+
     except IOError as e:
         print(f"Writing error: {e}")
+
+
+def _create_documentation_file(path_output_dir: str) -> None:
+    """
+    Creates a documentation file explaining the coactive CSV columns.
+
+    Args:
+        path_output_dir: Output directory path
+    """
+    doc_path = os.path.join(path_output_dir, "coactive_columns_documentation.txt")
+
+    documentation = """DOCUMENTATION - FICHIER COACTIVE.CSV
+=====================================
+
+Ce fichier contient l'analyse des événements co-actifs (événements qui se produisent au même instant T0).
+
+DESCRIPTION DES COLONNES :
+-------------------------
+
+T0 [frame] :
+- Description : Instant temporel où se produisent les événements co-actifs
+- Unité : frame (numéro de frame dans la séquence temporelle)
+- Calcul : Valeur directe extraite des données d'événements localisés
+
+Coactive Labels [IDs] :
+- Description : Liste des identifiants (labels) des événements co-actifs
+- Unité : IDs (identifiants numériques)
+- Format : [ID1; ID2; ID3] pour plusieurs événements, ou ID unique pour un événement isolé
+- Calcul : Regroupement de tous les événements ayant le même T0
+
+Event Count [count] :
+- Description : Nombre d'événements co-actifs à cet instant T0
+- Unité : count (nombre d'événements)
+- Calcul : Longueur de la liste des labels co-actifs
+
+All Distances [µm] :
+- Description : Liste de toutes les distances entre paires d'événements co-actifs
+- Unité : µm (micromètres)
+- Format : [dist1; dist2; dist3] ou "None" pour les événements uniques
+- Calcul : Distance euclidienne 3D entre tous les couples de centroïdes d'événements
+
+Mean Distance [µm] :
+- Description : Distance moyenne entre tous les événements co-actifs
+- Unité : µm (micromètres)
+- Calcul : Moyenne arithmétique de toutes les distances par paires
+- Valeur : 0.0 pour les événements uniques
+
+Median Distance [µm] :
+- Description : Distance médiane entre tous les événements co-actifs
+- Unité : µm (micromètres)
+- Calcul : Médiane de toutes les distances par paires
+- Valeur : 0.0 pour les événements uniques
+
+Std Distance [µm] :
+- Description : Écart-type des distances entre événements co-actifs
+- Unité : µm (micromètres)
+- Calcul : Écart-type de toutes les distances par paires
+- Valeur : 0.0 pour les événements uniques
+
+Min Distance [µm] :
+- Description : Distance minimale entre événements co-actifs
+- Unité : µm (micromètres)
+- Calcul : Minimum de toutes les distances par paires
+- Valeur : 0.0 pour les événements uniques
+
+Max Distance [µm] :
+- Description : Distance maximale entre événements co-actifs
+- Unité : µm (micromètres)
+- Calcul : Maximum de toutes les distances par paires
+- Valeur : 0.0 pour les événements uniques
+
+Mean Centroid X [voxel] :
+- Description : Position moyenne des centroïdes sur l'axe X
+- Unité : voxel (coordonnée en voxels)
+- Calcul : Moyenne des coordonnées X de tous les centroïdes des événements co-actifs
+
+Mean Centroid Y [voxel] :
+- Description : Position moyenne des centroïdes sur l'axe Y
+- Unité : voxel (coordonnée en voxels)
+- Calcul : Moyenne des coordonnées Y de tous les centroïdes des événements co-actifs
+
+Mean Centroid Z [voxel] :
+- Description : Position moyenne des centroïdes sur l'axe Z
+- Unité : voxel (coordonnée en voxels)
+- Calcul : Moyenne des coordonnées Z de tous les centroïdes des événements co-actifs
+
+Spatial Span X [µm] :
+- Description : Étendue spatiale des événements co-actifs sur l'axe X
+- Unité : µm (micromètres)
+- Calcul : (Max_X - Min_X) * voxel_size_x des centroïdes
+- Valeur : 0.0 pour les événements uniques
+
+Spatial Span Y [µm] :
+- Description : Étendue spatiale des événements co-actifs sur l'axe Y
+- Unité : µm (micromètres)
+- Calcul : (Max_Y - Min_Y) * voxel_size_y des centroïdes
+- Valeur : 0.0 pour les événements uniques
+
+Spatial Span Z [µm] :
+- Description : Étendue spatiale des événements co-actifs sur l'axe Z
+- Unité : µm (micromètres)
+- Calcul : (Max_Z - Min_Z) * voxel_size_z des centroïdes
+- Valeur : 0.0 pour les événements uniques
+
+NOTES IMPORTANTES :
+------------------
+- Les distances sont calculées en utilisant les tailles de voxels spécifiées dans les paramètres
+- Les événements uniques (Event Count = 1) ont des valeurs de distance et d'étendue spatiale de 0.0
+- Les coordonnées de centroïdes sont en voxels, les distances et étendues spatiales en micromètres
+- Le délimiteur du CSV est le point-virgule (;)
+
+FORMULE DE CALCUL DES DISTANCES :
+--------------------------------
+Distance = √[(X₁-X₂)²×voxel_size_x² + (Y₁-Y₂)²×voxel_size_y² + (Z₁-Z₂)²×voxel_size_z²]
+
+Généré automatiquement par le module coactive.py
+"""
+
+    try:
+        with open(doc_path, "w", encoding="utf-8") as f:
+            f.write(documentation)
+        print(f"Documentation créée : {doc_path}")
+    except IOError as e:
+        print(f"Erreur lors de la création de la documentation : {e}")
 
 
 def analyze_coactive_patterns(list_coactive_stats: List[Dict]) -> Dict:

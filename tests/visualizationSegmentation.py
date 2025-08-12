@@ -280,7 +280,7 @@ class TableWidget(QWidget):
     def _update_class_combo(self):
         """Met à jour la liste déroulante des classes disponibles"""
         self._class_combo.clear()
-        self._class_combo.addItem("Sélectionner une classe")
+        self._class_combo.addItem("Select a class")
 
         if hasattr(self, "_table") and "Class" in self._table:
             unique_classes = sorted(set(self._table["Class"]))
