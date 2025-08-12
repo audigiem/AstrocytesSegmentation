@@ -128,6 +128,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
         dF,
         index_xmin,
         index_xmax,
+        GPU_AVAILABLE,
     )
 
     # === Active voxels ===
