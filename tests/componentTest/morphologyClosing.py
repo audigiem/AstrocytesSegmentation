@@ -51,7 +51,7 @@ class EventDetectionTest(unittest.TestCase):
             if self.save_results:
                 export_data(
                     closed_data_CPU,
-                    self.target_dir,
+                    self.src_dir,
                     export_as_single_tif=True,
                     file_name=f"closing_in_space_CPU_{border_condition}",
                 )
