@@ -231,15 +231,19 @@ def morphology_operation_unfold(
 
     if operation == "max":
         # Dilation: maximum des voisins
-        result = torch.max(masked_patches.view(*masked_patches.shape[:3], -1), dim=-1)[
-            0
-        ]
+        result = torch.max(
+            masked_patches.reshape(*masked_patches.shape[:3], -1), dim=-1
+        )[0]
     elif operation == "min":
         # Erosion: minimum des voisins (seulement sur les positions du kernel)
-        masked_flat = masked_patches.view(*masked_patches.shape[:3], -1)
-        kernel_flat = kernel_mask.view(-1)
+        masked_flat = masked_patches.reshape(*masked_patches.shape[:3], -1)
+        kernel_flat = kernel_mask.reshape(-1)
         # Remplacer les 0 par inf pour le min
-        masked_flat = torch.where(kernel_flat, masked_flat, torch.inf)
+        masked_flat = torch.where(
+            kernel_flat.unsqueeze(0).unsqueeze(0).unsqueeze(0),
+            masked_flat,
+            torch.inf
+        )
         result = torch.min(masked_flat, dim=-1)[0]
         result = torch.where(
             result == torch.inf, torch.tensor(0.0, device=volume.device), result
