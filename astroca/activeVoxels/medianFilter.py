@@ -69,9 +69,6 @@ def unified_median_filter_3d_cpu(
         median_filtered = apply_median_filter_3d_ignore_border(data_3D, offsets)
         data_filtered_4D = median_filtered.reshape(T, Z, Y, X)
         return data_filtered_4D
-    print(
-        f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'"
-    )
     r = int(np.ceil(radius))
 
     # Create spherical mask
