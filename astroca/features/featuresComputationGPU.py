@@ -17,10 +17,10 @@ from astroca.features.hotspots import (
 
 
 def save_features_from_events_GPU(
-        calcium_events: torch.Tensor,
-        events_ids: int,
-        image_amplitude: torch.Tensor,
-        params_values: dict = None,
+    calcium_events: torch.Tensor,
+    events_ids: int,
+    image_amplitude: torch.Tensor,
+    params_values: dict = None,
 ) -> None:
     """
     GPU-optimized version for computing features from calcium events
@@ -40,8 +40,13 @@ def save_features_from_events_GPU(
     output_directory = params_values["paths"]["output_dir"]
 
     # Convertir en CPU pour les calculs de hot spots (si nécessaire)
-    features_cpu = {k: {kk: vv.cpu().item() if isinstance(vv, torch.Tensor) else vv
-                        for kk, vv in v.items()} for k, v in features.items()}
+    features_cpu = {
+        k: {
+            kk: vv.cpu().item() if isinstance(vv, torch.Tensor) else vv
+            for kk, vv in v.items()
+        }
+        for k, v in features.items()
+    }
 
     # hot_spots = compute_hot_spots_from_features(features_cpu, params_values)
 
@@ -60,7 +65,9 @@ def save_features_from_events_GPU(
     print(60 * "=")
 
 
-def precompute_event_voxel_indices_GPU(calcium_events: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def precompute_event_voxel_indices_GPU(
+    calcium_events: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     GPU-optimized precomputation of indices and event_ids for all non-zero voxels
     """
@@ -91,7 +98,9 @@ def compute_features_GPU(
     voxel_size_z = float(params_values["features_extraction"]["voxel_size_z"])
     voxel_size = voxel_size_x * voxel_size_y * voxel_size_z
 
-    threshold_median_localized = float(params_values["features_extraction"]["threshold_median_localized"])
+    threshold_median_localized = float(
+        params_values["features_extraction"]["threshold_median_localized"]
+    )
     volume_localized = float(params_values["features_extraction"]["volume_localized"])
 
     # Précomputation optimisée
@@ -105,19 +114,33 @@ def compute_features_GPU(
 
     # Batch size adaptatif selon la mémoire disponible
     if torch.cuda.is_available():
-        mem_free = torch.cuda.get_device_properties(device).total_memory - torch.cuda.memory_allocated(device)
-        batch_size = min(200, max(10, int(mem_free / (1024**3))))  # Adaptatif selon la mémoire libre
+        mem_free = torch.cuda.get_device_properties(
+            device
+        ).total_memory - torch.cuda.memory_allocated(device)
+        batch_size = min(
+            200, max(10, int(mem_free / (1024**3)))
+        )  # Adaptatif selon la mémoire libre
     else:
         batch_size = 50
 
-    for i in tqdm(range(0, len(unique_event_ids), batch_size), desc="Computing features (GPU)"):
-        batch_event_ids = unique_event_ids[i:i + batch_size]
+    for i in tqdm(
+        range(0, len(unique_event_ids), batch_size), desc="Computing features (GPU)"
+    ):
+        batch_event_ids = unique_event_ids[i : i + batch_size]
 
         # Traitement du batch
         batch_features = compute_features_batch_GPU(
-            batch_event_ids, coords_all, event_ids_all, image_amplitude,
-            voxel_size, voxel_size_x, voxel_size_y, voxel_size_z,
-            threshold_median_localized, volume_localized, device
+            batch_event_ids,
+            coords_all,
+            event_ids_all,
+            image_amplitude,
+            voxel_size,
+            voxel_size_x,
+            voxel_size_y,
+            voxel_size_z,
+            threshold_median_localized,
+            volume_localized,
+            device,
         )
 
         features.update(batch_features)
@@ -130,17 +153,17 @@ def compute_features_GPU(
 
 
 def compute_features_batch_GPU(
-        event_ids: torch.Tensor,
-        coords_all: torch.Tensor,
-        event_ids_all: torch.Tensor,
-        image_amplitude: torch.Tensor,
-        voxel_size: float,
-        voxel_size_x: float,
-        voxel_size_y: float,
-        voxel_size_z: float,
-        threshold_median_localized: float,
-        volume_localized: float,
-        device: torch.device
+    event_ids: torch.Tensor,
+    coords_all: torch.Tensor,
+    event_ids_all: torch.Tensor,
+    image_amplitude: torch.Tensor,
+    voxel_size: float,
+    voxel_size_x: float,
+    voxel_size_y: float,
+    voxel_size_z: float,
+    threshold_median_localized: float,
+    volume_localized: float,
+    device: torch.device,
 ) -> dict:
     """
     Version ultra-optimisée avec vectorisation avancée
@@ -148,7 +171,9 @@ def compute_features_batch_GPU(
     batch_features = {}
 
     # Précalcul des masques pour tous les événements du batch
-    event_masks = event_ids_all.unsqueeze(0) == event_ids.unsqueeze(1)  # (batch_size, n_coords)
+    event_masks = event_ids_all.unsqueeze(0) == event_ids.unsqueeze(
+        1
+    )  # (batch_size, n_coords)
 
     for i, event_id in enumerate(event_ids):
         event_id_val = event_id.item()
@@ -180,12 +205,23 @@ def compute_features_batch_GPU(
         # Classification optimisée
         if duration > 1:
             class_result = is_localized_GPU(
-                coords, t0, duration, volume,
-                voxel_size_x, voxel_size_y, voxel_size_z,
-                threshold_median_localized, volume_localized, device
+                coords,
+                t0,
+                duration,
+                volume,
+                voxel_size_x,
+                voxel_size_y,
+                voxel_size_z,
+                threshold_median_localized,
+                volume_localized,
+                device,
             )
         else:
-            class_label = "Localized" if volume <= volume_localized else "Localized but not in a microdomain"
+            class_label = (
+                "Localized"
+                if volume <= volume_localized
+                else "Localized but not in a microdomain"
+            )
             class_result = {
                 "class": class_label,
                 "confidence": torch.tensor(0.0, device=device),
@@ -212,16 +248,16 @@ def compute_features_batch_GPU(
 
 
 def is_localized_GPU(
-        coords: torch.Tensor,
-        t0: torch.Tensor,
-        duration: torch.Tensor,
-        volume: float,
-        voxel_size_x: float,
-        voxel_size_y: float,
-        voxel_size_z: float,
-        threshold_median_localized: float,
-        volume_localized: float,
-        device: torch.device
+    coords: torch.Tensor,
+    t0: torch.Tensor,
+    duration: torch.Tensor,
+    volume: float,
+    voxel_size_x: float,
+    voxel_size_y: float,
+    voxel_size_z: float,
+    threshold_median_localized: float,
+    volume_localized: float,
+    device: torch.device,
 ) -> dict:
     """
     GPU-optimized classification avec vectorisation complète et gestion des cas limites
@@ -232,7 +268,9 @@ def is_localized_GPU(
     if duration_val <= 1:
         # Cas trivial - pas de déplacement à calculer
         return {
-            "class": "Localized" if volume <= volume_localized else "Localized but not in a microdomain",
+            "class": "Localized"
+            if volume <= volume_localized
+            else "Localized but not in a microdomain",
             "confidence": torch.tensor(0.0, device=device),
             "mean_displacement": torch.tensor(0.0, device=device),
             "median_displacement": torch.tensor(0.0, device=device),
@@ -242,9 +280,9 @@ def is_localized_GPU(
     time_range = torch.arange(t0_val, t0_val + duration_val, device=device)
 
     # Initialiser les centroïdes avec NaN pour détecter les frames vides
-    centroids_x = torch.full((duration_val,), float('nan'), device=device)
-    centroids_y = torch.full((duration_val,), float('nan'), device=device)
-    centroids_z = torch.full((duration_val,), float('nan'), device=device)
+    centroids_x = torch.full((duration_val,), float("nan"), device=device)
+    centroids_y = torch.full((duration_val,), float("nan"), device=device)
+    centroids_z = torch.full((duration_val,), float("nan"), device=device)
 
     # Vectorisation du calcul des centroïdes
     coords_t = coords[:, 0]
@@ -265,7 +303,9 @@ def is_localized_GPU(
     if torch.sum(valid_mask) < 2:
         # Pas assez de points pour calculer des distances
         return {
-            "class": "Localized" if volume <= volume_localized else "Localized but not in a microdomain",
+            "class": "Localized"
+            if volume <= volume_localized
+            else "Localized but not in a microdomain",
             "confidence": torch.tensor(0.0, device=device),
             "mean_displacement": torch.tensor(0.0, device=device),
             "median_displacement": torch.tensor(0.0, device=device),
@@ -288,7 +328,7 @@ def is_localized_GPU(
             y_dist = valid_centroids_y[j] - valid_centroids_y[i]
             z_dist = valid_centroids_z[j] - valid_centroids_z[i]
 
-            distance = torch.sqrt(x_dist ** 2 + y_dist ** 2 + z_dist ** 2)
+            distance = torch.sqrt(x_dist**2 + y_dist**2 + z_dist**2)
             distances.append(distance)
 
     if len(distances) == 0:
@@ -367,10 +407,10 @@ def write_csv_features_GPU(features: dict, output_directory: str) -> None:
 
 # Fonction dispatcher unifiée
 def save_features_from_events(
-        calcium_events: Union[np.ndarray, torch.Tensor],
-        events_ids: int,
-        image_amplitude: Union[np.ndarray, torch.Tensor],
-        params_values: dict = None,
+    calcium_events: Union[np.ndarray, torch.Tensor],
+    events_ids: int,
+    image_amplitude: Union[np.ndarray, torch.Tensor],
+    params_values: dict = None,
 ) -> None:
     """
     Dispatcher function for CPU or GPU feature computation
@@ -378,14 +418,20 @@ def save_features_from_events(
     if isinstance(calcium_events, torch.Tensor) and calcium_events.is_cuda:
         # Assurer que image_amplitude est aussi sur GPU
         if isinstance(image_amplitude, np.ndarray):
-            image_amplitude = torch.from_numpy(image_amplitude).to(calcium_events.device)
+            image_amplitude = torch.from_numpy(image_amplitude).to(
+                calcium_events.device
+            )
         elif isinstance(image_amplitude, torch.Tensor) and not image_amplitude.is_cuda:
             image_amplitude = image_amplitude.to(calcium_events.device)
 
-        return save_features_from_events_GPU(calcium_events, events_ids, image_amplitude, params_values)
+        return save_features_from_events_GPU(
+            calcium_events, events_ids, image_amplitude, params_values
+        )
     else:
         # Import de la version CPU
-        from astroca.features.featuresComputation import save_features_from_events as save_features_CPU
+        from astroca.features.featuresComputation import (
+            save_features_from_events as save_features_CPU,
+        )
 
         # Conversion vers numpy si nécessaire
         if isinstance(calcium_events, torch.Tensor):
@@ -393,23 +439,29 @@ def save_features_from_events(
         if isinstance(image_amplitude, torch.Tensor):
             image_amplitude = image_amplitude.cpu().numpy()
 
-        return save_features_CPU(calcium_events, events_ids, image_amplitude, params_values)
+        return save_features_CPU(
+            calcium_events, events_ids, image_amplitude, params_values
+        )
 
 
 def compute_features(
-        calcium_events: Union[np.ndarray, torch.Tensor],
-        events_ids: int,
-        image_amplitude: Union[np.ndarray, torch.Tensor],
-        params_values: dict = None,
+    calcium_events: Union[np.ndarray, torch.Tensor],
+    events_ids: int,
+    image_amplitude: Union[np.ndarray, torch.Tensor],
+    params_values: dict = None,
 ) -> dict:
     """
     Dispatcher function for feature computation
     """
     if isinstance(calcium_events, torch.Tensor) and calcium_events.is_cuda:
-        return compute_features_GPU(calcium_events, events_ids, image_amplitude, params_values)
+        return compute_features_GPU(
+            calcium_events, events_ids, image_amplitude, params_values
+        )
     else:
         # Import de la version CPU
-        from astroca.features.featuresComputation import compute_features as compute_features_CPU
+        from astroca.features.featuresComputation import (
+            compute_features as compute_features_CPU,
+        )
 
         # Conversion vers numpy si nécessaire
         if isinstance(calcium_events, torch.Tensor):
@@ -417,4 +469,6 @@ def compute_features(
         if isinstance(image_amplitude, torch.Tensor):
             image_amplitude = image_amplitude.cpu().numpy()
 
-        return compute_features_CPU(calcium_events, events_ids, image_amplitude, params_values)
+        return compute_features_CPU(
+            calcium_events, events_ids, image_amplitude, params_values
+        )

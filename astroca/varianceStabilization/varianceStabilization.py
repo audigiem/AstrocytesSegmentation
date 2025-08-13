@@ -186,8 +186,6 @@ def anscombe_inverse(
         return anscombe_inverse_CPU(data, index_xmin, index_xmax, param_values)
 
 
-
-
 def anscombe_inverse_CPU(
     data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, param_values: dict
 ) -> np.ndarray:
@@ -252,7 +250,7 @@ def anscombe_inverse_GPU(
     data: torch.Tensor,
     index_xmin: np.ndarray,
     index_xmax: np.ndarray,
-    param_values: dict
+    param_values: dict,
 ) -> torch.Tensor:
     """
     GPU optimized inverse Anscombe transform avec vectorisation complète
@@ -261,7 +259,9 @@ def anscombe_inverse_GPU(
 
     required_keys = {"save", "paths"}
     if not required_keys.issubset(param_values.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - param_values.keys()}")
+        raise ValueError(
+            f"Missing required parameters: {required_keys - param_values.keys()}"
+        )
 
     save_results = int(param_values["save"]["save_anscombe_inverse"]) == 1
     output_directory = param_values["paths"]["output_dir"]
@@ -299,7 +299,9 @@ def anscombe_inverse_GPU(
 
     if save_results:
         if output_directory is None:
-            raise ValueError("Output directory must be specified when save_results is True.")
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
         os.makedirs(output_directory, exist_ok=True)
         export_data(
             data_out.cpu().numpy(),

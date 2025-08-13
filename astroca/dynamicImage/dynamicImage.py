@@ -203,11 +203,11 @@ def compute_dynamic_image_GPU(
 
 
 def compute_image_amplitude(
-        data_cropped: Union[np.ndarray, torch.Tensor],
-        F0: Union[np.ndarray, torch.Tensor],
-        index_xmin: np.ndarray,
-        index_xmax: np.ndarray,
-        param_values: dict,
+    data_cropped: Union[np.ndarray, torch.Tensor],
+    F0: Union[np.ndarray, torch.Tensor],
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    param_values: dict,
 ) -> Union[np.ndarray, torch.Tensor]:
     """
     Dispatcher pour le calcul d'amplitude (CPU ou GPU)
@@ -230,7 +230,9 @@ def compute_image_amplitude(
             data_cropped = data_cropped.cpu().numpy()
         if isinstance(F0, torch.Tensor):
             F0 = F0.cpu().numpy()
-        return compute_image_amplitude_CPU(data_cropped, F0, index_xmin, index_xmax, param_values)
+        return compute_image_amplitude_CPU(
+            data_cropped, F0, index_xmin, index_xmax, param_values
+        )
 
 
 def compute_image_amplitude_CPU(
@@ -300,11 +302,11 @@ def compute_image_amplitude_CPU(
 
 
 def compute_image_amplitude_GPU(
-        data_cropped: torch.Tensor,
-        F0: torch.Tensor,
-        index_xmin: np.ndarray,
-        index_xmax: np.ndarray,
-        param_values: dict,
+    data_cropped: torch.Tensor,
+    F0: torch.Tensor,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    param_values: dict,
 ) -> torch.Tensor:
     """
     GPU optimized image amplitude computation: (data_cropped - f0_inv)/f0_inv
@@ -313,7 +315,9 @@ def compute_image_amplitude_GPU(
 
     required_keys = {"save", "paths"}
     if not required_keys.issubset(param_values.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - param_values.keys()}")
+        raise ValueError(
+            f"Missing required parameters: {required_keys - param_values.keys()}"
+        )
 
     save_results_amplitude = int(param_values["save"]["save_amplitude"]) == 1
     output_directory = param_values["paths"]["output_dir"]
@@ -331,7 +335,7 @@ def compute_image_amplitude_GPU(
     # Créer masque vectorisé
     z_coords = torch.arange(Z, device=device)
     x_coords = torch.arange(X, device=device)
-    zz, xx = torch.meshgrid(z_coords, x_coords, indexing='ij')
+    zz, xx = torch.meshgrid(z_coords, x_coords, indexing="ij")
     valid_mask = (xx >= index_xmin_torch[zz]) & (xx <= index_xmax_torch[zz])
 
     # Initialiser le résultat
@@ -352,14 +356,16 @@ def compute_image_amplitude_GPU(
         result = torch.where(
             valid_mask.unsqueeze(1),  # Étendre pour dimension Y
             result,
-            torch.zeros_like(result)
+            torch.zeros_like(result),
         )
 
         image_amplitude[t] = result
 
     if save_results_amplitude:
         if output_directory is None:
-            raise ValueError("Output directory must be specified when save_results is True.")
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
         os.makedirs(output_directory, exist_ok=True)
         export_data(
             image_amplitude.cpu().numpy(),

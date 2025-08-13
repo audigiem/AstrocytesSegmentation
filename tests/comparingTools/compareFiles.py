@@ -283,7 +283,9 @@ def main():
     expected_ID_calcium_events_path = EXPECTED_DIR_PATH + "ID_calciumEvents.tif"
     output_ID_calcium_events_path = OUTPUT_DIR_PATH + "ID_calciumEvents.tif"
 
-    expected_anscombe_inverse_path = EXPECTED_DIR_PATH + "inverse_anscombe_transformed_volume.tif"
+    expected_anscombe_inverse_path = (
+        EXPECTED_DIR_PATH + "inverse_anscombe_transformed_volume.tif"
+    )
     output_anscombe_inverse_path = (
         OUTPUT_DIR_PATH + "inverse_anscombe_transformed_volume.tif"
     )

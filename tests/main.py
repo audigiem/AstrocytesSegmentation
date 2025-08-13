@@ -81,7 +81,9 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     params["GPU_AVAILABLE"] = 1 if GPU_AVAILABLE else 0
 
     # === Loading ===
-    data = run_step("load_data", load_data, params["paths"]["input_folder"], GPU_AVAILABLE)
+    data = run_step(
+        "load_data", load_data, params["paths"]["input_folder"], GPU_AVAILABLE
+    )
     T, Z, Y, X = data.shape
     print(f"Loaded data of shape: {data.shape}\n")
 

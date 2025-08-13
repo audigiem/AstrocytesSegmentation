@@ -41,27 +41,45 @@ def save_features_from_events(
         - output_directory: Directory to save the results if save_result is True.
     @return:
     """
-    if params_values.get("GPU_AVAILABLE", 0) == 1:
-        # Convert to torch tensor if not already
-        if not isinstance(calcium_events, torch.Tensor):
-            calcium_events = torch.tensor(calcium_events, dtype=torch.float32)
-        if not isinstance(image_amplitude, torch.Tensor):
-            image_amplitude = torch.tensor(image_amplitude, dtype=torch.float32)
+    # Détection automatique du meilleur device
+    use_gpu = False
 
-        save_features_from_events_GPU(
+    if isinstance(calcium_events, torch.Tensor):
+        if calcium_events.is_cuda:
+            use_gpu = True
+        elif torch.cuda.is_available():
+            # Transférer sur GPU si disponible
+            print("Transferring data to GPU for acceleration...")
+            calcium_events = calcium_events.cuda()
+            use_gpu = True
+    elif torch.cuda.is_available():
+        # Convertir numpy vers GPU si disponible
+        print("Converting numpy arrays to GPU tensors...")
+        calcium_events = torch.from_numpy(calcium_events).cuda()
+        use_gpu = True
+
+    if use_gpu:
+        # Assurer que image_amplitude est aussi sur GPU
+        if isinstance(image_amplitude, np.ndarray):
+            image_amplitude = torch.from_numpy(image_amplitude).to(
+                calcium_events.device
+            )
+        elif isinstance(image_amplitude, torch.Tensor) and not image_amplitude.is_cuda:
+            image_amplitude = image_amplitude.to(calcium_events.device)
+
+        return save_features_from_events_GPU(
             calcium_events, events_ids, image_amplitude, params_values
         )
     else:
-        # Convert to numpy array if not already
+        # Conversion vers numpy si nécessaire
         if isinstance(calcium_events, torch.Tensor):
             calcium_events = calcium_events.cpu().numpy()
         if isinstance(image_amplitude, torch.Tensor):
             image_amplitude = image_amplitude.cpu().numpy()
 
-        save_features_from_events_CPU(
+        return save_features_from_events_CPU(
             calcium_events, events_ids, image_amplitude, params_values
         )
-
 
 
 # @profile

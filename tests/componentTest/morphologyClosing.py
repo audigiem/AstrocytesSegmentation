@@ -6,7 +6,10 @@
 import unittest
 from astroca.tools.loadData import load_data
 from astroca.tools.exportData import export_data
-from astroca.activeVoxels.spaceMorphology import closing_morphology_in_space_CPU, closing_morphology_in_space_GPU
+from astroca.activeVoxels.spaceMorphology import (
+    closing_morphology_in_space_CPU,
+    closing_morphology_in_space_GPU,
+)
 import numpy as np
 import torch
 
@@ -26,12 +29,8 @@ class EventDetectionTest(unittest.TestCase):
         self.src_dir = "/home/maudigie/data/outputData/testCPU/"
         self.gpu_available = True
         self.save_results = True
-        self.dataGPU = load_data(
-            self.src_dir + "zScore.tif", self.gpu_available
-        )
-        self.dataCPU = load_data(
-            self.src_dir + "zScore.tif", GPU_AVAILABLE=False
-        )
+        self.dataGPU = load_data(self.src_dir + "zScore.tif", self.gpu_available)
+        self.dataCPU = load_data(self.src_dir + "zScore.tif", GPU_AVAILABLE=False)
         self.border_condition = ["ignore", "reflect"]
         self.radius = 1
 

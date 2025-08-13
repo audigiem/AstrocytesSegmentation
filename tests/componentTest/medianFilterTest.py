@@ -6,7 +6,10 @@
 import unittest
 from astroca.tools.loadData import load_data
 from astroca.tools.exportData import export_data
-from astroca.activeVoxels.medianFilter import unified_median_filter_3d_cpu, unified_median_filter_3d_gpu
+from astroca.activeVoxels.medianFilter import (
+    unified_median_filter_3d_cpu,
+    unified_median_filter_3d_gpu,
+)
 from tests.comparingTools.compareFiles import compare_sequence
 import numpy as np
 import torch

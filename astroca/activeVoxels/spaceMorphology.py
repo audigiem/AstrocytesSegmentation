@@ -42,9 +42,6 @@ def closing_morphology_in_space_CPU(
         f" - Apply morphological closing with radius={radius} and border mode='{border_mode}'"
     )
     struct_elem = ball(radius)
-    print(
-        f"Structuring element shape: {struct_elem.shape}, active pixels: {struct_elem.sum()}"
-    )
     result = np.zeros_like(data, dtype=np.uint8)
 
     # Ensure binary input
