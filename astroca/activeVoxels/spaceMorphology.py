@@ -166,7 +166,7 @@ def closing_morphology_in_space_ignore_border_CPU(
 
 
 def closing_morphology_in_space_GPU(
-        data: torch.Tensor, radius: int, border_mode: str = "ignore"
+    data: torch.Tensor, radius: int, border_mode: str = "ignore"
 ) -> torch.Tensor:
     """
     Version GPU utilisant unfold pour éviter conv3d
@@ -174,7 +174,9 @@ def closing_morphology_in_space_GPU(
     if border_mode == "ignore":
         return closing_morphology_in_space_ignore_border_GPU(data, radius)
 
-    print(f" - [GPU] Morphological closing with unfold, radius={radius}, border='{border_mode}'")
+    print(
+        f" - [GPU] Morphological closing with unfold, radius={radius}, border='{border_mode}'"
+    )
 
     device = data.device
     T, Z, Y, X = data.shape
@@ -200,17 +202,19 @@ def closing_morphology_in_space_GPU(
         )
 
         # Dilation avec unfold
-        dilated = morphology_operation_unfold(padded, struct_elem, operation='max')
+        dilated = morphology_operation_unfold(padded, struct_elem, operation="max")
 
         # Erosion avec unfold
-        eroded = morphology_operation_unfold(dilated, struct_elem, operation='min')
+        eroded = morphology_operation_unfold(dilated, struct_elem, operation="min")
 
         result[t] = eroded.to(torch.uint8) * 255
 
     return result
 
 
-def morphology_operation_unfold(volume: torch.Tensor, kernel: torch.Tensor, operation: str = 'max') -> torch.Tensor:
+def morphology_operation_unfold(
+    volume: torch.Tensor, kernel: torch.Tensor, operation: str = "max"
+) -> torch.Tensor:
     """
     Opération morphologique utilisant unfold
     """
@@ -225,19 +229,24 @@ def morphology_operation_unfold(volume: torch.Tensor, kernel: torch.Tensor, oper
     kernel_mask = kernel > 0
     masked_patches = unfolded * kernel_mask.unsqueeze(0).unsqueeze(0).unsqueeze(0)
 
-    if operation == 'max':
+    if operation == "max":
         # Dilation: maximum des voisins
-        result = torch.max(masked_patches.view(*masked_patches.shape[:3], -1), dim=-1)[0]
-    elif operation == 'min':
+        result = torch.max(masked_patches.view(*masked_patches.shape[:3], -1), dim=-1)[
+            0
+        ]
+    elif operation == "min":
         # Erosion: minimum des voisins (seulement sur les positions du kernel)
         masked_flat = masked_patches.view(*masked_patches.shape[:3], -1)
         kernel_flat = kernel_mask.view(-1)
         # Remplacer les 0 par inf pour le min
         masked_flat = torch.where(kernel_flat, masked_flat, torch.inf)
         result = torch.min(masked_flat, dim=-1)[0]
-        result = torch.where(result == torch.inf, torch.tensor(0.0, device=volume.device), result)
+        result = torch.where(
+            result == torch.inf, torch.tensor(0.0, device=volume.device), result
+        )
 
     return result
+
 
 def closing_morphology_in_space_ignore_border_GPU(
     data: torch.Tensor, radius: int

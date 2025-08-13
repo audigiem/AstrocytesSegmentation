@@ -209,7 +209,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
         else:
             print(f"{step}: {step_time:.2f}s ({percent:.2f}%)")
 
-    print('\n')
+    print("\n")
     # logger.save_summary(summary)
 
 
