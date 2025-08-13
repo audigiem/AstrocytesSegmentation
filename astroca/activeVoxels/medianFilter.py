@@ -37,10 +37,13 @@ def unified_median_filter_3d(
 
     @return Filtered 4D stack as torch.Tensor
     """
-    if use_gpu:
-        return unified_median_filter_3d_gpu(data, radius, border_mode)
-    else:
+    if border_mode == "ignore":
         return unified_median_filter_3d_cpu(data, radius, border_mode, n_workers)
+    else:
+        if use_gpu:
+            return unified_median_filter_3d_gpu(data, radius, border_mode)
+        else:
+            return unified_median_filter_3d_cpu(data, radius, border_mode, n_workers)
 
 
 def unified_median_filter_3d_cpu(

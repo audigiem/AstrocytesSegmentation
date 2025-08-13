@@ -7,14 +7,13 @@ import torch
 import torch.nn.functional as F
 from tqdm import tqdm
 from astroca.tools.medianComputationTools import generate_spherical_offsets
-from astroca.activeVoxels.medianFilter import apply_median_filter_3d_ignore_border
 
 
 def unified_median_filter_3d_gpu(
     data: torch.Tensor,
     radius: float = 1.5,
     border_mode: str = "reflect",
-) -> torch.Tensor | np.ndarray:
+) -> torch.Tensor:
     """
     @brief GPU version of 3D median filter using PyTorch
     """
@@ -22,33 +21,6 @@ def unified_median_filter_3d_gpu(
         f" - Apply 3D median filter (GPU) with radius={radius}, border mode='{border_mode}'"
     )
 
-    if border_mode == "ignore":
-        # fallback on CPU implementation if ignore mode is used
-        print(" - Using CPU implementation for 'ignore' border mode")
-        # convert to numpy for CPU processing
-        data_np = data.cpu().numpy()
-        T, Z, Y, X = data_np.shape
-        data_3D = data_np.reshape(T * Z, Y, X)  # Reshape to treat as 3D
-        offsets = generate_spherical_offsets(radius)
-        median_filtered = apply_median_filter_3d_ignore_border(data_3D, offsets)
-        data_filtered_4D = median_filtered.reshape(T, Z, Y, X)
-        return data_filtered_4D
-
-    else:
-        return apply_median_filter_3d_gpu_with_padding(data, radius, border_mode)
-
-
-
-
-
-def apply_median_filter_3d_gpu_with_padding(
-    data: torch.Tensor,
-    radius: float,
-    border_mode: str,
-) -> torch.Tensor:
-    """
-    @brief GPU implementation with padding for standard border modes
-    """
     T, Z, Y, X = data.shape
     r = int(np.ceil(radius))
 
@@ -128,6 +100,3 @@ def median_filter_batch_gpu_padded(
                             result[b, z, y, x] = median_val
 
     return result
-
-
-
