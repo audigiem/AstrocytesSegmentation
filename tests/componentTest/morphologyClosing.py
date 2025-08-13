@@ -31,7 +31,7 @@ class EventDetectionTest(unittest.TestCase):
         self.save_results = True
         self.dataGPU = load_data(self.src_dir + "zScore.tif", self.gpu_available)
         self.dataCPU = load_data(self.src_dir + "zScore.tif", GPU_AVAILABLE=False)
-        self.border_condition = ["ignore", "reflect"]
+        self.border_condition = ["ignore", "constant"]
         self.radius = 1
 
     def test_median_filter(self):

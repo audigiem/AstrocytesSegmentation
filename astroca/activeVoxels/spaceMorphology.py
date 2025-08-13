@@ -186,7 +186,7 @@ def closing_morphology_in_space_GPU(
     struct_elem = torch.from_numpy(struct_elem_np).to(device)
     kernel_size = struct_elem.shape[0]
 
-    mode_map = {"constant": "constant", "reflect": "reflect", "nearest": "replicate"}
+    mode_map = {"constant": "constant"}
     if border_mode not in mode_map:
         raise ValueError(f"Unsupported border_mode '{border_mode}'")
 
