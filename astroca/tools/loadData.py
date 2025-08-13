@@ -28,7 +28,13 @@ def load_data(file_path: str, GPU_AVAILABLE: bool = False) -> torch.Tensor | np.
         if not file_list:
             raise ValueError(f"No .tif files found in directory: {file_path}")
         data = [tif.imread(f) for f in file_list]
-        return np.array(data)
+        if GPU_AVAILABLE:
+            data = [torch.tensor(d, dtype=torch.float32) for d in data]
+            data = torch.stack(data, dim=0)
+        else:
+            data = np.array(data, dtype=np.float32)
+        return data
+
     elif os.path.isfile(file_path) and file_path.endswith(".tif"):
         # Load single .tif file
         data = tif.imread(file_path)
@@ -39,6 +45,17 @@ def load_data(file_path: str, GPU_AVAILABLE: bool = False) -> torch.Tensor | np.
             raise ValueError(
                 f"Loaded data must be a 4D array (T, Z, Y, X) or 3D array (Z, Y, X), but got shape {data.shape}."
             )
+        if GPU_AVAILABLE:
+            data = torch.tensor(data, dtype=torch.float32)
+            if data.ndim == 3:
+                # Add time dimension if missing
+                data = data.unsqueeze(0)
+
+        else:
+            data = np.array(data, dtype=np.float32)
+            if data.ndim == 3:
+                # Add time dimension if missing
+                data = np.expand_dims(data, axis=0)
         return data
 
     else:
