@@ -57,46 +57,73 @@ def unified_median_filter_3d_gpu(
     return result
 
 
-def median_filter_batch_gpu_padded(
-    batch_padded: torch.Tensor, offsets: torch.Tensor, r: int
-) -> torch.Tensor:
+# def median_filter_batch_gpu_padded(
+#         batch_padded: torch.Tensor, offsets: torch.Tensor, r: int
+# ) -> torch.Tensor:
+#     """
+#     @brief Process a batch of padded frames with median filter (optimized)
+#     """
+#     batch_size, Z_pad, Y_pad, X_pad = batch_padded.shape
+#     Z, Y, X = Z_pad - 2 * r, Y_pad - 2 * r, X_pad - 2 * r
+#     n_offsets = offsets.shape[0]
+#
+#     # Create output tensor
+#     result = torch.empty(
+#         (batch_size, Z, Y, X), dtype=batch_padded.dtype, device=batch_padded.device
+#     )
+#
+#     # Vectorisation pour améliorer les performances
+#     for b in range(batch_size):
+#         # Préparer toutes les positions en une fois
+#         for z in range(Z):
+#             for y in range(Y):
+#                 for x in range(X):
+#                     # Center position in padded coordinates
+#                     z_center, y_center, x_center = z + r, y + r, x + r
+#
+#                     # Collecter tous les voisins
+#                     neighbor_coords = offsets + torch.tensor([z_center, y_center, x_center],
+#                                                              device=offsets.device)
+#
+#                     # Extraire les valeurs des voisins
+#                     values = batch_padded[b, neighbor_coords[:, 0],
+#                     neighbor_coords[:, 1],
+#                     neighbor_coords[:, 2]]
+#
+#                     # Calculer la médiane
+#                     median_val = torch.median(values)
+#                     if isinstance(median_val, tuple):
+#                         result[b, z, y, x] = median_val[0]
+#                     else:
+#                         result[b, z, y, x] = median_val
+#
+#     return result
+
+
+def median_filter_batch_gpu_padded(batch_padded: torch.Tensor, offsets: torch.Tensor, r: int) -> torch.Tensor:
     """
-    @brief Process a batch of padded frames with median filter
+    @brief Process a batch of padded frames with median filter (optimized)
     """
     batch_size, Z_pad, Y_pad, X_pad = batch_padded.shape
     Z, Y, X = Z_pad - 2 * r, Y_pad - 2 * r, X_pad - 2 * r
-    n_offsets = offsets.shape[0]
 
-    # Create output tensor
-    result = torch.empty(
-        (batch_size, Z, Y, X), dtype=batch_padded.dtype, device=batch_padded.device
-    )
+    # Préparer les coordonnées des voisins
+    offsets = offsets.to(batch_padded.device)  # Assurer que les offsets sont sur le bon device
+    neighbor_coords = offsets + torch.arange(-r, r + 1, device=batch_padded.device).view(-1, 1)
 
-    # Process each position in the original (unpadded) space
+    # Créer le tenseur de sortie
+    result = torch.empty((batch_size, Z, Y, X), dtype=batch_padded.dtype, device=batch_padded.device)
+
+    # Parcourir les lots
     for b in range(batch_size):
-        for z in range(Z):
-            for y in range(Y):
-                for x in range(X):
-                    # Center position in padded coordinates
-                    z_center, y_center, x_center = z + r, y + r, x + r
+        # Extraire les valeurs des voisins pour chaque voxel
+        neighbors = torch.stack([
+            batch_padded[b, z:z + 2 * r + 1, y:y + 2 * r + 1, x:x + 2 * r + 1]
+            for z in range(Z) for y in range(Y) for x in range(X)
+        ])
 
-                    # Collect all neighbors in spherical region
-                    values = []
-                    for i in range(n_offsets):
-                        dz, dy, dx = offsets[i]
-                        zz = z_center + dz
-                        yy = y_center + dy
-                        xx = x_center + dx
-                        values.append(batch_padded[b, zz, yy, xx])
-
-                    values_tensor = torch.stack(values)
-                    if values:
-                        values_tensor = torch.stack(values)
-                        median_val = torch.median(values_tensor)
-                        # Handle different PyTorch versions
-                        if hasattr(median_val, "values"):
-                            result[b, z, y, x] = median_val.values
-                        else:
-                            result[b, z, y, x] = median_val
+        # Calculer la médiane pour chaque voxel
+        medians = torch.median(neighbors, dim=1).values
+        result[b] = medians.view(Z, Y, X)
 
     return result

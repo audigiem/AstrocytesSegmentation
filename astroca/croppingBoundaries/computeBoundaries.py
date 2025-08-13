@@ -177,6 +177,8 @@ def compute_boundaries_GPU(
         )
         save_numpy_tab(index_xmin, out_dir, file_name="index_Xmin.npy")
         save_numpy_tab(index_xmax, out_dir, file_name="index_Xmax.npy")
+    print(60 * "=")
+    print()
 
     return index_xmin, index_xmax, default_val, data
 
