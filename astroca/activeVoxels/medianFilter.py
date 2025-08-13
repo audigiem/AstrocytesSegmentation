@@ -38,6 +38,9 @@ def unified_median_filter_3d(
     @return Filtered 4D stack as torch.Tensor
     """
     if border_mode == "ignore":
+        # convert data to numpy if it's a torch tensor
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
         return unified_median_filter_3d_cpu(data, radius, border_mode, n_workers)
     else:
         if use_gpu:

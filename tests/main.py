@@ -146,8 +146,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     # === Detect events ===
     if GPU_AVAILABLE:
         print("GPU is available, forcing event detection on CPU for compatibility.")
-        torch_device = torch.device("cpu")
-        active_voxels = active_voxels.to(torch_device)
+        active_voxels = active_voxels.cpu().numpy()
     id_connections, ids_events = run_step(
         "detect_calcium_events",
         detect_calcium_events_opti,
