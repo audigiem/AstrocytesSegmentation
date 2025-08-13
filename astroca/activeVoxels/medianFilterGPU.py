@@ -100,30 +100,55 @@ def unified_median_filter_3d_gpu(
 #     return result
 
 
-def median_filter_batch_gpu_padded(batch_padded: torch.Tensor, offsets: torch.Tensor, r: int) -> torch.Tensor:
+def median_filter_batch_gpu_padded(
+        batch_padded: torch.Tensor, offsets: torch.Tensor, r: int
+) -> torch.Tensor:
     """
-    @brief Process a batch of padded frames with median filter (optimized)
+    @brief Process a batch of padded frames with median filter (conservative)
     """
     batch_size, Z_pad, Y_pad, X_pad = batch_padded.shape
     Z, Y, X = Z_pad - 2 * r, Y_pad - 2 * r, X_pad - 2 * r
 
-    # Préparer les coordonnées des voisins
-    offsets = offsets.to(batch_padded.device)  # Assurer que les offsets sont sur le bon device
-    neighbor_coords = offsets + torch.arange(-r, r + 1, device=batch_padded.device).view(-1, 1)
+    result = torch.empty(
+        (batch_size, Z, Y, X), dtype=batch_padded.dtype, device=batch_padded.device
+    )
 
-    # Créer le tenseur de sortie
-    result = torch.empty((batch_size, Z, Y, X), dtype=batch_padded.dtype, device=batch_padded.device)
+    # Traiter par tranches pour éviter les problèmes de mémoire
+    chunk_size = 1000  # Traiter 1000 voxels à la fois
 
-    # Parcourir les lots
     for b in range(batch_size):
-        # Extraire les valeurs des voisins pour chaque voxel
-        neighbors = torch.stack([
-            batch_padded[b, z:z + 2 * r + 1, y:y + 2 * r + 1, x:x + 2 * r + 1]
-            for z in range(Z) for y in range(Y) for x in range(X)
-        ])
+        total_voxels = Z * Y * X
 
-        # Calculer la médiane pour chaque voxel
-        medians = torch.median(neighbors, dim=1).values
-        result[b] = medians.view(Z, Y, X)
+        for start_idx in range(0, total_voxels, chunk_size):
+            end_idx = min(start_idx + chunk_size, total_voxels)
+
+            # Convertir les indices linéaires en coordonnées 3D
+            linear_indices = torch.arange(start_idx, end_idx, device=batch_padded.device)
+            z_coords = linear_indices // (Y * X) + r
+            y_coords = (linear_indices % (Y * X)) // X + r
+            x_coords = linear_indices % X + r
+
+            center_coords = torch.stack([z_coords, y_coords, x_coords], dim=1)
+
+            # Coordonnées des voisins
+            neighbor_coords = center_coords.unsqueeze(1) + offsets.unsqueeze(0)
+
+            # Extraire les valeurs
+            neighbors = batch_padded[
+                b,
+                neighbor_coords[:, :, 0],
+                neighbor_coords[:, :, 1],
+                neighbor_coords[:, :, 2]
+            ]
+
+            # Calculer les médianes
+            medians = torch.median(neighbors, dim=1).values
+
+            # Assigner les résultats
+            z_out = (linear_indices // (Y * X)).long()
+            y_out = ((linear_indices % (Y * X)) // X).long()
+            x_out = (linear_indices % X).long()
+
+            result[b, z_out, y_out, x_out] = medians
 
     return result
