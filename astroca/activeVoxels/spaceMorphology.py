@@ -166,74 +166,78 @@ def closing_morphology_in_space_ignore_border_CPU(
 
 
 def closing_morphology_in_space_GPU(
-    data: torch.Tensor, radius: int, border_mode: str = "ignore"
+        data: torch.Tensor, radius: int, border_mode: str = "ignore"
 ) -> torch.Tensor:
     """
-    Apply 3D morphological closing (dilation followed by erosion) using PyTorch on GPU.
-    Parameters:
-        data: 4D torch tensor (T, Z, Y, X), binary (0/1)
-        radius: Radius of spherical structuring element
-        border_mode: 'constant', 'reflect', 'nearest'
-    Returns:
-        4D numpy array (T, Z, Y, X), dtype uint8 with values 0 or 255
+    Version GPU utilisant unfold pour éviter conv3d
     """
     if border_mode == "ignore":
         return closing_morphology_in_space_ignore_border_GPU(data, radius)
 
-    print(
-        f" - [GPU] Apply morphological closing with radius={radius} and border mode='{border_mode}'"
-    )
+    print(f" - [GPU] Morphological closing with unfold, radius={radius}, border='{border_mode}'")
 
+    device = data.device
     T, Z, Y, X = data.shape
-    # Create structuring element
-    struct_elem_np = ball(radius).astype(np.uint8)
-    struct_elem = (
-        torch.from_numpy(struct_elem_np).to(torch.float32).to("cuda")
-    )  # shape (Dz, Dy, Dx)
-    se_sum = struct_elem.sum()
 
-    pad = (radius, radius, radius, radius, radius, radius)  # Pad (Dx, Dy, Dz)
+    # Créer l'élément structurant
+    struct_elem_np = ball(radius).astype(np.float32)
+    struct_elem = torch.from_numpy(struct_elem_np).to(device)
+    kernel_size = struct_elem.shape[0]
 
     mode_map = {"constant": "constant", "reflect": "reflect", "nearest": "replicate"}
     if border_mode not in mode_map:
-        raise ValueError(
-            f"Unsupported border_mode '{border_mode}' for GPU. Use one of: {list(mode_map.keys())}"
-        )
+        raise ValueError(f"Unsupported border_mode '{border_mode}'")
 
-    # Prepare output
     result = torch.zeros_like(data, dtype=torch.uint8)
 
-    # Apply per-frame
-    for t in tqdm(range(T), desc="[GPU] Morphological closing", unit="frame"):
-        frame = data[t]  # (Z, Y, X)
-        frame = frame[None, None].float()  # shape (1, 1, Z, Y, X)
+    for t in tqdm(range(T), desc="[GPU] Morphological closing (unfold)", unit="frame"):
+        frame = data[t].float()  # (Z, Y, X)
 
         # Padding
-        padded = torch.nn.functional.pad(frame, pad, mode=mode_map[border_mode])
-
-        # Dilation = conv > 0
-        dilated = (
-            torch.nn.functional.conv3d(padded, struct_elem[None, None], bias=None) > 0
+        pad = radius
+        padded = torch.nn.functional.pad(
+            frame, (pad, pad, pad, pad, pad, pad), mode=mode_map[border_mode]
         )
 
-        # Pad dilated volume again
-        dilated = dilated.float()
-        padded_dilated = torch.nn.functional.pad(
-            dilated, pad, mode=mode_map[border_mode]
-        )
+        # Dilation avec unfold
+        dilated = morphology_operation_unfold(padded, struct_elem, operation='max')
 
-        # Erosion = conv == sum(struct_elem)
-        eroded = (
-            torch.nn.functional.conv3d(
-                padded_dilated, struct_elem[None, None], bias=None
-            )
-            == se_sum
-        )
+        # Erosion avec unfold
+        eroded = morphology_operation_unfold(dilated, struct_elem, operation='min')
 
-        result[t] = eroded[0, 0].to(torch.uint8) * 255
+        result[t] = eroded.to(torch.uint8) * 255
 
     return result
 
+
+def morphology_operation_unfold(volume: torch.Tensor, kernel: torch.Tensor, operation: str = 'max') -> torch.Tensor:
+    """
+    Opération morphologique utilisant unfold
+    """
+    Z, Y, X = volume.shape
+    kz, ky, kx = kernel.shape
+
+    # Unfold pour créer des patches 3D
+    unfolded = volume.unfold(0, kz, 1).unfold(1, ky, 1).unfold(2, kx, 1)
+    # Shape: (Z-kz+1, Y-ky+1, X-kx+1, kz, ky, kx)
+
+    # Appliquer le masque du kernel
+    kernel_mask = kernel > 0
+    masked_patches = unfolded * kernel_mask.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+
+    if operation == 'max':
+        # Dilation: maximum des voisins
+        result = torch.max(masked_patches.view(*masked_patches.shape[:3], -1), dim=-1)[0]
+    elif operation == 'min':
+        # Erosion: minimum des voisins (seulement sur les positions du kernel)
+        masked_flat = masked_patches.view(*masked_patches.shape[:3], -1)
+        kernel_flat = kernel_mask.view(-1)
+        # Remplacer les 0 par inf pour le min
+        masked_flat = torch.where(kernel_flat, masked_flat, torch.inf)
+        result = torch.min(masked_flat, dim=-1)[0]
+        result = torch.where(result == torch.inf, torch.tensor(0.0, device=volume.device), result)
+
+    return result
 
 def closing_morphology_in_space_ignore_border_GPU(
     data: torch.Tensor, radius: int
