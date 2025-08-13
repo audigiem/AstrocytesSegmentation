@@ -248,16 +248,16 @@ def anscombe_inverse_CPU(
     return data_out
 
 
-def anscombe_inverse_GPU(
-        data: torch.Tensor,
-        index_xmin: np.ndarray,
-        index_xmax: np.ndarray,
-        param_values: dict
+def anscombe_inverse_GPU_optimized(
+    data: torch.Tensor,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    param_values: dict
 ) -> torch.Tensor:
     """
-    GPU optimized inverse Anscombe transform: A⁻¹(x) = (x / 2)^2 - 3/8
+    GPU optimized inverse Anscombe transform avec vectorisation complète
     """
-    print(" - Applying inverse Anscombe transform on 3D volume (GPU)...")
+    print(" - Applying inverse Anscombe transform on 3D volume (GPU optimized)...")
 
     required_keys = {"save", "paths"}
     if not required_keys.issubset(param_values.keys()):
@@ -273,28 +273,29 @@ def anscombe_inverse_GPU(
     index_xmin_torch = torch.from_numpy(index_xmin).to(device)
     index_xmax_torch = torch.from_numpy(index_xmax).to(device)
 
-    # Créer un masque pour les zones valides
-    z_coords = torch.arange(Z, device=device)
-    x_coords = torch.arange(X, device=device)
-    zz, xx = torch.meshgrid(z_coords, x_coords, indexing='ij')
+    # Créer grille de coordonnées
+    z_coords = torch.arange(Z, device=device).unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
+    y_coords = torch.arange(Y, device=device).unsqueeze(0).unsqueeze(2)  # (1, Y, 1)
+    x_coords = torch.arange(X, device=device).unsqueeze(0).unsqueeze(0)  # (1, 1, X)
 
-    # Masque vectorisé pour toutes les positions valides
-    valid_mask = (xx >= index_xmin_torch[zz]) & (xx <= index_xmax_torch[zz])
+    # Étendre les indices pour broadcasting
+    index_xmin_expanded = index_xmin_torch.unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
+    index_xmax_expanded = index_xmax_torch.unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
+
+    # Créer masque vectorisé complet
+    valid_mask = (x_coords >= index_xmin_expanded) & (x_coords <= index_xmax_expanded)
 
     # Initialiser le résultat
     data_out = torch.zeros_like(data, dtype=torch.float32, device=device)
 
-    # Appliquer la transformation inverse vectorisée sur toutes les positions valides
-    slice_data = data[0]  # Premier frame seulement
+    # Premier frame seulement
+    slice_data = data[0]  # Shape: (Z, Y, X)
 
-    # Application vectorisée de A⁻¹(x) = (x/2)^2 - 3/8
-    transformed = torch.where(
-        valid_mask.unsqueeze(0),  # Étendre pour la dimension Y
-        torch.pow(slice_data / 2.0, 2) - 3.0 / 8.0,
-        torch.zeros_like(slice_data)
-    )
+    # Application vectorisée complète
+    transformed = torch.pow(slice_data / 2.0, 2) - 3.0 / 8.0
 
-    data_out[0] = transformed
+    # Appliquer le masque
+    data_out[0] = torch.where(valid_mask, transformed, torch.zeros_like(transformed))
 
     if save_results:
         if output_directory is None:
