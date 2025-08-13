@@ -131,6 +131,8 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
         GPU_AVAILABLE,
     )
 
+    std_noise = 1.1693237
+
     # === Active voxels ===
     active_voxels = run_step(
         "find_active_voxels",

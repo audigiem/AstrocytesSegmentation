@@ -7,18 +7,19 @@ import numpy as np
 import pandas as pd
 import os
 from tqdm import tqdm
+import torch
 from astroca.features.coactive import compute_coactive_csv
+from astroca.features.featuresComputationGPU import save_features_from_events_GPU
 from astroca.features.hotspots import (
     compute_hot_spots_from_features,
     write_csv_hot_spots,
 )
 
 
-# @profile
 def save_features_from_events(
-    calcium_events: np.ndarray,
+    calcium_events: np.ndarray | torch.Tensor,
     events_ids: int,
-    image_amplitude: np.ndarray,
+    image_amplitude: np.ndarray | torch.Tensor,
     params_values: dict = None,
 ) -> None:
     """
@@ -29,9 +30,9 @@ def save_features_from_events(
         - volume: volume of the event in micrometers^3
         - centroïd: coordinates of the center of mass of the event
         - classification: classification of the event (wave, local, etc.)
-    @param calcium_events: 4D numpy array of shape (T, Z, Y, X) representing the calcium events.
+    @param calcium_events: 4D numpy array or torch tensor of shape (T, Z, Y, X) representing the calcium events.
     @param events_ids: Number of unique event IDs from the calcium events data.
-    @param image_amplitude: 4D numpy array of shape (T, Z, Y, X) representing the amplitude of the image.
+    @param image_amplitude: 4D numpy array or torch tensor of shape (T, Z, Y, X) representing the amplitude of the image.
     @param params_values: Dictionary containing parameters for feature computation:
         - voxel_size_x, voxel_size_y, voxel_size_z: size of a voxel in micrometers.
         - threshold_median_localized: threshold for median distance to classify as localized.
@@ -39,6 +40,40 @@ def save_features_from_events(
         - save_result: Boolean flag to indicate whether to save the results.
         - output_directory: Directory to save the results if save_result is True.
     @return:
+    """
+    if params_values.get("GPU_AVAILABLE", 0) == 1:
+        # Convert to torch tensor if not already
+        if not isinstance(calcium_events, torch.Tensor):
+            calcium_events = torch.tensor(calcium_events, dtype=torch.float32)
+        if not isinstance(image_amplitude, torch.Tensor):
+            image_amplitude = torch.tensor(image_amplitude, dtype=torch.float32)
+
+        save_features_from_events_GPU(
+            calcium_events, events_ids, image_amplitude, params_values
+        )
+    else:
+        # Convert to numpy array if not already
+        if isinstance(calcium_events, torch.Tensor):
+            calcium_events = calcium_events.cpu().numpy()
+        if isinstance(image_amplitude, torch.Tensor):
+            image_amplitude = image_amplitude.cpu().numpy()
+
+        save_features_from_events_CPU(
+            calcium_events, events_ids, image_amplitude, params_values
+        )
+
+
+
+# @profile
+def save_features_from_events_CPU(
+    calcium_events: np.ndarray,
+    events_ids: int,
+    image_amplitude: np.ndarray,
+    params_values: dict = None,
+) -> None:
+    """
+    @brief Compute features from calcium events in a 3D image sequence with time dimension and save them to a CSV file
+    (CPU implementation).
     """
     print("=== Computing features from calcium events ===")
     required_keys = {"paths", "save", "features_extraction"}

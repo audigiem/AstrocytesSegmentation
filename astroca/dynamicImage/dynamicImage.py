@@ -203,6 +203,37 @@ def compute_dynamic_image_GPU(
 
 
 def compute_image_amplitude(
+        data_cropped: Union[np.ndarray, torch.Tensor],
+        F0: Union[np.ndarray, torch.Tensor],
+        index_xmin: np.ndarray,
+        index_xmax: np.ndarray,
+        param_values: dict,
+) -> Union[np.ndarray, torch.Tensor]:
+    """
+    Dispatcher pour le calcul d'amplitude (CPU ou GPU)
+    """
+    if param_values.get("GPU_AVAILABLE", 0) == 1:
+        # Détection automatique GPU si les données sont sur GPU
+        if isinstance(data_cropped, torch.Tensor) and data_cropped.is_cuda:
+            # Assurer que F0 est aussi sur GPU
+            if isinstance(F0, np.ndarray):
+                F0 = torch.from_numpy(F0).to(data_cropped.device)
+            elif isinstance(F0, torch.Tensor) and not F0.is_cuda:
+                F0 = F0.to(data_cropped.device)
+
+            return compute_image_amplitude_GPU(
+                data_cropped, F0, index_xmin, index_xmax, param_values
+            )
+    else:
+        # Conversion vers numpy si nécessaire
+        if isinstance(data_cropped, torch.Tensor):
+            data_cropped = data_cropped.cpu().numpy()
+        if isinstance(F0, torch.Tensor):
+            F0 = F0.cpu().numpy()
+        return compute_image_amplitude_CPU(data_cropped, F0, index_xmin, index_xmax, param_values)
+
+
+def compute_image_amplitude_CPU(
     data_cropped: np.ndarray,
     F0: np.ndarray,
     index_xmin: np.ndarray,
@@ -265,4 +296,77 @@ def compute_image_amplitude(
 
     print(60 * "=")
     print()
+    return image_amplitude
+
+
+def compute_image_amplitude_GPU(
+        data_cropped: torch.Tensor,
+        F0: torch.Tensor,
+        index_xmin: np.ndarray,
+        index_xmax: np.ndarray,
+        param_values: dict,
+) -> torch.Tensor:
+    """
+    GPU optimized image amplitude computation: (data_cropped - f0_inv)/f0_inv
+    """
+    print("=== Computing image amplitude (GPU)... ===")
+
+    required_keys = {"save", "paths"}
+    if not required_keys.issubset(param_values.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - param_values.keys()}")
+
+    save_results_amplitude = int(param_values["save"]["save_amplitude"]) == 1
+    output_directory = param_values["paths"]["output_dir"]
+
+    # Calcul de f0_inv sur GPU
+    f0_inv = anscombe_inverse(F0, index_xmin, index_xmax, param_values=param_values)
+
+    T, Z, Y, X = data_cropped.shape
+    device = data_cropped.device
+
+    # Convertir les indices en tenseurs GPU
+    index_xmin_torch = torch.from_numpy(index_xmin).to(device)
+    index_xmax_torch = torch.from_numpy(index_xmax).to(device)
+
+    # Créer masque vectorisé
+    z_coords = torch.arange(Z, device=device)
+    x_coords = torch.arange(X, device=device)
+    zz, xx = torch.meshgrid(z_coords, x_coords, indexing='ij')
+    valid_mask = (xx >= index_xmin_torch[zz]) & (xx <= index_xmax_torch[zz])
+
+    # Initialiser le résultat
+    image_amplitude = torch.zeros_like(data_cropped, dtype=torch.float32, device=device)
+
+    # f0_slice pour tous les z à la fois
+    f0_slice = f0_inv[0]  # Shape: (Z, Y, X)
+    f0_safe = torch.where(f0_slice == 0, torch.tensor(1e-10, device=device), f0_slice)
+
+    # Calcul vectorisé pour tous les temps
+    for t in tqdm(range(T), desc="Computing amplitude GPU", unit="frame"):
+        data_slice = data_cropped[t]  # Shape: (Z, Y, X)
+
+        # Calcul vectorisé: (data - f0) / f0_safe
+        result = (data_slice - f0_slice) / f0_safe
+
+        # Appliquer le masque pour les zones valides seulement
+        result = torch.where(
+            valid_mask.unsqueeze(1),  # Étendre pour dimension Y
+            result,
+            torch.zeros_like(result)
+        )
+
+        image_amplitude[t] = result
+
+    if save_results_amplitude:
+        if output_directory is None:
+            raise ValueError("Output directory must be specified when save_results is True.")
+        os.makedirs(output_directory, exist_ok=True)
+        export_data(
+            image_amplitude.cpu().numpy(),
+            output_directory,
+            export_as_single_tif=True,
+            file_name="amplitude",
+        )
+
+    print("=" * 60 + "\n")
     return image_amplitude

@@ -10,6 +10,7 @@ import os
 from astroca.tools.exportData import export_data
 from tqdm import tqdm
 import torch
+from typing import Union
 
 
 def compute_variance_stabilization_CPU(
@@ -168,6 +169,26 @@ def check_variance(
 
 
 def anscombe_inverse(
+    data: Union[np.ndarray, torch.Tensor],
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
+    param_values: dict,
+) -> Union[np.ndarray, torch.Tensor]:
+    """
+    Dispatcher pour la transformation inverse d'Anscombe (CPU ou GPU)
+    """
+    if param_values.get("GPU_AVAILABLE", 0) == 1:
+        return anscombe_inverse_GPU(data, index_xmin, index_xmax, param_values)
+    else:
+        # Conversion si nécessaire
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
+        return anscombe_inverse_CPU(data, index_xmin, index_xmax, param_values)
+
+
+
+
+def anscombe_inverse_CPU(
     data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, param_values: dict
 ) -> np.ndarray:
     """
@@ -219,6 +240,68 @@ def anscombe_inverse(
         os.makedirs(output_directory, exist_ok=True)
         export_data(
             data_out,
+            output_directory,
+            export_as_single_tif=True,
+            file_name="inverse_anscombe_transformed_volume",
+        )
+
+    return data_out
+
+
+def anscombe_inverse_GPU(
+        data: torch.Tensor,
+        index_xmin: np.ndarray,
+        index_xmax: np.ndarray,
+        param_values: dict
+) -> torch.Tensor:
+    """
+    GPU optimized inverse Anscombe transform: A⁻¹(x) = (x / 2)^2 - 3/8
+    """
+    print(" - Applying inverse Anscombe transform on 3D volume (GPU)...")
+
+    required_keys = {"save", "paths"}
+    if not required_keys.issubset(param_values.keys()):
+        raise ValueError(f"Missing required parameters: {required_keys - param_values.keys()}")
+
+    save_results = int(param_values["save"]["save_anscombe_inverse"]) == 1
+    output_directory = param_values["paths"]["output_dir"]
+
+    _, Z, Y, X = data.shape
+    device = data.device
+
+    # Convertir les indices en tenseurs GPU
+    index_xmin_torch = torch.from_numpy(index_xmin).to(device)
+    index_xmax_torch = torch.from_numpy(index_xmax).to(device)
+
+    # Créer un masque pour les zones valides
+    z_coords = torch.arange(Z, device=device)
+    x_coords = torch.arange(X, device=device)
+    zz, xx = torch.meshgrid(z_coords, x_coords, indexing='ij')
+
+    # Masque vectorisé pour toutes les positions valides
+    valid_mask = (xx >= index_xmin_torch[zz]) & (xx <= index_xmax_torch[zz])
+
+    # Initialiser le résultat
+    data_out = torch.zeros_like(data, dtype=torch.float32, device=device)
+
+    # Appliquer la transformation inverse vectorisée sur toutes les positions valides
+    slice_data = data[0]  # Premier frame seulement
+
+    # Application vectorisée de A⁻¹(x) = (x/2)^2 - 3/8
+    transformed = torch.where(
+        valid_mask.unsqueeze(0),  # Étendre pour la dimension Y
+        torch.pow(slice_data / 2.0, 2) - 3.0 / 8.0,
+        torch.zeros_like(slice_data)
+    )
+
+    data_out[0] = transformed
+
+    if save_results:
+        if output_directory is None:
+            raise ValueError("Output directory must be specified when save_results is True.")
+        os.makedirs(output_directory, exist_ok=True)
+        export_data(
+            data_out.cpu().numpy(),
             output_directory,
             export_as_single_tif=True,
             file_name="inverse_anscombe_transformed_volume",
