@@ -257,33 +257,33 @@ def main():
     output_f0_path = OUTPUT_DIR_PATH + "F0.tif"
 
     expected_cropped_path = EXPECTED_DIR_PATH + "data_cropped.tif"
-    output_cropped_path = OUTPUT_DIR_PATH + "cropped_image_sequence.tif"
+    output_cropped_path = OUTPUT_DIR_PATH + "data_cropped.tif"
 
-    expected_boundaries_path = EXPECTED_DIR_PATH + "data_boundaries.tif"
-    output_boundaries_path = OUTPUT_DIR_PATH + "data.tif"
+    expected_boundaries_path = EXPECTED_DIR_PATH + "cropped_image_sequence.tif"
+    output_boundaries_path = OUTPUT_DIR_PATH + "cropped_image_sequence.tif"
 
-    expected_anscombe_path = EXPECTED_DIR_PATH + "anscombeTransform.tif"
+    expected_anscombe_path = EXPECTED_DIR_PATH + "variance_stabilized_sequence.tif"
     output_anscombe_path = OUTPUT_DIR_PATH + "variance_stabilized_sequence.tif"
 
-    expected_dF_path = EXPECTED_DIR_PATH + "dF.tif"
+    expected_dF_path = EXPECTED_DIR_PATH + "dynamic_image_dF.tif"
     output_dF_path = OUTPUT_DIR_PATH + "dynamic_image_dF.tif"
 
-    expected_Zscore_path = EXPECTED_DIR_PATH + "Zscore.tif"
+    expected_Zscore_path = EXPECTED_DIR_PATH + "zScore.tif"
     output_Zscore_path = OUTPUT_DIR_PATH + "zScore.tif"
 
-    expected_closing_path = EXPECTED_DIR_PATH + "Closing_in_space.tif"
+    expected_closing_path = EXPECTED_DIR_PATH + "closing_in_space.tif"
     output_closing_path = OUTPUT_DIR_PATH + "closing_in_space.tif"
 
-    expected_median_path = EXPECTED_DIR_PATH + "Median.tif"
+    expected_median_path = EXPECTED_DIR_PATH + "medianFiltered.tif"
     output_median_path = OUTPUT_DIR_PATH + "medianFiltered.tif"
 
-    expected_active_voxels_path = EXPECTED_DIR_PATH + "AV.tif"
+    expected_active_voxels_path = EXPECTED_DIR_PATH + "activeVoxels.tif"
     output_active_voxels_path = OUTPUT_DIR_PATH + "activeVoxels.tif"
 
     expected_ID_calcium_events_path = EXPECTED_DIR_PATH + "ID_calciumEvents.tif"
     output_ID_calcium_events_path = OUTPUT_DIR_PATH + "ID_calciumEvents.tif"
 
-    expected_anscombe_inverse_path = EXPECTED_DIR_PATH + "F0_inv.tif"
+    expected_anscombe_inverse_path = EXPECTED_DIR_PATH + "inverse_anscombe_transformed_volume.tif"
     output_anscombe_inverse_path = (
         OUTPUT_DIR_PATH + "inverse_anscombe_transformed_volume.tif"
     )
