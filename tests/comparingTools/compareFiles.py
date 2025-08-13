@@ -393,9 +393,9 @@ def main():
         save_diff=save_results,
         percentage_accuracy=1e-6,
     )
-    show_offset_voxels_diff(
-        diff, expected_ID_calcium_events_path, output_ID_calcium_events_path
-    )
+    # show_offset_voxels_diff(
+    #     diff, expected_ID_calcium_events_path, output_ID_calcium_events_path
+    # )
     print()
 
     # print("Step 10: Comparing files after Anscombe inverse transform...")

@@ -248,7 +248,7 @@ def anscombe_inverse_CPU(
     return data_out
 
 
-def anscombe_inverse_GPU_optimized(
+def anscombe_inverse_GPU(
     data: torch.Tensor,
     index_xmin: np.ndarray,
     index_xmax: np.ndarray,

@@ -78,7 +78,7 @@ def compute_features_GPU(
     params_values: dict = None,
 ) -> dict:
     """
-    GPU-optimized feature computation with advanced vectorization and batching.
+    Version optimisée mémoire avec libération explicite
     """
     if calcium_events.ndim != 4 or image_amplitude.ndim != 4:
         raise ValueError("Inputs must be 4D tensors (T, Z, Y, X)")
@@ -91,42 +91,43 @@ def compute_features_GPU(
     voxel_size_z = float(params_values["features_extraction"]["voxel_size_z"])
     voxel_size = voxel_size_x * voxel_size_y * voxel_size_z
 
-    threshold_median_localized = float(
-        params_values["features_extraction"]["threshold_median_localized"]
-    )
+    threshold_median_localized = float(params_values["features_extraction"]["threshold_median_localized"])
     volume_localized = float(params_values["features_extraction"]["volume_localized"])
 
-    # Précomputation des indices
+    # Précomputation optimisée
     coords_all, event_ids_all = precompute_event_voxel_indices_GPU(calcium_events)
 
     if len(coords_all) == 0:
         return {}
 
-    # Vectorisation pour tous les événements
     unique_event_ids = torch.unique(event_ids_all)
     features = {}
 
-    # Traitement par batch d'événements
-    batch_size = min(100, len(unique_event_ids))  # Ajustable selon la mémoire GPU
+    # Batch size adaptatif selon la mémoire disponible
+    if torch.cuda.is_available():
+        mem_free = torch.cuda.get_device_properties(device).total_memory - torch.cuda.memory_allocated(device)
+        batch_size = min(200, max(10, int(mem_free / (1024**3))))  # Adaptatif selon la mémoire libre
+    else:
+        batch_size = 50
 
     for i in tqdm(range(0, len(unique_event_ids), batch_size), desc="Computing features (GPU)"):
         batch_event_ids = unique_event_ids[i:i + batch_size]
 
-        # Masque pour les événements du batch
-        batch_mask = torch.isin(event_ids_all, batch_event_ids)
-        batch_coords = coords_all[batch_mask]
-        batch_event_ids_all = event_ids_all[batch_mask]
-
-        # Calcul vectorisé des caractéristiques
+        # Traitement du batch
         batch_features = compute_features_batch_GPU(
-            batch_event_ids, batch_coords, batch_event_ids_all, image_amplitude,
+            batch_event_ids, coords_all, event_ids_all, image_amplitude,
             voxel_size, voxel_size_x, voxel_size_y, voxel_size_z,
             threshold_median_localized, volume_localized, device
         )
 
         features.update(batch_features)
 
+        # Libération mémoire explicite
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
     return features
+
 
 def compute_features_batch_GPU(
         event_ids: torch.Tensor,
@@ -142,71 +143,69 @@ def compute_features_batch_GPU(
         device: torch.device
 ) -> dict:
     """
-    Traitement vectorisé d'un batch d'événements
+    Version ultra-optimisée avec vectorisation avancée
     """
     batch_features = {}
 
-    for event_id in event_ids:
-        event_id_val = event_id.item()
+    # Précalcul des masques pour tous les événements du batch
+    event_masks = event_ids_all.unsqueeze(0) == event_ids.unsqueeze(1)  # (batch_size, n_coords)
 
-        # Masque pour cet événement
-        mask = event_ids_all == event_id
+    for i, event_id in enumerate(event_ids):
+        event_id_val = event_id.item()
+        mask = event_masks[i]
+
         if not torch.any(mask):
             continue
 
-        coords = coords_all[mask]  # Shape: (N, 4) où N = nombre de voxels pour cet événement
+        coords = coords_all[mask]
         t, z, y, x = coords[:, 0], coords[:, 1], coords[:, 2], coords[:, 3]
         nb_voxels = len(t)
 
         if nb_voxels == 0:
             continue
 
-        # Calculs vectorisés des caractéristiques de base
-        centroid_x = torch.mean(x.float()).int()
-        centroid_y = torch.mean(y.float()).int()
-        centroid_z = torch.mean(z.float()).int()
-        centroid_t = torch.mean(t.float()).int()
+        # Calculs vectorisés optimisés
+        centroid_x = torch.mean(x.float())
+        centroid_y = torch.mean(y.float())
+        centroid_z = torch.mean(z.float())
+        centroid_t = torch.mean(t.float())
 
         t0, t1 = torch.min(t), torch.max(t)
         duration = t1 - t0 + 1
         volume = nb_voxels * voxel_size
 
-        # Amplitude de l'événement
+        # Amplitude optimisée avec indexing avancé
         amplitude = torch.max(image_amplitude[t, z, y, x])
 
-        # Classification
+        # Classification optimisée
         if duration > 1:
             class_result = is_localized_GPU(
                 coords, t0, duration, volume,
                 voxel_size_x, voxel_size_y, voxel_size_z,
                 threshold_median_localized, volume_localized, device
             )
-            class_label = class_result["class"]
-            confidence = class_result["confidence"]
-            mean_displacement = class_result["mean_displacement"]
-            median_displacement = class_result["median_displacement"]
         else:
-            if volume <= volume_localized:
-                class_label = "Localized"
-            else:
-                class_label = "Localized but not in a microdomain"
-            confidence = torch.tensor(0.0, device=device)
-            mean_displacement = torch.tensor(0.0, device=device)
-            median_displacement = torch.tensor(0.0, device=device)
+            class_label = "Localized" if volume <= volume_localized else "Localized but not in a microdomain"
+            class_result = {
+                "class": class_label,
+                "confidence": torch.tensor(0.0, device=device),
+                "mean_displacement": torch.tensor(0.0, device=device),
+                "median_displacement": torch.tensor(0.0, device=device),
+            }
 
         batch_features[event_id_val] = {
             "T0 [frame]": t0,
             "Duration [frame]": duration,
-            "CentroidX [voxel]": centroid_x,
-            "CentroidY [voxel]": centroid_y,
-            "CentroidZ [voxel]": centroid_z,
-            "CentroidT [voxel]": centroid_t,
+            "CentroidX [voxel]": centroid_x.int(),
+            "CentroidY [voxel]": centroid_y.int(),
+            "CentroidZ [voxel]": centroid_z.int(),
+            "CentroidT [voxel]": centroid_t.int(),
             "Volume [µm^3]": volume,
             "Amplitude": amplitude,
-            "Class": class_label,
-            "STD displacement [µm]": confidence,
-            "Mean displacement [µm]": mean_displacement,
-            "Median displacement [µm]": median_displacement,
+            "Class": class_result["class"],
+            "STD displacement [µm]": class_result["confidence"],
+            "Mean displacement [µm]": class_result["mean_displacement"],
+            "Median displacement [µm]": class_result["median_displacement"],
         }
 
     return batch_features
@@ -225,45 +224,88 @@ def is_localized_GPU(
         device: torch.device
 ) -> dict:
     """
-    GPU-optimized classification with vectorized centroid computation
+    GPU-optimized classification avec vectorisation complète et gestion des cas limites
     """
     duration_val = duration.item()
     t0_val = t0.item()
 
-    # Initialiser les centroïdes
-    centroids_x = torch.zeros(duration_val, device=device)
-    centroids_y = torch.zeros(duration_val, device=device)
-    centroids_z = torch.zeros(duration_val, device=device)
+    if duration_val <= 1:
+        # Cas trivial - pas de déplacement à calculer
+        return {
+            "class": "Localized" if volume <= volume_localized else "Localized but not in a microdomain",
+            "confidence": torch.tensor(0.0, device=device),
+            "mean_displacement": torch.tensor(0.0, device=device),
+            "median_displacement": torch.tensor(0.0, device=device),
+        }
+
+    # Créer un tenseur de temps pour la vectorisation
+    time_range = torch.arange(t0_val, t0_val + duration_val, device=device)
+
+    # Initialiser les centroïdes avec NaN pour détecter les frames vides
+    centroids_x = torch.full((duration_val,), float('nan'), device=device)
+    centroids_y = torch.full((duration_val,), float('nan'), device=device)
+    centroids_z = torch.full((duration_val,), float('nan'), device=device)
+
+    # Vectorisation du calcul des centroïdes
+    coords_t = coords[:, 0]
+    coords_x = coords[:, 3].float() * voxel_size_x
+    coords_y = coords[:, 2].float() * voxel_size_y
+    coords_z = coords[:, 1].float() * voxel_size_z
 
     # Calcul vectorisé des centroïdes par frame
-    for i, t in enumerate(range(t0_val, t0_val + duration_val)):
-        frame_mask = coords[:, 0] == t
+    for i, t_val in enumerate(time_range):
+        frame_mask = coords_t == t_val
         if torch.any(frame_mask):
-            frame_coords = coords[frame_mask]
-            centroids_x[i] = torch.mean(frame_coords[:, 3].float()) * voxel_size_x
-            centroids_y[i] = torch.mean(frame_coords[:, 2].float()) * voxel_size_y
-            centroids_z[i] = torch.mean(frame_coords[:, 1].float()) * voxel_size_z
+            centroids_x[i] = torch.mean(coords_x[frame_mask])
+            centroids_y[i] = torch.mean(coords_y[frame_mask])
+            centroids_z[i] = torch.mean(coords_z[frame_mask])
 
-    # Calcul vectorisé des distances
+    # Filtrer les centroïdes valides (non-NaN)
+    valid_mask = ~torch.isnan(centroids_x)
+    if torch.sum(valid_mask) < 2:
+        # Pas assez de points pour calculer des distances
+        return {
+            "class": "Localized" if volume <= volume_localized else "Localized but not in a microdomain",
+            "confidence": torch.tensor(0.0, device=device),
+            "mean_displacement": torch.tensor(0.0, device=device),
+            "median_displacement": torch.tensor(0.0, device=device),
+        }
+
+    valid_centroids_x = centroids_x[valid_mask]
+    valid_centroids_y = centroids_y[valid_mask]
+    valid_centroids_z = centroids_z[valid_mask]
+    valid_frames = torch.arange(len(valid_centroids_x), device=device)
+
+    # Calcul vectorisé des distances entre toutes les paires de frames
     distances = []
-    for tau in range(1, duration_val):
-        for i in range(duration_val - tau):
-            x_dist = centroids_x[i + tau] - centroids_x[i]
-            y_dist = centroids_y[i + tau] - centroids_y[i]
-            z_dist = centroids_z[i + tau] - centroids_z[i]
+    n_valid = len(valid_centroids_x)
+
+    for tau in range(1, min(n_valid, duration_val)):
+        for i in range(n_valid - tau):
+            j = i + tau
+
+            x_dist = valid_centroids_x[j] - valid_centroids_x[i]
+            y_dist = valid_centroids_y[j] - valid_centroids_y[i]
+            z_dist = valid_centroids_z[j] - valid_centroids_z[i]
 
             distance = torch.sqrt(x_dist ** 2 + y_dist ** 2 + z_dist ** 2)
             distances.append(distance)
 
-    if distances:
-        distances_tensor = torch.stack(distances)
-        median_displacement = torch.median(distances_tensor)
-        mean_displacement = torch.mean(distances_tensor)
-        std_displacement = torch.std(distances_tensor)
-    else:
+    if len(distances) == 0:
         median_displacement = torch.tensor(0.0, device=device)
         mean_displacement = torch.tensor(0.0, device=device)
         std_displacement = torch.tensor(0.0, device=device)
+    elif len(distances) == 1:
+        distances_tensor = torch.stack(distances)
+        median_displacement = distances_tensor[0]
+        mean_displacement = distances_tensor[0]
+        std_displacement = torch.tensor(0.0, device=device)  # Éviter le warning
+    else:
+        distances_tensor = torch.stack(distances)
+        median_displacement = torch.median(distances_tensor)
+        mean_displacement = torch.mean(distances_tensor)
+        # Utiliser unbiased=False pour éviter le warning avec peu d'échantillons
+        std_displacement = torch.std(distances_tensor, unbiased=False)
 
     # Classification
     localized = median_displacement <= threshold_median_localized
