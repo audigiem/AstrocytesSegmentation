@@ -24,6 +24,7 @@ def save_features_from_events_GPU(
 ) -> None:
     """
     GPU-optimized version for computing features from calcium events
+    CORRECTION: Inclut maintenant hotspots et coactive events
     """
     print("=== Computing features from calcium events (GPU) ===")
     required_keys = {"paths", "save", "features_extraction"}
@@ -37,18 +38,10 @@ def save_features_from_events_GPU(
     )
 
     save_result = int(params_values["save"]["save_features"]) == 1
+    save_quantifications = int(params_values["save"]["save_quantification"]) == 1
     output_directory = params_values["paths"]["output_dir"]
 
-    # Convertir en CPU pour les calculs de hot spots (si nécessaire)
-    features_cpu = {
-        k: {
-            kk: vv.cpu().item() if isinstance(vv, torch.Tensor) else vv
-            for kk, vv in v.items()
-        }
-        for k, v in features.items()
-    }
-
-    # hot_spots = compute_hot_spots_from_features(features_cpu, params_values)
+    features_cpu = convert_features_to_cpu(features)
 
     if save_result:
         if output_directory is None:
@@ -58,23 +51,46 @@ def save_features_from_events_GPU(
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
 
+        # Sauvegarder toutes les données comme en CPU
         write_csv_features_GPU(features_cpu, output_directory)
-        # compute_coactive_csv(features_cpu, output_directory)
-        # write_csv_hot_spots(hot_spots, output_directory)
 
-    print(60 * "=")
+    if save_quantifications:
+        hot_spots = compute_hot_spots_from_features(features_cpu, params_values)
+
+        # CORRECTION: Inclure les événements coactifs
+        compute_coactive_csv(features_cpu, output_directory)
+
+        # CORRECTION: Inclure les hotspots
+        write_csv_hot_spots(hot_spots, output_directory)
+
+    print("=" * 60 + "\n")
 
 
-def precompute_event_voxel_indices_GPU(
-    calcium_events: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+def convert_features_to_cpu(features: dict) -> dict:
     """
-    GPU-optimized precomputation of indices and event_ids for all non-zero voxels
+    Convertit les features GPU vers CPU de manière robuste
     """
-    # Trouver tous les indices non-zéro en une seule opération
-    coords = torch.nonzero(calcium_events > 0, as_tuple=False)  # Shape: (N, 4)
-    event_ids = calcium_events[calcium_events > 0]  # Shape: (N,)
+    features_cpu = {}
+    for event_id, feature_dict in features.items():
+        features_cpu[event_id] = {}
+        for key, value in feature_dict.items():
+            if isinstance(value, torch.Tensor):
+                if value.numel() == 1:  # Scalaire
+                    features_cpu[event_id][key] = value.cpu().item()
+                else:  # Array
+                    features_cpu[event_id][key] = value.cpu().numpy()
+            else:
+                features_cpu[event_id][key] = value
+    return features_cpu
 
+
+def precompute_event_voxel_indices_GPU(calcium_events: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    GPU version of precompute_event_voxel_indices - EXACT match with CPU
+    """
+    # Utiliser exactement la même logique que la version CPU
+    coords = torch.nonzero(calcium_events > 0, as_tuple=False)  # Équivalent np.argwhere
+    event_ids = calcium_events[calcium_events > 0]  # Équivalent direct
     return coords, event_ids
 
 
@@ -85,14 +101,13 @@ def compute_features_GPU(
     params_values: dict = None,
 ) -> dict:
     """
-    Version optimisée mémoire avec libération explicite
+    CORRECTION: Version GPU qui reproduit EXACTEMENT la logique CPU
     """
     if calcium_events.ndim != 4 or image_amplitude.ndim != 4:
-        raise ValueError("Inputs must be 4D tensors (T, Z, Y, X)")
+        raise ValueError("Inputs must be 4D arrays (T, Z, Y, X)")
 
     device = calcium_events.device
 
-    # Paramètres
     voxel_size_x = float(params_values["features_extraction"]["voxel_size_x"])
     voxel_size_y = float(params_values["features_extraction"]["voxel_size_y"])
     voxel_size_z = float(params_values["features_extraction"]["voxel_size_z"])
@@ -103,109 +118,41 @@ def compute_features_GPU(
     )
     volume_localized = float(params_values["features_extraction"]["volume_localized"])
 
-    # Précomputation optimisée
+    features = {}
     coords_all, event_ids_all = precompute_event_voxel_indices_GPU(calcium_events)
 
-    if len(coords_all) == 0:
-        return {}
-
-    unique_event_ids = torch.unique(event_ids_all)
-    features = {}
-
-    # Batch size adaptatif selon la mémoire disponible
-    if torch.cuda.is_available():
-        mem_free = torch.cuda.get_device_properties(
-            device
-        ).total_memory - torch.cuda.memory_allocated(device)
-        batch_size = min(
-            200, max(10, int(mem_free / (1024**3)))
-        )  # Adaptatif selon la mémoire libre
-    else:
-        batch_size = 50
-
-    for i in tqdm(
-        range(0, len(unique_event_ids), batch_size), desc="Computing features (GPU)"
-    ):
-        batch_event_ids = unique_event_ids[i : i + batch_size]
-
-        # Traitement du batch
-        batch_features = compute_features_batch_GPU(
-            batch_event_ids,
-            coords_all,
-            event_ids_all,
-            image_amplitude,
-            voxel_size,
-            voxel_size_x,
-            voxel_size_y,
-            voxel_size_z,
-            threshold_median_localized,
-            volume_localized,
-            device,
-        )
-
-        features.update(batch_features)
-
-        # Libération mémoire explicite
-        if torch.cuda.is_available():
-            torch.cuda.empty_cache()
-
-    return features
-
-
-def compute_features_batch_GPU(
-    event_ids: torch.Tensor,
-    coords_all: torch.Tensor,
-    event_ids_all: torch.Tensor,
-    image_amplitude: torch.Tensor,
-    voxel_size: float,
-    voxel_size_x: float,
-    voxel_size_y: float,
-    voxel_size_z: float,
-    threshold_median_localized: float,
-    volume_localized: float,
-    device: torch.device,
-) -> dict:
-    """
-    Version ultra-optimisée avec vectorisation avancée
-    """
-    batch_features = {}
-
-    # Précalcul des masques pour tous les événements du batch
-    event_masks = event_ids_all.unsqueeze(0) == event_ids.unsqueeze(
-        1
-    )  # (batch_size, n_coords)
-
-    for i, event_id in enumerate(event_ids):
-        event_id_val = event_id.item()
-        mask = event_masks[i]
-
+    for event_id in tqdm(range(1, events_ids + 1), desc="Computing features per event (GPU)"):
+        mask = event_ids_all == event_id
         if not torch.any(mask):
             continue
 
         coords = coords_all[mask]
         t, z, y, x = coords[:, 0], coords[:, 1], coords[:, 2], coords[:, 3]
         nb_voxels = len(t)
-
         if nb_voxels == 0:
             continue
 
-        # Calculs vectorisés optimisés
-        centroid_x = torch.mean(x.float())
-        centroid_y = torch.mean(y.float())
-        centroid_z = torch.mean(z.float())
-        centroid_t = torch.mean(t.float())
+        # CORRECTION: Centroid - reproduction exacte de la version CPU
+        centroid_x = int(torch.mean(x.float()).item())  # Identique à int(np.mean(x))
+        centroid_y = int(torch.mean(y.float()).item())
+        centroid_z = int(torch.mean(z.float()).item())
+        centroid_t = int(torch.mean(t.float()).item())
 
-        t0, t1 = torch.min(t), torch.max(t)
+        t0, t1 = t.min().item(), t.max().item()
         duration = t1 - t0 + 1
         volume = nb_voxels * voxel_size
 
-        # Amplitude optimisée avec indexing avancé
-        amplitude = torch.max(image_amplitude[t, z, y, x])
+        # CORRECTION: Amplitude - même calcul exact que CPU
+        amplitude_values = image_amplitude[t, z, y, x]
+        amplitude = torch.max(amplitude_values).item()
 
-        # Classification optimisée
+        # CORRECTION: Classification - utiliser la même logique EXACTE que CPU
         if duration > 1:
-            class_result = is_localized_GPU(
-                coords,
+            # CRUCIAL: Convertir en numpy pour utiliser exactement la même fonction
+            coords_np = coords.cpu().numpy()
+
+            class_result = is_localized_GPU_exact(
+                coords_np,  # Maintenant numpy comme en CPU
                 t0,
                 duration,
                 volume,
@@ -214,140 +161,85 @@ def compute_features_batch_GPU(
                 voxel_size_z,
                 threshold_median_localized,
                 volume_localized,
-                device,
             )
+            class_label = class_result["class"]
+            confidence = class_result["confidence"]
+            mean_displacement = class_result["mean_displacement"]
+            median_displacement = class_result["median_displacement"]
         else:
-            class_label = (
-                "Localized"
-                if volume <= volume_localized
-                else "Localized but not in a microdomain"
-            )
-            class_result = {
-                "class": class_label,
-                "confidence": torch.tensor(0.0, device=device),
-                "mean_displacement": torch.tensor(0.0, device=device),
-                "median_displacement": torch.tensor(0.0, device=device),
-            }
+            if volume <= volume_localized:
+                class_label = "Localized"
+            else:
+                class_label = "Localized but not in a microdomain"
+            confidence = 0.0
+            mean_displacement = 0.0
+            median_displacement = 0.0
 
-        batch_features[event_id_val] = {
+        features[event_id] = {
             "T0 [frame]": t0,
             "Duration [frame]": duration,
-            "CentroidX [voxel]": centroid_x.int(),
-            "CentroidY [voxel]": centroid_y.int(),
-            "CentroidZ [voxel]": centroid_z.int(),
-            "CentroidT [voxel]": centroid_t.int(),
+            "CentroidX [voxel]": centroid_x,
+            "CentroidY [voxel]": centroid_y,
+            "CentroidZ [voxel]": centroid_z,
+            "CentroidT [voxel]": centroid_t,
             "Volume [µm^3]": volume,
             "Amplitude": amplitude,
-            "Class": class_result["class"],
-            "STD displacement [µm]": class_result["confidence"],
-            "Mean displacement [µm]": class_result["mean_displacement"],
-            "Median displacement [µm]": class_result["median_displacement"],
+            "Class": class_label,
+            "STD displacement [µm]": confidence,
+            "Mean displacement [µm]": mean_displacement,
+            "Median displacement [µm]": median_displacement,
         }
 
-    return batch_features
+    return features
 
 
-def is_localized_GPU(
-    coords: torch.Tensor,
-    t0: torch.Tensor,
-    duration: torch.Tensor,
+def is_localized_GPU_exact(
+    coords: np.ndarray,  # CORRECTION: Utiliser numpy pour exactitude
+    t0: int,
+    duration: int,
     volume: float,
     voxel_size_x: float,
     voxel_size_y: float,
     voxel_size_z: float,
     threshold_median_localized: float,
     volume_localized: float,
-    device: torch.device,
 ) -> dict:
     """
-    GPU-optimized classification avec vectorisation complète et gestion des cas limites
+    CORRECTION: Reproduction EXACTE de la fonction CPU is_localized
+    Utilise numpy pour garantir les mêmes calculs numériques
     """
-    duration_val = duration.item()
-    t0_val = t0.item()
+    # Compute centroids per time frame (EXACTEMENT comme Java/CPU)
+    centroids_x = np.zeros(duration)
+    centroids_y = np.zeros(duration)
+    centroids_z = np.zeros(duration)
 
-    if duration_val <= 1:
-        # Cas trivial - pas de déplacement à calculer
-        return {
-            "class": "Localized"
-            if volume <= volume_localized
-            else "Localized but not in a microdomain",
-            "confidence": torch.tensor(0.0, device=device),
-            "mean_displacement": torch.tensor(0.0, device=device),
-            "median_displacement": torch.tensor(0.0, device=device),
-        }
+    for i, t in enumerate(range(t0, t0 + duration)):
+        frame_coords = coords[coords[:, 0] == t]
+        if len(frame_coords) > 0:
+            # CORRECTION: Utiliser exactement les mêmes indices que CPU
+            centroids_x[i] = np.mean(frame_coords[:, 3]) * voxel_size_x  # x = index 3
+            centroids_y[i] = np.mean(frame_coords[:, 2]) * voxel_size_y  # y = index 2
+            centroids_z[i] = np.mean(frame_coords[:, 1]) * voxel_size_z  # z = index 1
 
-    # Créer un tenseur de temps pour la vectorisation
-    time_range = torch.arange(t0_val, t0_val + duration_val, device=device)
-
-    # Initialiser les centroïdes avec NaN pour détecter les frames vides
-    centroids_x = torch.full((duration_val,), float("nan"), device=device)
-    centroids_y = torch.full((duration_val,), float("nan"), device=device)
-    centroids_z = torch.full((duration_val,), float("nan"), device=device)
-
-    # Vectorisation du calcul des centroïdes
-    coords_t = coords[:, 0]
-    coords_x = coords[:, 3].float() * voxel_size_x
-    coords_y = coords[:, 2].float() * voxel_size_y
-    coords_z = coords[:, 1].float() * voxel_size_z
-
-    # Calcul vectorisé des centroïdes par frame
-    for i, t_val in enumerate(time_range):
-        frame_mask = coords_t == t_val
-        if torch.any(frame_mask):
-            centroids_x[i] = torch.mean(coords_x[frame_mask])
-            centroids_y[i] = torch.mean(coords_y[frame_mask])
-            centroids_z[i] = torch.mean(coords_z[frame_mask])
-
-    # Filtrer les centroïdes valides (non-NaN)
-    valid_mask = ~torch.isnan(centroids_x)
-    if torch.sum(valid_mask) < 2:
-        # Pas assez de points pour calculer des distances
-        return {
-            "class": "Localized"
-            if volume <= volume_localized
-            else "Localized but not in a microdomain",
-            "confidence": torch.tensor(0.0, device=device),
-            "mean_displacement": torch.tensor(0.0, device=device),
-            "median_displacement": torch.tensor(0.0, device=device),
-        }
-
-    valid_centroids_x = centroids_x[valid_mask]
-    valid_centroids_y = centroids_y[valid_mask]
-    valid_centroids_z = centroids_z[valid_mask]
-    valid_frames = torch.arange(len(valid_centroids_x), device=device)
-
-    # Calcul vectorisé des distances entre toutes les paires de frames
+    # Compute distances like Java/CPU (all tau combinations)
     distances = []
-    n_valid = len(valid_centroids_x)
+    for tau in range(1, duration):
+        for i in range(duration - tau):
+            x_dist = centroids_x[i + tau] - centroids_x[i]
+            y_dist = centroids_y[i + tau] - centroids_y[i]
+            z_dist = centroids_z[i + tau] - centroids_z[i]
 
-    for tau in range(1, min(n_valid, duration_val)):
-        for i in range(n_valid - tau):
-            j = i + tau
-
-            x_dist = valid_centroids_x[j] - valid_centroids_x[i]
-            y_dist = valid_centroids_y[j] - valid_centroids_y[i]
-            z_dist = valid_centroids_z[j] - valid_centroids_z[i]
-
-            distance = torch.sqrt(x_dist**2 + y_dist**2 + z_dist**2)
+            distance = np.sqrt(x_dist**2 + y_dist**2 + z_dist**2)
             distances.append(distance)
 
-    if len(distances) == 0:
-        median_displacement = torch.tensor(0.0, device=device)
-        mean_displacement = torch.tensor(0.0, device=device)
-        std_displacement = torch.tensor(0.0, device=device)
-    elif len(distances) == 1:
-        distances_tensor = torch.stack(distances)
-        median_displacement = distances_tensor[0]
-        mean_displacement = distances_tensor[0]
-        std_displacement = torch.tensor(0.0, device=device)  # Éviter le warning
-    else:
-        distances_tensor = torch.stack(distances)
-        median_displacement = torch.median(distances_tensor)
-        mean_displacement = torch.mean(distances_tensor)
-        # Utiliser unbiased=False pour éviter le warning avec peu d'échantillons
-        std_displacement = torch.std(distances_tensor, unbiased=False)
+    distances = np.array(distances)
 
-    # Classification
+    # CORRECTION: Utiliser numpy pour les statistiques (même précision)
+    median_displacement = np.median(distances)
+    mean_displacement = np.mean(distances)
+    std_displacement = np.std(distances)
+
+    # Classification logic like Java/CPU
     localized = median_displacement <= threshold_median_localized
 
     if localized:
@@ -368,22 +260,11 @@ def is_localized_GPU(
 
 def write_csv_features_GPU(features: dict, output_directory: str) -> None:
     """
-    Write GPU-computed features to CSV file
+    Version GPU de write_csv_features - identique à la version CPU
     """
-    # Convertir les tenseurs en valeurs Python
-    converted_features = {}
-    for event_id, feature_dict in features.items():
-        converted_dict = {}
-        for key, value in feature_dict.items():
-            if isinstance(value, torch.Tensor):
-                converted_dict[key] = value.cpu().item()
-            else:
-                converted_dict[key] = value
-        converted_features[event_id] = converted_dict
+    df = pd.DataFrame.from_dict(features, orient="index")
 
-    df = pd.DataFrame.from_dict(converted_features, orient="index")
-
-    # Réorganiser les colonnes
+    # CORRECTION: Même ordre de colonnes que CPU
     columns_order = [
         "T0 [frame]",
         "Duration [frame]",
@@ -401,74 +282,6 @@ def write_csv_features_GPU(features: dict, output_directory: str) -> None:
     df = df[columns_order]
 
     output_file = os.path.join(output_directory, "Features.csv")
-    df.to_csv(output_file, index_label="Label", sep=";")
+    df.to_csv(output_file, index_label="Label", sep=";")  # Même séparateur
     print(f"Features saved to {output_file}")
 
-
-# Fonction dispatcher unifiée
-def save_features_from_events(
-    calcium_events: Union[np.ndarray, torch.Tensor],
-    events_ids: int,
-    image_amplitude: Union[np.ndarray, torch.Tensor],
-    params_values: dict = None,
-) -> None:
-    """
-    Dispatcher function for CPU or GPU feature computation
-    """
-    if isinstance(calcium_events, torch.Tensor) and calcium_events.is_cuda:
-        # Assurer que image_amplitude est aussi sur GPU
-        if isinstance(image_amplitude, np.ndarray):
-            image_amplitude = torch.from_numpy(image_amplitude).to(
-                calcium_events.device
-            )
-        elif isinstance(image_amplitude, torch.Tensor) and not image_amplitude.is_cuda:
-            image_amplitude = image_amplitude.to(calcium_events.device)
-
-        return save_features_from_events_GPU(
-            calcium_events, events_ids, image_amplitude, params_values
-        )
-    else:
-        # Import de la version CPU
-        from astroca.features.featuresComputation import (
-            save_features_from_events as save_features_CPU,
-        )
-
-        # Conversion vers numpy si nécessaire
-        if isinstance(calcium_events, torch.Tensor):
-            calcium_events = calcium_events.cpu().numpy()
-        if isinstance(image_amplitude, torch.Tensor):
-            image_amplitude = image_amplitude.cpu().numpy()
-
-        return save_features_CPU(
-            calcium_events, events_ids, image_amplitude, params_values
-        )
-
-
-def compute_features(
-    calcium_events: Union[np.ndarray, torch.Tensor],
-    events_ids: int,
-    image_amplitude: Union[np.ndarray, torch.Tensor],
-    params_values: dict = None,
-) -> dict:
-    """
-    Dispatcher function for feature computation
-    """
-    if isinstance(calcium_events, torch.Tensor) and calcium_events.is_cuda:
-        return compute_features_GPU(
-            calcium_events, events_ids, image_amplitude, params_values
-        )
-    else:
-        # Import de la version CPU
-        from astroca.features.featuresComputation import (
-            compute_features as compute_features_CPU,
-        )
-
-        # Conversion vers numpy si nécessaire
-        if isinstance(calcium_events, torch.Tensor):
-            calcium_events = calcium_events.cpu().numpy()
-        if isinstance(image_amplitude, torch.Tensor):
-            image_amplitude = image_amplitude.cpu().numpy()
-
-        return compute_features_CPU(
-            calcium_events, events_ids, image_amplitude, params_values
-        )

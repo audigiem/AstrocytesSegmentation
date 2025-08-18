@@ -13,10 +13,11 @@ def compute_pseudo_residuals_GPU(data: torch.Tensor) -> torch.Tensor:
     @param data: 4D tensor of shape (T, Z, Y, X)
     @return: 4D tensor of shape (T-1, Z, Y, X)
     """
-    # torch.diff is equivalent to np.diff along axis=0
-    return torch.diff(data, dim=0) / torch.sqrt(
-        torch.tensor(2.0, device=data.device, dtype=data.dtype)
-    )
+    sqrt_2 = torch.tensor(2.0, device=data.device, dtype=torch.float64)
+    diff = torch.diff(data, dim=0).to(torch.float64)
+
+    result = diff / torch.sqrt(sqrt_2)
+    return result.to(torch.float32)  # Retour en float32
 
 
 def mad_with_pseudo_residual_GPU(residuals: torch.Tensor) -> torch.Tensor:

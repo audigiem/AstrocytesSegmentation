@@ -404,14 +404,14 @@ def main():
     # compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
     # print()
 
-    # print("Step 11: Comparing files after amplitude computation...")
-    # compare_sequence(
-    #     expected_amplitude_image_path,
-    #     output_amplitude_image_path,
-    #     save_diff=save_results,
-    #     percentage_accuracy=1e-6,
-    # )
-    # print()
+    print("Step 11: Comparing files after amplitude computation...")
+    compare_sequence(
+        expected_amplitude_image_path,
+        output_amplitude_image_path,
+        save_diff=save_results,
+        percentage_accuracy=1e-6,
+    )
+    print()
 
     print(
         f"Step 12: Comparing CSV files for features with a float precision of {10 ** -features_float_precision}..."

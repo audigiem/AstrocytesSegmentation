@@ -123,7 +123,7 @@ def compute_dynamic_image_CPU(
     return dF, mean_noise
 
 
-@profile
+
 def compute_dynamic_image_GPU(
     data: torch.Tensor,
     F0: torch.Tensor,
