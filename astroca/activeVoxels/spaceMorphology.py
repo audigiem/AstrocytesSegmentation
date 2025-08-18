@@ -240,9 +240,7 @@ def morphology_operation_unfold(
         kernel_flat = kernel_mask.reshape(-1)
         # Remplacer les 0 par inf pour le min
         masked_flat = torch.where(
-            kernel_flat.unsqueeze(0).unsqueeze(0).unsqueeze(0),
-            masked_flat,
-            torch.inf
+            kernel_flat.unsqueeze(0).unsqueeze(0).unsqueeze(0), masked_flat, torch.inf
         )
         result = torch.min(masked_flat, dim=-1)[0]
         result = torch.where(

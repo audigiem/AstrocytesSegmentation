@@ -172,7 +172,9 @@ def voxels_finder(
 
         # Convertir en tensors et transférer sur GPU si nécessaire
         if isinstance(filtered_data, np.ndarray):
-            filtered_data = torch.tensor(filtered_data, dtype=torch.float32, device=device)
+            filtered_data = torch.tensor(
+                filtered_data, dtype=torch.float32, device=device
+            )
         else:
             filtered_data = filtered_data.to(device)
 
@@ -238,11 +240,11 @@ def voxels_finder_CPU(
 
 
 def voxels_finder_GPU(
-        filtered_data: torch.Tensor,
-        dF: torch.Tensor,
-        std_noise: float,
-        index_xmin: np.ndarray,
-        index_xmax: np.ndarray,
+    filtered_data: torch.Tensor,
+    dF: torch.Tensor,
+    std_noise: float,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
 ) -> torch.Tensor:
     """
     Version GPU optimisée avec cropping vectorisé
@@ -273,8 +275,12 @@ def voxels_finder_GPU(
     crop_mask = torch.ones_like(active_voxels, dtype=torch.bool, device=device)
 
     # Convertir les index en tensors
-    index_xmin_torch = torch.from_numpy(np.array(index_xmin)).to(device, dtype=torch.long)
-    index_xmax_torch = torch.from_numpy(np.array(index_xmax)).to(device, dtype=torch.long)
+    index_xmin_torch = torch.from_numpy(np.array(index_xmin)).to(
+        device, dtype=torch.long
+    )
+    index_xmax_torch = torch.from_numpy(np.array(index_xmax)).to(
+        device, dtype=torch.long
+    )
 
     # Appliquer le cropping par batch pour chaque Z
     for z in range(Z):
@@ -284,7 +290,7 @@ def voxels_finder_GPU(
         if xmin > 0:
             crop_mask[:, z, :, :xmin] = False
         if xmax < X - 1:
-            crop_mask[:, z, :, xmax + 1:] = False
+            crop_mask[:, z, :, xmax + 1 :] = False
 
     # Appliquer le masque de cropping
     active_voxels[~crop_mask] = 0

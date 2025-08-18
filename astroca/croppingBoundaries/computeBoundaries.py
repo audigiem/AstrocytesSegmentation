@@ -8,13 +8,15 @@ the first and last non-empty band in each z-slice.
 """
 
 import numpy as np
-from astroca.tools.exportData import export_data, save_numpy_tab
+from astroca.tools.exportData import (
+    export_data,
+    save_numpy_tab,
+    export_data_GPU_with_memory_optimization as export_data_GPU,
+    save_tensor_as_numpy_GPU,
+)
 import os
 from tqdm import tqdm
 from typing import List, Dict, Tuple, Any
-
-# import cupy as cp
-from numba import cuda
 import torch
 
 
@@ -104,7 +106,7 @@ def compute_boundaries_CPU(
 
 def compute_boundaries_GPU(
     data: torch.Tensor, params: dict
-) -> Tuple[np.ndarray, np.ndarray, float, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, float, torch.Tensor]:
     """
     Compute cropping boundaries in X for each Z slice using PyTorch on GPU.
 
@@ -162,44 +164,50 @@ def compute_boundaries_GPU(
     xmax_broadcast = xmax.view(Z, 1, 1)  # (Z, 1, 1)
 
     # Masque vectorisé complet
-    boundary_mask = (x_coords < xmin_broadcast) | (x_coords > xmax_broadcast)  # (Z, 1, X)
+    boundary_mask = (x_coords < xmin_broadcast) | (
+        x_coords > xmax_broadcast
+    )  # (Z, 1, X)
     boundary_mask = boundary_mask.unsqueeze(0).expand(T, Z, Y, X)  # (T, Z, Y, X)
 
     # Application vectorisée du masque sur toutes les données
     data[boundary_mask] = default_val
 
-    # Conversion finale vers CPU
-    index_xmin = xmin.numpy()
-    index_xmax = xmax.numpy()
-
     print(
-        f"    index_xmin = {index_xmin}\n     index_xmax = {index_xmax}\n     default_value = {default_val}"
+        f"    index_xmin = {xmin}\n     index_xmax = {xmax}\n     default_value = {default_val}"
     )
     if save_results:
         if out_dir is None:
-            raise ValueError("output_directory must be specified if save_results is True.")
+            raise ValueError(
+                "output_directory must be specified if save_results is True."
+            )
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
-
-        # Convert to CPU for saving if necessary
-        bounded_data = data.numpy()
-
-        export_data(
-            bounded_data,
+        export_data_GPU(
+            data,
             out_dir,
             export_as_single_tif=True,
             file_name="data",
+            max_memory_usage_mb=2048,
         )
-        save_numpy_tab(index_xmin, out_dir, file_name="index_Xmin.npy")
-        save_numpy_tab(index_xmax, out_dir, file_name="index_Xmax.npy")
+        save_tensor_as_numpy_GPU(
+            xmin, out_dir, file_name="index_Xmin.npy", async_save=True
+        )
+        save_tensor_as_numpy_GPU(
+            xmax, out_dir, file_name="index_Xmax.npy", async_save=True
+        )
 
     print(" - [GPU] Boundaries computation completed")
-    return index_xmin, index_xmax, default_val, data
+    return xmin, xmax, default_val, data
 
 
 def compute_boundaries(
     data: np.ndarray | torch.Tensor, params: dict
-) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray | torch.Tensor]:
+) -> Tuple[
+    np.ndarray | torch.Tensor,
+    np.ndarray | torch.Tensor,
+    float,
+    np.ndarray | torch.Tensor,
+]:
     """
     Compute cropping boundaries in X for each Z slice based on background values.
     Sets boundary pixels to default_value and saves results optionally.

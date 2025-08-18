@@ -3,7 +3,10 @@
 @brief This module provides functionality to crop boundaries of 3D image sequences with time dimension (if needed).
 """
 
-from astroca.tools.exportData import export_data
+from astroca.tools.exportData import (
+    export_data,
+    export_data_GPU_with_memory_optimization as export_data_GPU,
+)
 import numpy as np
 import os
 import torch
@@ -125,7 +128,9 @@ def detect_null_band_X_dir_GPU(data: torch.Tensor) -> Tuple[int, int]:
     print(" - [GPU] Detecting null bands in X direction...")
 
     if data.ndim != 4:
-        raise ValueError(f"Input data must be 4D tensor with shape (T, Z, Y, X) but got shape {data.shape}.")
+        raise ValueError(
+            f"Input data must be 4D tensor with shape (T, Z, Y, X) but got shape {data.shape}."
+        )
 
     # Calcul vectorisé des sommes sur GPU
     x_sums = torch.sum(data, dim=(0, 1, 2))  # Shape: (X,)
@@ -140,7 +145,9 @@ def detect_null_band_X_dir_GPU(data: torch.Tensor) -> Tuple[int, int]:
     first_non_null_band = int(non_zero_indices[0].item())
     last_non_null_band = int(non_zero_indices[-1].item())
 
-    print(f"    [GPU] First non-null band: {first_non_null_band}, Last non-null band: {last_non_null_band}")
+    print(
+        f"    [GPU] First non-null band: {first_non_null_band}, Last non-null band: {last_non_null_band}"
+    )
 
     return first_non_null_band, last_non_null_band
 
@@ -154,7 +161,9 @@ def crop_boundaries_GPU(data: torch.Tensor, params: dict) -> torch.Tensor:
 
     required_keys = {"preprocessing", "save", "paths"}
     if not required_keys.issubset(params.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params.keys()}"
+        )
 
     device = data.device
     T, Z, Y, X = data.shape
@@ -173,25 +182,24 @@ def crop_boundaries_GPU(data: torch.Tensor, params: dict) -> torch.Tensor:
     cropped_data = torch.empty((T, Z, new_Y, new_X), dtype=data.dtype, device=device)
 
     # Cropping vectorisé ultra-rapide avec slicing GPU
-    cropped_data = data[:, :, pixel_cropped:Y, x_min:x_max + 1].contiguous()
+    cropped_data = data[:, :, pixel_cropped:Y, x_min : x_max + 1].contiguous()
 
     print(f"    [GPU] Cropped data shape: {cropped_data.shape}")
-    print(f"    [GPU] Memory usage: {cropped_data.element_size() * cropped_data.numel() / 1024 ** 2:.2f} MB")
 
     if save_results:
         if output_directory is None:
-            raise ValueError("output_directory must be specified if save_results is True.")
+            raise ValueError(
+                "output_directory must be specified if save_results is True."
+            )
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
 
-        # Convert to CPU for saving if necessary
-        cropped_data_cpu = cropped_data.cpu().numpy() if device.type == 'cuda' else cropped_data.numpy()
-
-        export_data(
-            cropped_data_cpu,
+        export_data_GPU(
+            cropped_data,
             output_directory,
             export_as_single_tif=True,
             file_name="cropped_image_sequence",
+            memory_optimized=2048,  # Use memory optimization for large tensors
         )
 
     print()
