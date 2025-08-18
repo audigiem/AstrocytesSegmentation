@@ -115,71 +115,85 @@ def compute_boundaries_GPU(
         - output_directory: Where to save results if needed.
     @return: (index_xmin, index_xmax, default_value, data)
     """
-    print(" - Computing cropping boundaries in X for each Z slice (PyTorch GPU)...")
+    print(" - [GPU] Computing cropping boundaries (ULTRA OPTIMIZED)...")
 
-    # Extract params
+    device = data.device
+    T, Z, Y, X = data.shape
+
+    # Extraction des paramètres
     pixel_cropped = int(params["preprocessing"]["pixel_cropped"])
     save_results = int(params["save"]["save_boundaries"]) == 1
     out_dir = params["paths"]["output_dir"]
 
-    # # Ensure tensor format on GPU
-    # if isinstance(data, np.ndarray):
-    #     data_gpu = torch.from_numpy(data).float().to('cuda')
-    # else:
-    #     data_gpu = data.to('cuda') if not data.is_cuda else data
+    # Calcul vectorisé de la valeur par défaut
+    default_val = data[0, 0, 0, X - 1].item()
 
-    T, Z, Y, X = data.shape
-    default_val = float(data[0, 0, 0, X - 1].item())
-
-    xmin = torch.full((Z,), -1, dtype=torch.int32, device="cuda")
-    xmax = torch.full((Z,), X - 1, dtype=torch.int32, device="cuda")
-
+    # Échantillonnage vectorisé des indices Y
     y_sample_size = max(1, Y // 10)
-    y_indices = torch.randperm(Y, device="cuda")[:y_sample_size]
+    y_indices = torch.randperm(Y, device=device)[:y_sample_size]
 
+    # Extraction des données échantillonnées pour le premier frame
+    sampled_data = data[0, :, y_indices, :]  # Shape: (Z, y_sample_size, X)
+
+    # Détection vectorisée des valeurs non-default
+    non_default_mask = sampled_data != default_val  # Shape: (Z, y_sample_size, X)
+
+    # Agrégation sur la dimension Y : True si au moins un pixel non-default
+    has_signal = non_default_mask.any(dim=1)  # Shape: (Z, X)
+
+    # Calcul vectorisé des indices xmin et xmax
+    xmin = torch.full((Z,), -1, dtype=torch.int32, device=device)
+    xmax = torch.full((Z,), X - 1, dtype=torch.int32, device=device)
+
+    # Trouver les premiers indices non-default pour chaque Z
     for z in range(Z):
-        found = False
-        for x in range(X):
-            vals = data[0, z, y_indices, x]
-            all_default = (vals == default_val).all()
-            if not all_default:
-                if not found:
-                    xmin[z] = x
-                    found = True
-            elif found:
-                xmax[z] = x - 1
-                break
+        signal_positions = torch.nonzero(has_signal[z], as_tuple=False).squeeze(-1)
+        if len(signal_positions) > 0:
+            xmin[z] = signal_positions[0]
+            xmax[z] = signal_positions[-1]
 
+    # Ajustement avec pixel_cropped
     xmin += pixel_cropped
     xmax -= pixel_cropped
 
-    x_range = torch.arange(X, device="cuda").unsqueeze(0)  # (1, X)
-    mask_zx = (x_range < xmin[:, None]) | (x_range >= (xmax[:, None] + 1))  # (Z, X)
-    mask = mask_zx.unsqueeze(0).unsqueeze(2)  # (1, Z, 1, X)
-    data[mask.expand(T, Z, Y, X)] = default_val
+    # Application du masque vectorisée ultra-rapide
+    x_coords = torch.arange(X, device=device).view(1, 1, X)  # Broadcasting shape
+    xmin_broadcast = xmin.view(Z, 1, 1)  # (Z, 1, 1)
+    xmax_broadcast = xmax.view(Z, 1, 1)  # (Z, 1, 1)
 
-    # Convert to CPU for output
-    index_xmin = xmin.cpu().numpy()
-    index_xmax = xmax.cpu().numpy()
-    data_result = data.cpu().numpy()
+    # Masque vectorisé complet
+    boundary_mask = (x_coords < xmin_broadcast) | (x_coords > xmax_broadcast)  # (Z, 1, X)
+    boundary_mask = boundary_mask.unsqueeze(0).expand(T, Z, Y, X)  # (T, Z, Y, X)
 
+    # Application vectorisée du masque sur toutes les données
+    data[boundary_mask] = default_val
+
+    # Conversion finale vers CPU
+    index_xmin = xmin.numpy()
+    index_xmax = xmax.numpy()
+
+    print(
+        f"    index_xmin = {index_xmin}\n     index_xmax = {index_xmax}\n     default_value = {default_val}"
+    )
     if save_results:
         if out_dir is None:
-            raise ValueError(
-                "output_directory must be specified if save_results is True."
-            )
-        os.makedirs(out_dir, exist_ok=True)
+            raise ValueError("output_directory must be specified if save_results is True.")
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+
+        # Convert to CPU for saving if necessary
+        bounded_data = data.numpy()
+
         export_data(
-            data_result,
+            bounded_data,
             out_dir,
             export_as_single_tif=True,
-            file_name="bounded_image_sequence",
+            file_name="data",
         )
         save_numpy_tab(index_xmin, out_dir, file_name="index_Xmin.npy")
         save_numpy_tab(index_xmax, out_dir, file_name="index_Xmax.npy")
-    print(60 * "=")
-    print()
 
+    print(" - [GPU] Boundaries computation completed")
     return index_xmin, index_xmax, default_val, data
 
 
