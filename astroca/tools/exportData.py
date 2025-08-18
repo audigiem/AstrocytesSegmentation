@@ -127,7 +127,7 @@ def export_single_tif_GPU_sync(
     if not file_name.endswith(".tif"):
         file_name += ".tif"
 
-    print(f" - [GPU Export] Transferring {T} frames to CPU by chunks of {chunk_size}")
+    # print(f" - [GPU Export] Transferring {T} frames to CPU by chunks of {chunk_size}")
 
     # Pré-allocation CPU pour éviter les réallocations
     data_cpu = np.empty((T, Z, Y, X), dtype=data.cpu().numpy().dtype)

@@ -10,7 +10,7 @@ from tqdm import tqdm
 from astroca.activeVoxels.zScore import compute_z_score
 from astroca.activeVoxels.spaceMorphology import closing_morphology_in_space
 from astroca.activeVoxels.medianFilter import unified_median_filter_3d
-from astroca.tools.exportData import export_data
+from astroca.tools.exportData import export_data, export_data_GPU_with_memory_optimization as export_data_GPU
 import torch
 
 
@@ -18,8 +18,8 @@ def find_active_voxels(
     dF: np.ndarray | torch.Tensor,
     std_noise: float,
     gaussian_noise_mean: float,
-    index_xmin: list,
-    index_xmax: list,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
     params_values: dict,
 ) -> np.ndarray | torch.Tensor:
     """
@@ -87,62 +87,90 @@ def find_active_voxels(
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         # convert data to np.ndarray if it's a torch.Tensor
-        if isinstance(data, torch.Tensor):
-            data_to_export = data.cpu().numpy()
+        if GPU_AVAILABLE:
+            export_data_GPU(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="zScore",
+            )
         else:
-            data_to_export = data
-        export_data(
-            data_to_export,
-            output_directory,
-            export_as_single_tif=True,
-            file_name="zScore",
-        )
+            if isinstance(data, torch.Tensor):
+                raise TypeError("When GPU is not available, data must be a numpy.ndarray.")
+            export_data(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="zScore",
+            )
     print()
 
     data = closing_morphology_in_space(data, radius, border_condition, GPU_AVAILABLE)
     if save_results:
-        if isinstance(data, torch.Tensor):
-            data_to_export = data.cpu().numpy()
+        if GPU_AVAILABLE:
+            export_data_GPU(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="closing_in_space",
+            )
         else:
-            data_to_export = data
-        export_data(
-            data_to_export,
-            output_directory,
-            export_as_single_tif=True,
-            file_name="closing_in_space",
-        )
+            if isinstance(data, torch.Tensor):
+                raise TypeError("When GPU is not available, data must be a numpy.ndarray.")
+            export_data(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="closing_in_space",
+            )
     print()
 
     data = unified_median_filter_3d(
         data, size_median_filter, border_condition, use_gpu=GPU_AVAILABLE
     )
     if save_results:
-        if isinstance(data, torch.Tensor):
-            data_to_export = data.cpu().numpy()
+        if GPU_AVAILABLE:
+            if not isinstance(data, torch.Tensor):
+                data = torch.tensor(data, dtype=torch.float32)
+            export_data_GPU(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="median_filter",
+            )
         else:
-            data_to_export = data
-        export_data(
-            data_to_export,
-            output_directory,
-            export_as_single_tif=True,
-            file_name="medianFiltered",
-        )
+            if isinstance(data, torch.Tensor):
+                raise TypeError("When GPU is not available, data must be a numpy.ndarray.")
+            export_data(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="median_filter",
+            )
     print()
 
     active_voxels = voxels_finder(
         data, dF, std_noise, index_xmin, index_xmax, GPU_AVAILABLE
     )
     if save_results:
-        if isinstance(active_voxels, torch.Tensor):
-            active_voxels_to_export = active_voxels.cpu().numpy()
+        if GPU_AVAILABLE:
+            if not isinstance(active_voxels, torch.Tensor):
+                active_voxels = torch.tensor(active_voxels, dtype=torch.float32)
+            export_data_GPU(
+                active_voxels,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="active_voxels",
+            )
         else:
-            active_voxels_to_export = active_voxels
-        export_data(
-            active_voxels_to_export,
-            output_directory,
-            export_as_single_tif=True,
-            file_name="activeVoxels",
-        )
+            if isinstance(active_voxels, torch.Tensor):
+                raise TypeError("When GPU is not available, data must be a numpy.ndarray.")
+            export_data(
+                active_voxels,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="active_voxels",
+            )
     print(60 * "=")
     print()
     return active_voxels
@@ -152,8 +180,8 @@ def voxels_finder(
     filtered_data: np.ndarray | torch.Tensor,
     dF: np.ndarray | torch.Tensor,
     std_noise: float,
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
     use_gpu: bool = False,
 ) -> np.ndarray | torch.Tensor:
     """
@@ -198,8 +226,8 @@ def voxels_finder_CPU(
     filtered_data: np.ndarray,
     dF: np.ndarray,
     std_noise: float,
-    index_xmin: list,
-    index_xmax: list,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
 ) -> np.ndarray:
     """
     @brief Determine active voxels based on the value of the filtered data.
@@ -243,8 +271,8 @@ def voxels_finder_GPU(
     filtered_data: torch.Tensor,
     dF: torch.Tensor,
     std_noise: float,
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: torch.Tensor,
+    index_xmax: torch.Tensor,
 ) -> torch.Tensor:
     """
     Version GPU optimisée avec cropping vectorisé
@@ -274,18 +302,10 @@ def voxels_finder_GPU(
     # Cropping vectorisé - créer un masque de cropping
     crop_mask = torch.ones_like(active_voxels, dtype=torch.bool, device=device)
 
-    # Convertir les index en tensors
-    index_xmin_torch = torch.from_numpy(np.array(index_xmin)).to(
-        device, dtype=torch.long
-    )
-    index_xmax_torch = torch.from_numpy(np.array(index_xmax)).to(
-        device, dtype=torch.long
-    )
-
     # Appliquer le cropping par batch pour chaque Z
     for z in range(Z):
-        xmin = index_xmin_torch[z].item()
-        xmax = index_xmax_torch[z].item()
+        xmin = index_xmin[z].item()
+        xmax = index_xmax[z].item()
 
         if xmin > 0:
             crop_mask[:, z, :, :xmin] = False

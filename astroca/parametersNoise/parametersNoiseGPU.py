@@ -41,7 +41,7 @@ def mad_with_pseudo_residual_GPU(residuals: torch.Tensor) -> torch.Tensor:
 
 
 def estimate_std_map_over_time_GPU(
-    data: torch.Tensor, xmin: np.ndarray, xmax: np.ndarray
+    data: torch.Tensor, xmin: torch.Tensor, xmax: torch.Tensor
 ) -> torch.Tensor:
     """
     GPU version: For each voxel (x,y,z), compute the MAD-based std estimation.
@@ -59,7 +59,7 @@ def estimate_std_map_over_time_GPU(
     )
 
     for z in tqdm(range(Z), desc="Estimating std over time (GPU)", unit="slice"):
-        x0, x1 = int(xmin[z]), int(xmax[z]) + 1
+        x0, x1 = int(xmin[z].item()), int(xmax[z].item()) + 1
         if x0 >= x1:
             continue
 
@@ -70,7 +70,7 @@ def estimate_std_map_over_time_GPU(
 
 
 def estimate_std_over_time_GPU(
-    data: torch.Tensor, xmin: np.ndarray, xmax: np.ndarray
+    data: torch.Tensor, xmin: torch.Tensor, xmax: torch.Tensor
 ) -> float:
     """
     GPU version: Final std estimation as the median of the 3D map excluding zeros.

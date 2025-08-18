@@ -119,8 +119,8 @@ def compute_z_score(
     std_noise: float,
     gaussian_noise_mean: float,
     threshold: float,
-    index_xmin: list | torch.Tensor,
-    index_xmax: list | torch.Tensor,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
     GPU_AVAILABLE: bool = False,
 ) -> np.ndarray | torch.Tensor:
     """

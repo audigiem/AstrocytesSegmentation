@@ -207,8 +207,8 @@ def estimate_std_over_time_optimized(
 
 def estimate_std_over_time(
     data: np.ndarray | torch.Tensor,
-    xmin: np.ndarray,
-    xmax: np.ndarray,
+    xmin: np.ndarray | torch.Tensor,
+    xmax: np.ndarray | torch.Tensor,
     GPU_AVAILABLE: bool = False,
 ) -> float:
     """
