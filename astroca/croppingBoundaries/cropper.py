@@ -184,7 +184,7 @@ def crop_boundaries_GPU(data: torch.Tensor, params: dict) -> torch.Tensor:
     # Cropping vectorisé ultra-rapide avec slicing GPU
     cropped_data = data[:, :, pixel_cropped:Y, x_min : x_max + 1].contiguous()
 
-    print(f"        [GPU] Cropped data shape: {cropped_data.shape}")
+    print(f"    [GPU] Cropped data shape: {cropped_data.shape}")
 
     if save_results:
         if output_directory is None:

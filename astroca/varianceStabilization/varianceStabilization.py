@@ -92,34 +92,56 @@ def compute_variance_stabilization_GPU(
     """
     print("=== Applying variance stabilization on GPU using PyTorch... ===")
 
+    device = data.device
     T, Z, Y, X = data.shape
 
-    for z in tqdm(
-        range(Z), desc="Variance stabilization per Z-slice (GPU)", unit="slice"
-    ):
-        x_min = index_xmin[z].item()
-        x_max = index_xmax[z].item() + 1
-        if x_min >= x_max:
-            continue
-        sub_volume = data[:, z, :, x_min:x_max]
-        sub_volume.add_(3.0 / 8.0).sqrt_().mul_(2.0)
+    # Création de la grille complète des coordonnées
+    coords_grid = torch.meshgrid(
+        torch.arange(T, device=device),
+        torch.arange(Z, device=device),
+        torch.arange(Y, device=device),
+        torch.arange(X, device=device),
+        indexing="ij",
+    )
+    t_grid, z_grid, y_grid, x_grid = coords_grid
 
+    # Broadcasting des limites
+    xmin_grid = index_xmin[z_grid]  # (T, Z, Y, X)
+    xmax_grid = index_xmax[z_grid]  # (T, Z, Y, X)
+
+    # Masque vectorisé complet
+    valid_mask = (x_grid >= xmin_grid) & (x_grid <= xmax_grid)
+
+    # Copie des données pour préserver l'original
+    result = data.clone()
+
+    # Application vectorisée pure de l'Anscombe transform
+    with torch.no_grad():
+        # Sélection vectorisée des voxels valides
+        valid_data = result[valid_mask]
+
+        # Transform vectorisé
+        transformed = 2.0 * torch.sqrt(valid_data + 3.0 / 8.0)
+
+        # Réassignation vectorisée
+        result[valid_mask] = transformed
+
+    # Sauvegarde avec pipeline asynchrone
     if int(params["save"]["save_variance_stabilization"]) == 1:
-        out_dir = params["paths"]["output_dir"]
-        if out_dir is None:
+        if params["paths"]["output_dir"] is None:
             raise ValueError(
                 "Output directory must be specified when save_results is True."
             )
-        os.makedirs(out_dir, exist_ok=True)
+        if not os.path.exists(params["paths"]["output_dir"]):
+            os.makedirs(params["paths"]["output_dir"])
         export_data_GPU(
-            data,
-            out_dir,
+            result,
+            params["paths"]["output_dir"],
             export_as_single_tif=True,
             file_name="variance_stabilized_sequence",
         )
-
     print("=" * 60 + "\n")
-    return data
+    return result
 
 
 def compute_variance_stabilization(
@@ -263,44 +285,41 @@ def anscombe_inverse_GPU(
     save_results = int(param_values["save"]["save_anscombe_inverse"]) == 1
     output_directory = param_values["paths"]["output_dir"]
 
-    _, Z, Y, X = data.shape
     device = data.device
+    T, Z, Y, X = data.shape
 
-    # Créer grille de coordonnées
-    z_coords = torch.arange(Z, device=device).unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
-    y_coords = torch.arange(Y, device=device).unsqueeze(0).unsqueeze(2)  # (1, Y, 1)
-    x_coords = torch.arange(X, device=device).unsqueeze(0).unsqueeze(0)  # (1, 1, X)
+    # Création du masque vectorisé
+    x_coords = torch.arange(X, device=device).view(1, 1, X)
+    xmin_broadcast = index_xmin.view(Z, 1, 1)
+    xmax_broadcast = index_xmax.view(Z, 1, 1)
 
-    # Étendre les indices pour broadcasting
-    index_xmin_expanded = index_xmin.unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
-    index_xmax_expanded = index_xmax.unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
+    valid_mask = (x_coords >= xmin_broadcast) & (x_coords <= xmax_broadcast)
+    valid_mask = valid_mask.unsqueeze(0).expand(T, Z, Y, X)
 
-    # Créer masque vectorisé complet
-    valid_mask = (x_coords >= index_xmin_expanded) & (x_coords <= index_xmax_expanded)
+    # Initialisation du résultat
+    result = torch.zeros_like(data, dtype=torch.float32, device=device)
 
-    # Initialiser le résultat
-    data_out = torch.zeros_like(data, dtype=torch.float32, device=device)
+    with torch.no_grad():
+        # Application vectorisée de l'inverse : (x/2)² - 3/8
+        transformed = torch.pow(data / 2.0, 2) - 3.0 / 8.0
 
-    # Premier frame seulement
-    slice_data = data[0]  # Shape: (Z, Y, X)
-
-    # Application vectorisée complète
-    transformed = torch.pow(slice_data / 2.0, 2) - 3.0 / 8.0
-
-    # Appliquer le masque
-    data_out[0] = torch.where(valid_mask, transformed, torch.zeros_like(transformed))
+        # Application du masque
+        result[valid_mask] = transformed[valid_mask]
 
     if save_results:
         if output_directory is None:
             raise ValueError(
                 "Output directory must be specified when save_results is True."
             )
-        os.makedirs(output_directory, exist_ok=True)
-        export_data(
-            data_out.cpu().numpy(),
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        export_data_GPU(
+            result,
             output_directory,
             export_as_single_tif=True,
-            file_name="inverse_anscombe_transformed_volume",
+            file_name="anscombe_inverse_sequence",
+            async_export=True,
         )
 
-    return data_out
+    print("=" * 60 + "\n")
+    return result

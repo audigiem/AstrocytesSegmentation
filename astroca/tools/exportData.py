@@ -100,7 +100,7 @@ def export_data_GPU(
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
-    print(f" - [GPU Export] Starting export of tensor shape {data.shape}")
+    # print(f" - [GPU Export] Starting export of tensor shape {data.shape}")
 
     if export_as_single_tif:
         if async_export:
@@ -133,7 +133,8 @@ def export_single_tif_GPU_sync(
     data_cpu = np.empty((T, Z, Y, X), dtype=data.cpu().numpy().dtype)
 
     # Transfert par chunks pour éviter l'OOM
-    for t_start in tqdm(range(0, T, chunk_size), desc="GPU→CPU transfer", unit="chunk"):
+    # for t_start in tqdm(range(0, T, chunk_size), desc="GPU→CPU transfer", unit="chunk"):
+    for t_start in range(0, T, chunk_size):
         t_end = min(t_start + chunk_size, T)
 
         # Transfert synchrone du chunk
@@ -173,7 +174,7 @@ def export_single_tif_GPU_async(
     thread = threading.Thread(target=async_worker, daemon=True)
     thread.start()
 
-    print(f" - [GPU Export] Async export started for {file_name}")
+    # print(f" - [GPU Export] Async export started for {file_name}")
     return thread
 
 
@@ -189,7 +190,7 @@ def export_multiple_tifs_GPU_sync(
     if not os.path.exists(directory_path):
         os.makedirs(directory_path)
 
-    print(f" - [GPU Export] Exporting {T} frames to separate .tif files")
+    # print(f" - [GPU Export] Exporting {T} frames to separate .tif files")
 
     # Export par chunks pour optimiser les transferts
     for t_start in tqdm(range(0, T, chunk_size), desc="Exporting frames", unit="chunk"):
@@ -225,7 +226,7 @@ def export_multiple_tifs_GPU_async(
     thread = threading.Thread(target=async_worker, daemon=True)
     thread.start()
 
-    print(f" - [GPU Export] Async export started to {directory_name}/")
+    # print(f" - [GPU Export] Async export started to {directory_name}/")
     return thread
 
 
@@ -242,7 +243,7 @@ def save_tensor_as_numpy_GPU(
         os.makedirs(output_path)
 
     def save_worker():
-        print(f" - [GPU Export] Transferring tensor to CPU for .npy save...")
+        # print(f" - [GPU Export] Transferring tensor to CPU for .npy save...")
         data_cpu = data.cpu().numpy()
         file_path = os.path.join(output_path, file_name)
         np.save(file_path, data_cpu)
@@ -276,10 +277,10 @@ def export_data_GPU_with_memory_optimization(
     memory_per_frame = Z * Y * X * element_size_mb
     optimal_chunk_size = max(1, int(max_memory_usage_mb / memory_per_frame))
 
-    print(
-        f" - [GPU Export] Auto chunk size: {optimal_chunk_size} frames "
-        f"(memory per frame: {memory_per_frame:.1f}MB)"
-    )
+    # print(
+    #     f" - [GPU Export] Auto chunk size: {optimal_chunk_size} frames "
+    #     f"(memory per frame: {memory_per_frame:.1f}MB)"
+    # )
 
     return export_data_GPU(
         data,
@@ -308,7 +309,7 @@ def export_data_GPU_streaming(
     if not os.path.exists(output_path):
         os.makedirs(output_path)
 
-    print(f" - [GPU Export] Streaming export of {T} frames...")
+    # print(f" - [GPU Export] Streaming export of {T} frames...")
 
     # Export frame par frame pour minimiser l'usage mémoire
     for t in tqdm(range(T), desc="Streaming export", unit="frame"):
@@ -344,7 +345,7 @@ def batch_export_GPU_tensors(
     if len(tensor_list) != len(file_names):
         raise ValueError("Number of tensors must match number of file names")
 
-    print(f" - [GPU Export] Batch export of {len(tensor_list)} tensors...")
+    # print(f" - [GPU Export] Batch export of {len(tensor_list)} tensors...")
 
     # Limiter le nombre d'exports concurrents
     from concurrent.futures import ThreadPoolExecutor

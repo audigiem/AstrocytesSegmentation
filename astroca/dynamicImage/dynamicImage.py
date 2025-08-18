@@ -2,13 +2,13 @@
 @file dynamicImage.py
 @brief Module for computing the dynamic image (ΔF = F - F0) and the background F0 estimation over time.
 """
-from email.contentmanager import raw_data_manager
 
-# from joblib import Parallel, delayed
-from astroca.tools.exportData import export_data
+from astroca.tools.exportData import (
+    export_data,
+    export_data_GPU_with_memory_optimization as export_data_GPU,
+)
 import os
 import numpy as np
-import time
 from astroca.varianceStabilization.varianceStabilization import anscombe_inverse
 from tqdm import tqdm
 import torch
@@ -18,8 +18,8 @@ from typing import Union, Tuple
 def compute_dynamic_image(
     data: Union[np.ndarray, torch.Tensor],
     F0: Union[np.ndarray, torch.Tensor],
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: Union[np.ndarray, torch.Tensor],
+    index_xmax: Union[np.ndarray, torch.Tensor],
     time_window: int,
     params: dict,
 ) -> Tuple[Union[np.ndarray, torch.Tensor], float]:
@@ -117,8 +117,8 @@ def compute_dynamic_image_CPU(
 def compute_dynamic_image_GPU(
     data: torch.Tensor,
     F0: torch.Tensor,
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: torch.Tensor,
+    index_xmax: torch.Tensor,
     time_window: int,
     params: dict,
 ) -> tuple[torch.Tensor, float]:
@@ -138,7 +138,7 @@ def compute_dynamic_image_GPU(
     print(
         "=== Computing dynamic image (dF = F - F0) and estimating noise on GPU... ==="
     )
-    print(" - Computing dynamic image...")
+    print(" - [GPU] Computing dynamic image...")
 
     # Extract necessary parameters
     required_keys = {"save", "paths"}
@@ -149,56 +149,54 @@ def compute_dynamic_image_GPU(
     save_results = int(params["save"]["save_df"]) == 1
     output_directory = params["paths"]["output_dir"]
 
+    device = data.device
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
 
-    # CORRECTION 1: Utiliser torch.copy() au lieu de torch.empty_like()
-    # pour commencer avec les données originales comme dans la version CPU
-    dF = data.clone()
-
-    # Préallocation avec estimation maximale
-    width_without_zeros = sum(
-        max(0, index_xmax[z] - index_xmin[z] + 1) for z in range(Z)
+    # Création de toutes les grilles de coordonnées
+    t_grid, z_grid, y_grid, x_grid = torch.meshgrid(
+        torch.arange(T, device=device),
+        torch.arange(Z, device=device),
+        torch.arange(Y, device=device),
+        torch.arange(X, device=device),
+        indexing="ij",
     )
-    flattened_dF = torch.empty(
-        T * Y * width_without_zeros, dtype=torch.float32, device=data.device
-    )
-    k = 0
 
-    for t in tqdm(range(T), desc="Computing ΔF over time", unit="frame"):
-        it = min(t // time_window, nbF0 - 1)
-        for z in range(Z):
-            x_min, x_max = index_xmin[z], index_xmax[z] + 1
-            if x_min >= x_max:
-                continue
-            # CORRECTION 2: Calculer delta exactement comme dans la version CPU
-            delta = data[t, z, :, x_min:x_max] - F0[it, z, :, x_min:x_max]
-            dF[t, z, :, x_min:x_max] = delta
-            n = x_max - x_min
-            # CORRECTION 3: Utiliser reshape(-1) au lieu de view(-1)
-            # pour être cohérent avec NumPy
-            flattened_dF[k : k + Y * n] = delta.reshape(-1)
-            k += Y * n
+    # Calcul vectorisé des indices temporels
+    it_grid = torch.clamp(t_grid // time_window, 0, nbF0 - 1)  # (T, Z, Y, X)
 
-    # CORRECTION 4: S'assurer que le calcul de médiane est identique
-    mean_noise = float(torch.median(flattened_dF[:k]))
-    print(f"    mean_Noise = {mean_noise:.6f}")
+    # Sélection vectorisée complète des backgrounds
+    F0_expanded = F0[it_grid, z_grid, y_grid, x_grid]  # (T, Z, Y, X)
+
+    # Calcul vectorisé complet de dF
+    dF = data - F0_expanded
+
+    # Masque vectorisé des régions valides
+    xmin_grid = index_xmin[z_grid]  # (T, Z, Y, X)
+    xmax_grid = index_xmax[z_grid]  # (T, Z, Y, X)
+    valid_mask = (x_grid >= xmin_grid) & (x_grid <= xmax_grid)
+
+    # Calcul de la médiane sur les régions valides
+    valid_dF = dF[valid_mask]
+    mean_noise = float(torch.median(valid_dF))
+
+    print(f"    [GPU] mean_Noise = {mean_noise:.6f}")
 
     if save_results:
         if output_directory is None:
             raise ValueError(
                 "Output directory must be specified when save_results is True."
             )
-        os.makedirs(output_directory, exist_ok=True)
-        # CORRECTION 5: Convertir en NumPy avec le bon dtype
-        export_data(
-            dF.cpu().numpy().astype(np.float32),
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        export_data_GPU(
+            dF,
             output_directory,
             export_as_single_tif=True,
             file_name="dynamic_image_dF",
         )
 
-    print()
+    print("=" * 60 + "\n")
     return dF, mean_noise
 
 
