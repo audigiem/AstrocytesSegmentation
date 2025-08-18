@@ -113,7 +113,6 @@ def compute_dynamic_image_CPU(
     print()
     return dF, mean_noise
 
-
 @profile
 def compute_dynamic_image_GPU(
     data: torch.Tensor,
@@ -136,57 +135,47 @@ def compute_dynamic_image_GPU(
         - output_directory: Directory to save the result if save_results is True
     @return: (dF: tensor of shape (T, Z, Y, X), mean_noise: float)
     """
-    print("=== [GPU] Computing dynamic image (ULTRA OPTIMIZED)... ===")
+    print(
+        "=== Computing dynamic image (dF = F - F0) and estimating noise on GPU... ==="
+    )
+    print(" - [GPU] Computing dynamic image...")
 
-    device = data.device
+    # Extract necessary parameters
+    required_keys = {"save", "paths"}
+    if not required_keys.issubset(params.keys()):
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params.keys()}"
+        )
+    save_results = int(params["save"]["save_df"]) == 1
+    output_directory = params["paths"]["output_dir"]
+
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
 
-    save_results = int(params.get("save", {}).get("save_df", 0)) == 1
-    output_directory = params.get("paths", {}).get("output_dir")
+    dF = data.clone()
 
-    with torch.no_grad():
-        # OPTIMISATION 1: Pré-calcul sur CPU plus efficace
-        t_cpu = np.arange(T, dtype=np.int32)  # int32 suffit
-        it_cpu = np.minimum(t_cpu // time_window, nbF0 - 1)  # plus rapide que clip
+    width_without_zeros = sum(
+        max(0, index_xmax[z].item() - index_xmin[z].item() + 1) for z in range(Z)
+    )
+    flattened_dF = torch.empty(
+        T * Y * width_without_zeros, dtype=torch.float32, device=data.device
+    )
+    k = 0
 
-        it_indices = torch.from_numpy(it_cpu).to(
-            device, dtype=torch.long, non_blocking=True
-        )
+    for t in tqdm(range(T), desc="Computing ΔF over time", unit="frame"):
+        it = min(t // time_window, nbF0 - 1)
+        for z in range(Z):
+            x_min, x_max = index_xmin[z], index_xmax[z] + 1
+            if x_min >= x_max:
+                continue
+            delta = data[t, z, :, x_min:x_max] - F0[it, z, :, x_min:x_max]
+            dF[t, z, :, x_min:x_max] = delta
+            n = x_max - x_min
+            flattened_dF[k : k + Y * n] = delta.reshape(-1)
+            k += Y * n
 
-        # OPTIMISATION 2: Sélection des backgrounds avec pinned memory
-        F0_selected = F0[it_indices]
-
-        # OPTIMISATION 3: Calcul de dF optimisé
-        dF = torch.sub(data, F0_selected, out=data)  # In-place si possible
-
-        # OPTIMISATION 4: Masque spatial pré-calculé et réutilisé
-        if not isinstance(index_xmin, torch.Tensor):
-            index_xmin = torch.from_numpy(index_xmin).to(device, dtype=torch.long)
-        if not isinstance(index_xmax, torch.Tensor):
-            index_xmax = torch.from_numpy(index_xmax).to(device, dtype=torch.long)
-
-        # Version ultra-optimisée du masque
-        x_coords = torch.arange(X, device=device, dtype=torch.long)
-
-        # Éviter les expand coûteux - utiliser broadcasting natif
-        spatial_mask = (
-            (
-                (x_coords >= index_xmin.unsqueeze(-1))
-                & (x_coords <= index_xmax.unsqueeze(-1))
-            )
-            .unsqueeze(0)
-            .unsqueeze(2)
-        )  # (1, Z, 1, X)
-
-        # OPTIMISATION 5: Indexation et médiane ultra-optimisées
-        # Éviter expand qui crée des copies
-        valid_dF = dF.masked_select(spatial_mask.expand_as(dF))
-
-        # Utiliser quantile qui est plus rapide sur GPU
-        mean_noise = torch.quantile(valid_dF, 0.5).item()
-
-    print(f"    [GPU] mean_Noise = {mean_noise:.6f}")
+    mean_noise = float(torch.median(flattened_dF[:k]))
+    print(f"    mean_Noise = {mean_noise:.6f}")
 
     if save_results and output_directory:
         os.makedirs(output_directory, exist_ok=True)

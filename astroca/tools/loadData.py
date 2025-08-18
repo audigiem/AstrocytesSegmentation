@@ -11,7 +11,7 @@ from typing import Dict
 import numpy as np
 import torch
 
-
+@profile
 def load_data(file_path: str, GPU_AVAILABLE: bool = False) -> torch.Tensor | np.ndarray:
     """
     Load 3D image sequence data from a .tif file or a directory containing .tif files.

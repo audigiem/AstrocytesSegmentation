@@ -139,7 +139,7 @@ class EventDetectorOptimized:
                         offsets.append([dt, dz, dy, dx])
         return np.array(offsets, dtype=np.int32)
 
-    # @profile
+    @profile
     def find_events(self) -> None:
         """
         @fn find_events
@@ -674,7 +674,7 @@ class EventDetectorOptimized:
         stats.update(self.stats_)
         return stats
 
-
+@profile
 def detect_calcium_events_opti(
     av_data: np.ndarray, params_values: dict = None
 ) -> Tuple[np.ndarray, List[int]]:
