@@ -125,7 +125,7 @@ def detect_null_band_X_dir_GPU(data: torch.Tensor) -> Tuple[int, int]:
     """
     Version GPU optimisée pour détecter les bandes nulles en direction X
     """
-    print(" - [GPU] Detecting null bands in X direction...")
+    print("     - [GPU] Detecting null bands in X direction...")
 
     if data.ndim != 4:
         raise ValueError(
@@ -146,7 +146,7 @@ def detect_null_band_X_dir_GPU(data: torch.Tensor) -> Tuple[int, int]:
     last_non_null_band = int(non_zero_indices[-1].item())
 
     print(
-        f"    [GPU] First non-null band: {first_non_null_band}, Last non-null band: {last_non_null_band}"
+        f"        [GPU] First non-null band: {first_non_null_band}, Last non-null band: {last_non_null_band}"
     )
 
     return first_non_null_band, last_non_null_band
@@ -184,7 +184,7 @@ def crop_boundaries_GPU(data: torch.Tensor, params: dict) -> torch.Tensor:
     # Cropping vectorisé ultra-rapide avec slicing GPU
     cropped_data = data[:, :, pixel_cropped:Y, x_min : x_max + 1].contiguous()
 
-    print(f"    [GPU] Cropped data shape: {cropped_data.shape}")
+    print(f"        [GPU] Cropped data shape: {cropped_data.shape}")
 
     if save_results:
         if output_directory is None:
@@ -199,7 +199,7 @@ def crop_boundaries_GPU(data: torch.Tensor, params: dict) -> torch.Tensor:
             output_directory,
             export_as_single_tif=True,
             file_name="cropped_image_sequence",
-            memory_optimized=2048,  # Use memory optimization for large tensors
+            max_memory_usage_mb=2048,  # Use memory optimization for large tensors
         )
 
     print()

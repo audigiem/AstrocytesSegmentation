@@ -196,7 +196,8 @@ def compute_boundaries_GPU(
             xmax, out_dir, file_name="index_Xmax.npy", async_save=True
         )
 
-    print(" - [GPU] Boundaries computation completed")
+    print(60 * "=")
+    print()
     return xmin, xmax, default_val, data
 
 
