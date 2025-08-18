@@ -144,9 +144,8 @@ def compute_dynamic_image_GPU(
     # Extract necessary parameters
     required_keys = {"save", "paths"}
     if not required_keys.issubset(params.keys()):
-        raise ValueError(
-            f"Missing required parameters: {required_keys - params.keys()}"
-        )
+        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+
     save_results = int(params["save"]["save_df"]) == 1
     output_directory = params["paths"]["output_dir"]
 
@@ -154,42 +153,52 @@ def compute_dynamic_image_GPU(
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
 
-    # Création de toutes les grilles de coordonnées
-    t_grid, z_grid, y_grid, x_grid = torch.meshgrid(
-        torch.arange(T, device=device),
-        torch.arange(Z, device=device),
-        torch.arange(Y, device=device),
-        torch.arange(X, device=device),
-        indexing="ij",
-    )
+    with torch.no_grad():
+        # 1. Indices temporels optimisés
+        t_indices = torch.arange(T, device=device, dtype=torch.long)
+        it_indices = torch.clamp(t_indices // time_window, 0, nbF0 - 1)
 
-    # Calcul vectorisé des indices temporels
-    it_grid = torch.clamp(t_grid // time_window, 0, nbF0 - 1)  # (T, Z, Y, X)
+        # 2. Sélection backgrounds
+        F0_selected = F0[it_indices]
 
-    # Sélection vectorisée complète des backgrounds
-    F0_expanded = F0[it_grid, z_grid, y_grid, x_grid]  # (T, Z, Y, X)
+        # 3. Calcul dF
+        dF = data - F0_selected
 
-    # Calcul vectorisé complet de dF
-    dF = data - F0_expanded
+        # 4. Masque spatial ultra-optimisé
+        if not isinstance(index_xmin, torch.Tensor):
+            index_xmin = torch.from_numpy(index_xmin).to(device, dtype=torch.long)
+        if not isinstance(index_xmax, torch.Tensor):
+            index_xmax = torch.from_numpy(index_xmax).to(device, dtype=torch.long)
 
-    # Masque vectorisé des régions valides
-    xmin_grid = index_xmin[z_grid]  # (T, Z, Y, X)
-    xmax_grid = index_xmax[z_grid]  # (T, Z, Y, X)
-    valid_mask = (x_grid >= xmin_grid) & (x_grid <= xmax_grid)
+        # Version ultra-rapide : masque 1D puis expand intelligent
+        x_coords = torch.arange(X, device=device, dtype=torch.long)
 
-    # Calcul de la médiane sur les régions valides
-    valid_dF = dF[valid_mask]
-    mean_noise = float(torch.median(valid_dF))
+        # Vectorisation complète sur Z
+        spatial_mask = (
+                (x_coords.unsqueeze(0) >= index_xmin.unsqueeze(1)) &
+                (x_coords.unsqueeze(0) <= index_xmax.unsqueeze(1))
+        )  # Shape: (Z, X)
+
+        # 5. Application efficace du masque
+        # Au lieu d'expand énorme, utiliser masked_select intelligent
+        valid_count = spatial_mask.sum().item()
+
+        if valid_count > 0:
+            # Créer le masque 4D de manière efficace
+            mask_4d = spatial_mask.unsqueeze(0).unsqueeze(2).expand(T, Z, Y, X)
+            valid_dF = dF.masked_select(mask_4d)
+            mean_noise = float(torch.median(valid_dF))
+        else:
+            mean_noise = 0.0
+            print("    [GPU] Warning: No valid pixels found!")
 
     print(f"    [GPU] mean_Noise = {mean_noise:.6f}")
+    print(f"    [GPU] Valid pixels: {valid_count * T * Y:,}")
 
     if save_results:
         if output_directory is None:
-            raise ValueError(
-                "Output directory must be specified when save_results is True."
-            )
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
+            raise ValueError("Output directory must be specified when save_results is True.")
+        os.makedirs(output_directory, exist_ok=True)
         export_data_GPU(
             dF,
             output_directory,
