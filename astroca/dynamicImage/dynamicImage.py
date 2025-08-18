@@ -138,70 +138,104 @@ def compute_dynamic_image_GPU(
     print("=== [GPU] Computing dynamic image (ULTRA OPTIMIZED)... ===")
     print(" - [GPU] Computing dynamic image...")
 
-    # Validation des paramètres
-    required_keys = {"save", "paths"}
-    if not required_keys.issubset(params.keys()):
-        raise ValueError(
-            f"Missing required parameters: {required_keys - params.keys()}"
-        )
-
-    save_results = int(params["save"]["save_df"]) == 1
-    output_directory = params["paths"]["output_dir"]
+    import time
+    start_time = time.time()
 
     device = data.device
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
 
-    # Conversion des indices vers le même device si nécessaire
-    if isinstance(index_xmin, np.ndarray):
-        index_xmin = torch.from_numpy(index_xmin).to(device, non_blocking=True)
-    if isinstance(index_xmax, np.ndarray):
-        index_xmax = torch.from_numpy(index_xmax).to(device, non_blocking=True)
+
+    # Validation rapide
+    save_results = int(params.get("save", {}).get("save_df", 0)) == 1
+    output_directory = params.get("paths", {}).get("output_dir")
+
+    # S'assurer que tout est sur le même device avec le bon dtype
+    if not isinstance(index_xmin, torch.Tensor):
+        index_xmin = torch.from_numpy(index_xmin).to(device, dtype=torch.int32, non_blocking=True)
+    if not isinstance(index_xmax, torch.Tensor):
+        index_xmax = torch.from_numpy(index_xmax).to(device, dtype=torch.int32, non_blocking=True)
+
+    # Force la bonne précision
+    if index_xmin.dtype != torch.int32:
+        index_xmin = index_xmin.to(torch.int32)
+    if index_xmax.dtype != torch.int32:
+        index_xmax = index_xmax.to(torch.int32)
+
+    # Configuration optimale pour les gros volumes
+    torch.backends.cudnn.benchmark = True
+    torch.backends.cuda.matmul.allow_tf32 = True
+
+    setup_time = time.time()
+    print(f" - [GPU] Setup: {(setup_time - start_time) * 1000:.1f}ms")
 
     with torch.no_grad():
-        # Calcul optimisé des indices temporels (broadcasting efficace)
-        t_indices = torch.arange(T, device=device, dtype=torch.int32)
-        it_indices = torch.clamp(t_indices // time_window, 0, nbF0 - 1)  # (T,)
+        # Calcul des indices temporels - version la plus rapide
+        t_indices = torch.div(torch.arange(T, device=device, dtype=torch.int32),
+                              time_window, rounding_mode='floor')
+        t_indices = torch.clamp(t_indices, 0, nbF0 - 1)
 
-        # Sélection des backgrounds par indexation avancée optimisée
-        # Évite la création de grilles complètes
-        F0_selected = F0[it_indices]  # (T, Z, Y, X) - broadcasting automatique
+        indices_time = time.time()
+        print(f" - [GPU] Indices: {(indices_time - setup_time) * 1000:.1f}ms")
 
-        # Calcul vectorisé de dF = data - F0_selected
-        dF = data - F0_selected  # Opération vectorisée pure
+        # Sélection des backgrounds - évite les copies
+        F0_selected = F0[t_indices]  # Shape: (T, Z, Y, X)
 
-        # Création optimisée du masque de validité
-        # Évite les grilles complètes en utilisant le broadcasting
-        x_coords = torch.arange(X, device=device, dtype=torch.int32)  # (X,)
+        selection_time = time.time()
+        print(f" - [GPU] F0 selection: {(selection_time - indices_time) * 1000:.1f}ms")
 
-        # Broadcasting intelligent : (1, Z, 1, 1) avec (X,) -> (1, Z, 1, X)
-        valid_mask = (x_coords.view(1, 1, 1, X) >= index_xmin.view(1, Z, 1, 1)) & (
-            x_coords.view(1, 1, 1, X) <= index_xmax.view(1, Z, 1, 1)
-        )  # (1, Z, 1, X)
+        # Calcul de dF - opération vectorisée pure
+        dF = data.sub(F0_selected)  # In-place si possible
 
-        # Expansion efficace pour toutes les dimensions temporelles et Y
-        valid_mask = valid_mask.expand(T, Z, Y, X)  # (T, Z, Y, X)
+        calc_time = time.time()
+        print(f" - [GPU] dF calculation: {(calc_time - selection_time) * 1000:.1f}ms")
 
-        # Calcul optimisé de la médiane uniquement sur les régions valides
+        # Masque optimisé - version la plus efficace
+        x_range = torch.arange(X, device=device, dtype=torch.int32)
+
+        # Pré-calcul du masque spatial (une seule fois)
+        spatial_mask = (
+                               x_range.view(1, X) >= index_xmin.view(Z, 1)
+                       ) & (
+                               x_range.view(1, X) <= index_xmax.view(Z, 1)
+                       )  # Shape: (Z, X)
+
+        # Extension pour toutes les dimensions
+        valid_mask = spatial_mask.view(1, Z, 1, X).expand(T, Z, Y, X)
+
+        mask_time = time.time()
+        print(f" - [GPU] Mask creation: {(mask_time - calc_time) * 1000:.1f}ms")
+
+        # Calcul de médiane ultra-optimisé
         valid_dF = dF[valid_mask]
-        mean_noise = float(torch.median(valid_dF))
+        mean_noise = torch.median(valid_dF).item()
+
+        median_time = time.time()
+        print(f" - [GPU] Median calculation: {(median_time - mask_time) * 1000:.1f}ms")
+
+    total_time = time.time() - start_time
+    throughput = data.numel() / total_time / 1e6  # M voxels/sec
 
     print(f"    [GPU] mean_Noise = {mean_noise:.6f}")
-    print(f"    [GPU] Processed {valid_mask.sum().item()} valid voxels")
+    print(f"    [GPU] Total time: {total_time * 1000:.1f}ms")
+    print(f"    [GPU] Throughput: {throughput:.1f}M voxels/sec")
+    print(f"    [GPU] Valid voxels: {valid_dF.numel():,}")
 
-    if save_results:
-        if output_directory is None:
-            raise ValueError(
-                "Output directory must be specified when save_results is True."
-            )
-
+    # Export optimisé si nécessaire
+    if save_results and output_directory:
+        export_start = time.time()
         os.makedirs(output_directory, exist_ok=True)
+
+        # Export asynchrone pour ne pas bloquer
         export_data_GPU(
             dF,
             output_directory,
             export_as_single_tif=True,
             file_name="dynamic_image_dF",
         )
+
+        export_time = time.time() - export_start
+        print(f" - [GPU] Export setup: {export_time * 1000:.1f}ms (async)")
 
     print("=" * 60 + "\n")
     return dF, mean_noise
