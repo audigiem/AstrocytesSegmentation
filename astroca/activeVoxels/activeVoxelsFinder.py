@@ -167,12 +167,28 @@ def voxels_finder(
     if use_gpu:
         if not torch.cuda.is_available():
             raise RuntimeError("GPU is not available, but use_gpu is set to True.")
+
+        device = torch.device("cuda:0")
+
+        # Convertir en tensors et transférer sur GPU si nécessaire
         if isinstance(filtered_data, np.ndarray):
-            filtered_data = torch.tensor(filtered_data, dtype=torch.float32)
+            filtered_data = torch.tensor(filtered_data, dtype=torch.float32, device=device)
+        else:
+            filtered_data = filtered_data.to(device)
+
         if isinstance(dF, np.ndarray):
-            dF = torch.tensor(dF, dtype=torch.float32)
+            dF = torch.tensor(dF, dtype=torch.float32, device=device)
+        else:
+            dF = dF.to(device)
+
         return voxels_finder_GPU(filtered_data, dF, std_noise, index_xmin, index_xmax)
     else:
+        # Convertir en numpy si nécessaire pour CPU
+        if isinstance(filtered_data, torch.Tensor):
+            filtered_data = filtered_data.cpu().numpy()
+        if isinstance(dF, torch.Tensor):
+            dF = dF.cpu().numpy()
+
         return voxels_finder_CPU(filtered_data, dF, std_noise, index_xmin, index_xmax)
 
 
@@ -222,38 +238,55 @@ def voxels_finder_CPU(
 
 
 def voxels_finder_GPU(
-    filtered_data: torch.Tensor,
-    dF: torch.Tensor,
-    std_noise: float,
-    index_xmin: list,
-    index_xmax: list,
+        filtered_data: torch.Tensor,
+        dF: torch.Tensor,
+        std_noise: float,
+        index_xmin: np.ndarray,
+        index_xmax: np.ndarray,
 ) -> torch.Tensor:
-    print(" - Finding active voxels (GPU)...")
+    """
+    Version GPU optimisée avec cropping vectorisé
+    """
+    print(" - [GPU] Finding active voxels (optimized)...")
+
     if filtered_data.ndim != 4 or dF.ndim != 4:
-        raise ValueError("Input must be a 4D torch.Tensor of shape (T, Z, Y, X).")
+        raise ValueError("Input must be 4D tensors of shape (T, Z, Y, X).")
 
+    device = filtered_data.device
     T, Z, Y, X = dF.shape
-    device = dF.device
 
-    # filtered_data = filtered_data.to(device)
+    # S'assurer que dF est sur le même device
+    dF = dF.to(device)
 
-    # std_noise en tensor GPU
-    std_noise_tensor = torch.tensor(std_noise, dtype=dF.dtype, device=device)
+    # Créer le tensor de sortie
+    active_voxels = torch.zeros_like(dF, device=device)
 
-    # Masques
+    # Masques logiques
     positive_mask = (filtered_data != 0) & (dF > 0)
     negative_mask = (filtered_data != 0) & (dF <= 0)
 
-    active_voxels = torch.zeros_like(dF)
-
+    # Appliquer les masques
     active_voxels[positive_mask] = dF[positive_mask]
-    active_voxels[negative_mask] = std_noise_tensor
+    active_voxels[negative_mask] = std_noise
 
-    # Crop en GPU
-    for z in tqdm(range(Z), desc="Cropping active voxels (GPU)", unit="slice"):
-        if index_xmin[z] > 0:
-            active_voxels[:, z, :, : index_xmin[z]] = 0
-        if index_xmax[z] < X - 1:
-            active_voxels[:, z, :, index_xmax[z] + 1 :] = 0
+    # Cropping vectorisé - créer un masque de cropping
+    crop_mask = torch.ones_like(active_voxels, dtype=torch.bool, device=device)
+
+    # Convertir les index en tensors
+    index_xmin_torch = torch.from_numpy(np.array(index_xmin)).to(device, dtype=torch.long)
+    index_xmax_torch = torch.from_numpy(np.array(index_xmax)).to(device, dtype=torch.long)
+
+    # Appliquer le cropping par batch pour chaque Z
+    for z in range(Z):
+        xmin = index_xmin_torch[z].item()
+        xmax = index_xmax_torch[z].item()
+
+        if xmin > 0:
+            crop_mask[:, z, :, :xmin] = False
+        if xmax < X - 1:
+            crop_mask[:, z, :, xmax + 1:] = False
+
+    # Appliquer le masque de cropping
+    active_voxels[~crop_mask] = 0
 
     return active_voxels
