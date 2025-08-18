@@ -256,8 +256,8 @@ def main():
     expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
     output_f0_path = OUTPUT_DIR_PATH + "F0.tif"
 
-    expected_cropped_path = EXPECTED_DIR_PATH + "data_cropped.tif"
-    output_cropped_path = OUTPUT_DIR_PATH + "data_cropped.tif"
+    expected_cropped_path = EXPECTED_DIR_PATH + "data.tif"
+    output_cropped_path = OUTPUT_DIR_PATH + "data.tif"
 
     expected_boundaries_path = EXPECTED_DIR_PATH + "cropped_image_sequence.tif"
     output_boundaries_path = OUTPUT_DIR_PATH + "cropped_image_sequence.tif"

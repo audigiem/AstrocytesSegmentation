@@ -135,8 +135,6 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
         GPU_AVAILABLE,
     )
 
-    std_noise = 1.1693237
-
     # === Active voxels ===
     active_voxels = run_step(
         "find_active_voxels",
@@ -252,9 +250,6 @@ def run_pipeline():
     # === Compute dF and background noise estimation ===
     dF, mean_noise = compute_dynamic_image(data, F0, index_xmin, index_xmax, T, params)
     std_noise = estimate_std_over_time(dF, index_xmin, index_xmax, GPU_AVAILABLE)
-
-    # mean_noise = 1.187468
-    # std_noise = 1.1693237
 
     # === Compute Z-score, closing morphology, median filter ===
     active_voxels = find_active_voxels(

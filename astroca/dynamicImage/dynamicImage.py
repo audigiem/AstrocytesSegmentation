@@ -347,11 +347,14 @@ def compute_image_amplitude_GPU(
     T, Z, Y, X = data_cropped.shape
     device = data_cropped.device
 
-    # Créer masque vectorisé
+    # CORRECTION: Masque correctement dimensionné
     z_coords = torch.arange(Z, device=device)
     x_coords = torch.arange(X, device=device)
     zz, xx = torch.meshgrid(z_coords, x_coords, indexing="ij")
-    valid_mask = (xx >= index_xmin[zz]) & (xx <= index_xmax[zz])
+    valid_mask_zx = (xx >= index_xmin[zz]) & (xx <= index_xmax[zz])  # (Z, X)
+
+    # Étendre le masque pour la dimension Y : (Z, X) -> (Z, Y, X)
+    valid_mask = valid_mask_zx.unsqueeze(1).expand(Z, Y, X)
 
     # Initialiser le résultat
     image_amplitude = torch.zeros_like(data_cropped, dtype=torch.float32, device=device)
@@ -367,14 +370,22 @@ def compute_image_amplitude_GPU(
         # Calcul vectorisé: (data - f0) / f0_safe
         result = (data_slice - f0_slice) / f0_safe
 
-        # Appliquer le masque pour les zones valides seulement
+        # CORRECTION: Appliquer le masque correctement dimensionné
         result = torch.where(
-            valid_mask.unsqueeze(1),  # Étendre pour dimension Y
+            valid_mask,  # Maintenant (Z, Y, X)
             result,
             torch.zeros_like(result),
         )
 
         image_amplitude[t] = result
+
+    # CORRECTION: Vérification avant sauvegarde
+    print(f"  Amplitude computed: shape={image_amplitude.shape}")
+    print(f"  Min/Max: {torch.min(image_amplitude):.6f} / {torch.max(image_amplitude):.6f}")
+    print(f"  Non-zero elements: {torch.count_nonzero(image_amplitude)}")
+
+    if torch.numel(image_amplitude) == 0:
+        raise ValueError("Image amplitude computation resulted in empty tensor!")
 
     if save_results_amplitude:
         if output_directory is None:
@@ -383,6 +394,7 @@ def compute_image_amplitude_GPU(
             )
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
+        print("shape image_amplitude:", image_amplitude.shape)
         export_data_GPU(
             image_amplitude,
             output_directory,
