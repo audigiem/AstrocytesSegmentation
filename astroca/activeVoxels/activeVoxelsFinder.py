@@ -165,6 +165,12 @@ def voxels_finder(
     This version delegates to CPU or GPU based on `use_gpu`.
     """
     if use_gpu:
+        if not torch.cuda.is_available():
+            raise RuntimeError("GPU is not available, but use_gpu is set to True.")
+        if isinstance(filtered_data, np.ndarray):
+            filtered_data = torch.tensor(filtered_data, dtype=torch.float32)
+        if isinstance(dF, np.ndarray):
+            dF = torch.tensor(dF, dtype=torch.float32)
         return voxels_finder_GPU(filtered_data, dF, std_noise, index_xmin, index_xmax)
     else:
         return voxels_finder_CPU(filtered_data, dF, std_noise, index_xmin, index_xmax)
@@ -229,7 +235,7 @@ def voxels_finder_GPU(
     T, Z, Y, X = dF.shape
     device = dF.device
 
-    filtered_data = filtered_data.to(device)
+    # filtered_data = filtered_data.to(device)
 
     # std_noise en tensor GPU
     std_noise_tensor = torch.tensor(std_noise, dtype=dF.dtype, device=device)
