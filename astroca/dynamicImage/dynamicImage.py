@@ -27,9 +27,18 @@ def compute_dynamic_image(
     Wrapper function to compute the dynamic image (dF = F - F0) and estimate the noise level.
     """
     if params.get("GPU_AVAILABLE", 0) == 1:
-        return compute_dynamic_image_GPU(
+        # return compute_dynamic_image_GPU(
+        #     data, F0, index_xmin, index_xmax, time_window, params
+        # )
+        # redirect to CPU version for now (quicker)
+        data = data.cpu().numpy() if isinstance(data, torch.Tensor) else data
+        F0 = F0.cpu().numpy() if isinstance(F0, torch.Tensor) else F0
+        index_xmin = index_xmin.cpu().numpy() if isinstance(index_xmin, torch.Tensor) else index_xmin
+        index_xmax = index_xmax.cpu().numpy() if isinstance(index_xmax, torch.Tensor) else index_xmax
+        dF, mean_noise = compute_dynamic_image_CPU(
             data, F0, index_xmin, index_xmax, time_window, params
         )
+        return torch.from_numpy(dF), mean_noise
     else:
         return compute_dynamic_image_CPU(
             data, F0, index_xmin, index_xmax, time_window, params
@@ -144,7 +153,9 @@ def compute_dynamic_image_GPU(
     # Extract necessary parameters
     required_keys = {"save", "paths"}
     if not required_keys.issubset(params.keys()):
-        raise ValueError(f"Missing required parameters: {required_keys - params.keys()}")
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params.keys()}"
+        )
 
     save_results = int(params["save"]["save_df"]) == 1
     output_directory = params["paths"]["output_dir"]
@@ -174,9 +185,8 @@ def compute_dynamic_image_GPU(
         x_coords = torch.arange(X, device=device, dtype=torch.long)
 
         # Vectorisation complète sur Z
-        spatial_mask = (
-                (x_coords.unsqueeze(0) >= index_xmin.unsqueeze(1)) &
-                (x_coords.unsqueeze(0) <= index_xmax.unsqueeze(1))
+        spatial_mask = (x_coords.unsqueeze(0) >= index_xmin.unsqueeze(1)) & (
+            x_coords.unsqueeze(0) <= index_xmax.unsqueeze(1)
         )  # Shape: (Z, X)
 
         # 5. Application efficace du masque
@@ -197,7 +207,9 @@ def compute_dynamic_image_GPU(
 
     if save_results:
         if output_directory is None:
-            raise ValueError("Output directory must be specified when save_results is True.")
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
         os.makedirs(output_directory, exist_ok=True)
         export_data_GPU(
             dF,

@@ -17,11 +17,9 @@ from astroca.dynamicImage.dynamicImage import (
 )
 from astroca.dynamicImage.backgroundEstimator import (
     background_estimation_single_block,
-    background_estimation_single_block_numba,
 )
 from astroca.parametersNoise.parametersNoise import (
     estimate_std_over_time,
-    estimate_std_over_time_optimized,
 )
 from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
 from astroca.events.eventDetector import detect_calcium_events_opti
@@ -78,6 +76,10 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
 
     # === Configuration ===
     params = run_step("read_config", read_config)
+    if params["general"]["execution_mode"] == "cpu":
+        print("Forceing CPU execution mode.")
+        GPU_AVAILABLE = False
+
     params["GPU_AVAILABLE"] = 1 if GPU_AVAILABLE else 0
 
     # === Loading ===
@@ -224,6 +226,9 @@ def run_pipeline():
     time_start = time.time()
     params = read_config()
     GPU_AVAILABLE = torch.cuda.is_available()
+    if params["general"]["execution_mode"] == "cpu":
+        print("Forceing CPU execution mode.")
+        GPU_AVAILABLE = False
     params["GPU_AVAILABLE"] = 1 if GPU_AVAILABLE else 0
 
     print("Parameters loaded successfully")
