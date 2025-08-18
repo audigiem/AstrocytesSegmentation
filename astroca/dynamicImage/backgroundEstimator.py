@@ -4,7 +4,10 @@
 @detail Applies a moving mean or median filter to estimate the fluorescence baseline (F0) and supports min or percentile aggregation.
 """
 
-from astroca.tools.exportData import export_data
+from astroca.tools.exportData import (
+    export_data,
+    export_data_GPU_with_memory_optimization as export_data_GPU,
+)
 from astroca.tools.medianComputationTools import quickselect_median, quickselect_kth
 import os
 import numpy as np
@@ -17,8 +20,8 @@ import torch
 # @profile
 def background_estimation_single_block(
     data: np.ndarray | torch.Tensor,
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
     params_values: dict,
 ) -> np.ndarray | torch.Tensor:
     """
@@ -327,8 +330,8 @@ def sliding_window_view_torch(
 
 def background_estimation_GPU(
     data: torch.Tensor,
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: torch.Tensor,
+    index_xmax: torch.Tensor,
     params_values: dict,
 ) -> torch.Tensor:
     """
@@ -431,12 +434,11 @@ def background_estimation_GPU(
         if output_directory is None:
             raise ValueError("Output directory must be specified.")
         os.makedirs(output_directory, exist_ok=True)
-        F0_cpu = F0.detach().cpu().numpy()
-        export_data(
-            F0_cpu,
+        export_data_GPU(
+            F0,
             output_directory,
             export_as_single_tif=True,
-            file_name="F0_estimated",
+            file_name="F0",
         )
 
     print("=" * 60)

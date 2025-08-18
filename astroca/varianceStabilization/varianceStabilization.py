@@ -7,7 +7,10 @@ The transform is applied only within the meaningful X-boundaries [index_xmin[z],
 
 import numpy as np
 import os
-from astroca.tools.exportData import export_data
+from astroca.tools.exportData import (
+    export_data,
+    export_data_GPU_with_memory_optimization as export_data_GPU,
+)
 from tqdm import tqdm
 import torch
 from typing import Union
@@ -74,7 +77,7 @@ def compute_variance_stabilization_CPU(
 
 
 def compute_variance_stabilization_GPU(
-    data: torch.Tensor, index_xmin: np.ndarray, index_xmax: np.ndarray, params: dict
+    data: torch.Tensor, index_xmin: torch.Tensor, index_xmax: torch.Tensor, params: dict
 ) -> torch.Tensor:
     """
     Applies Anscombe variance stabilization transform on GPU using PyTorch.
@@ -89,23 +92,17 @@ def compute_variance_stabilization_GPU(
     """
     print("=== Applying variance stabilization on GPU using PyTorch... ===")
 
-    device = torch.device("cuda")
-    index_xmin_torch = torch.from_numpy(index_xmin).to(device)
-    index_xmax_torch = torch.from_numpy(index_xmax).to(device)
-
     T, Z, Y, X = data.shape
 
     for z in tqdm(
         range(Z), desc="Variance stabilization per Z-slice (GPU)", unit="slice"
     ):
-        x_min = index_xmin_torch[z].item()
-        x_max = index_xmax_torch[z].item() + 1
+        x_min = index_xmin[z].item()
+        x_max = index_xmax[z].item() + 1
         if x_min >= x_max:
             continue
         sub_volume = data[:, z, :, x_min:x_max]
         sub_volume.add_(3.0 / 8.0).sqrt_().mul_(2.0)
-
-    result = data.cpu().numpy()
 
     if int(params["save"]["save_variance_stabilization"]) == 1:
         out_dir = params["paths"]["output_dir"]
@@ -114,8 +111,8 @@ def compute_variance_stabilization_GPU(
                 "Output directory must be specified when save_results is True."
             )
         os.makedirs(out_dir, exist_ok=True)
-        export_data(
-            result,
+        export_data_GPU(
+            data,
             out_dir,
             export_as_single_tif=True,
             file_name="variance_stabilized_sequence",
@@ -127,8 +124,8 @@ def compute_variance_stabilization_GPU(
 
 def compute_variance_stabilization(
     data: np.ndarray | torch.Tensor,
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
     params: dict,
 ) -> np.ndarray | torch.Tensor:
     """
@@ -248,8 +245,8 @@ def anscombe_inverse_CPU(
 
 def anscombe_inverse_GPU(
     data: torch.Tensor,
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: torch.Tensor,
+    index_xmax: torch.Tensor,
     param_values: dict,
 ) -> torch.Tensor:
     """
@@ -269,18 +266,14 @@ def anscombe_inverse_GPU(
     _, Z, Y, X = data.shape
     device = data.device
 
-    # Convertir les indices en tenseurs GPU
-    index_xmin_torch = torch.from_numpy(index_xmin).to(device)
-    index_xmax_torch = torch.from_numpy(index_xmax).to(device)
-
     # Créer grille de coordonnées
     z_coords = torch.arange(Z, device=device).unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
     y_coords = torch.arange(Y, device=device).unsqueeze(0).unsqueeze(2)  # (1, Y, 1)
     x_coords = torch.arange(X, device=device).unsqueeze(0).unsqueeze(0)  # (1, 1, X)
 
     # Étendre les indices pour broadcasting
-    index_xmin_expanded = index_xmin_torch.unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
-    index_xmax_expanded = index_xmax_torch.unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
+    index_xmin_expanded = index_xmin.unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
+    index_xmax_expanded = index_xmax.unsqueeze(1).unsqueeze(2)  # (Z, 1, 1)
 
     # Créer masque vectorisé complet
     valid_mask = (x_coords >= index_xmin_expanded) & (x_coords <= index_xmax_expanded)

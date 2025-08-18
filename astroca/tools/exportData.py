@@ -264,7 +264,7 @@ def export_data_GPU_with_memory_optimization(
     export_as_single_tif: bool = True,
     file_name: str = "exported_sequence",
     directory_name: str = "exported_data",
-    max_memory_usage_mb: float = 1024.0,  # 1GB par défaut
+    max_memory_usage_mb: float = 2048.0,  # 2GB par défaut
 ):
     """
     Export avec optimisation mémoire automatique
