@@ -40,7 +40,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
     @param enable_memory_profiling: If True, enables memory profiling using tracemalloc.
     """
 
-    # logger = RunLogger(config_path="config.ini", base_dir="runs")
+    logger = RunLogger(config_path="config.ini", base_dir="runs")
 
     def run_step(name, func, *args, **kwargs) -> Any:
         """
@@ -210,7 +210,7 @@ def run_pipeline_with_statistics(enable_memory_profiling: bool = False) -> None:
             print(f"{step}: {step_time:.2f}s ({percent:.2f}%)")
 
     print("\n")
-    # logger.save_summary(summary)
+    logger.save_summary(summary)
 
 
 def run_pipeline():
@@ -219,7 +219,7 @@ def run_pipeline():
     @brief Run the main pipeline with logging support.
     @return None
     """
-    # logger = RunLogger(config_path="config.ini", base_dir="runs")
+    logger = RunLogger(config_path="config.ini", base_dir="runs")
 
     time_start = time.time()
     params = read_config()
@@ -289,7 +289,7 @@ def run_pipeline():
         "memory_profiling": False,
     }
 
-    # logger.save_summary(summary)
+    logger.save_summary(summary)
 
 
 def main():

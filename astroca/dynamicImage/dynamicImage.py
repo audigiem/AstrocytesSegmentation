@@ -135,17 +135,16 @@ def compute_dynamic_image_GPU(
         - output_directory: Directory to save the result if save_results is True
     @return: (dF: tensor of shape (T, Z, Y, X), mean_noise: float)
     """
-    print(
-        "=== Computing dynamic image (dF = F - F0) and estimating noise on GPU... ==="
-    )
+    print("=== [GPU] Computing dynamic image (ULTRA OPTIMIZED)... ===")
     print(" - [GPU] Computing dynamic image...")
 
-    # Extract necessary parameters
+    # Validation des paramètres
     required_keys = {"save", "paths"}
     if not required_keys.issubset(params.keys()):
         raise ValueError(
             f"Missing required parameters: {required_keys - params.keys()}"
         )
+
     save_results = int(params["save"]["save_df"]) == 1
     output_directory = params["paths"]["output_dir"]
 
@@ -153,42 +152,50 @@ def compute_dynamic_image_GPU(
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
 
-    # Création de toutes les grilles de coordonnées
-    t_grid, z_grid, y_grid, x_grid = torch.meshgrid(
-        torch.arange(T, device=device),
-        torch.arange(Z, device=device),
-        torch.arange(Y, device=device),
-        torch.arange(X, device=device),
-        indexing="ij",
-    )
+    # Conversion des indices vers le même device si nécessaire
+    if isinstance(index_xmin, np.ndarray):
+        index_xmin = torch.from_numpy(index_xmin).to(device, non_blocking=True)
+    if isinstance(index_xmax, np.ndarray):
+        index_xmax = torch.from_numpy(index_xmax).to(device, non_blocking=True)
 
-    # Calcul vectorisé des indices temporels
-    it_grid = torch.clamp(t_grid // time_window, 0, nbF0 - 1)  # (T, Z, Y, X)
+    with torch.no_grad():
+        # Calcul optimisé des indices temporels (broadcasting efficace)
+        t_indices = torch.arange(T, device=device, dtype=torch.int32)
+        it_indices = torch.clamp(t_indices // time_window, 0, nbF0 - 1)  # (T,)
 
-    # Sélection vectorisée complète des backgrounds
-    F0_expanded = F0[it_grid, z_grid, y_grid, x_grid]  # (T, Z, Y, X)
+        # Sélection des backgrounds par indexation avancée optimisée
+        # Évite la création de grilles complètes
+        F0_selected = F0[it_indices]  # (T, Z, Y, X) - broadcasting automatique
 
-    # Calcul vectorisé complet de dF
-    dF = data - F0_expanded
+        # Calcul vectorisé de dF = data - F0_selected
+        dF = data - F0_selected  # Opération vectorisée pure
 
-    # Masque vectorisé des régions valides
-    xmin_grid = index_xmin[z_grid]  # (T, Z, Y, X)
-    xmax_grid = index_xmax[z_grid]  # (T, Z, Y, X)
-    valid_mask = (x_grid >= xmin_grid) & (x_grid <= xmax_grid)
+        # Création optimisée du masque de validité
+        # Évite les grilles complètes en utilisant le broadcasting
+        x_coords = torch.arange(X, device=device, dtype=torch.int32)  # (X,)
 
-    # Calcul de la médiane sur les régions valides
-    valid_dF = dF[valid_mask]
-    mean_noise = float(torch.median(valid_dF))
+        # Broadcasting intelligent : (1, Z, 1, 1) avec (X,) -> (1, Z, 1, X)
+        valid_mask = (x_coords.view(1, 1, 1, X) >= index_xmin.view(1, Z, 1, 1)) & (
+            x_coords.view(1, 1, 1, X) <= index_xmax.view(1, Z, 1, 1)
+        )  # (1, Z, 1, X)
+
+        # Expansion efficace pour toutes les dimensions temporelles et Y
+        valid_mask = valid_mask.expand(T, Z, Y, X)  # (T, Z, Y, X)
+
+        # Calcul optimisé de la médiane uniquement sur les régions valides
+        valid_dF = dF[valid_mask]
+        mean_noise = float(torch.median(valid_dF))
 
     print(f"    [GPU] mean_Noise = {mean_noise:.6f}")
+    print(f"    [GPU] Processed {valid_mask.sum().item()} valid voxels")
 
     if save_results:
         if output_directory is None:
             raise ValueError(
                 "Output directory must be specified when save_results is True."
             )
-        if not os.path.exists(output_directory):
-            os.makedirs(output_directory)
+
+        os.makedirs(output_directory, exist_ok=True)
         export_data_GPU(
             dF,
             output_directory,
