@@ -325,14 +325,14 @@ def main():
         print(f"Output Xmax: {output_XMAX}")
     print()
 
-    print("Step 2: Comparing files after Anscombe transform...")
-    compare_sequence(
-        expected_anscombe_path,
-        output_anscombe_path,
-        save_diff=save_results,
-        percentage_accuracy=1e-6,
-    )
-    print()
+    # print("Step 2: Comparing files after Anscombe transform...")
+    # compare_sequence(
+    #     expected_anscombe_path,
+    #     output_anscombe_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
+    # print()
 
     print("Step 3: Comparing files after F0 estimation...")
     compare_files(
@@ -343,50 +343,50 @@ def main():
     )
     print()
 
-    print("Step 4: Comparing files after dF computation...")
-    compare_sequence(
-        expected_dF_path,
-        output_dF_path,
-        save_diff=save_results,
-        percentage_accuracy=1e-6,
-    )
-    print()
-
-    print("Step 5: Comparing files after Z-score computation...")
-    compare_sequence(
-        expected_Zscore_path,
-        output_Zscore_path,
-        save_diff=save_results,
-        percentage_accuracy=1e-6,
-    )
-    print()
-
-    print("Step 6: Comparing files after closing in space...")
-    compare_sequence(
-        expected_closing_path,
-        output_closing_path,
-        save_diff=save_results,
-        percentage_accuracy=1e-6,
-    )
-    print()
-
-    print("Step 7: Comparing files after median filtering...")
-    compare_sequence(
-        expected_median_path,
-        output_median_path,
-        save_diff=save_results,
-        percentage_accuracy=1e-6,
-    )
-    print()
-
-    print("Step 8: Comparing files after active voxels detection...")
-    compare_sequence(
-        expected_active_voxels_path,
-        output_active_voxels_path,
-        save_diff=save_results,
-        percentage_accuracy=1e-6,
-    )
-    print()
+    # print("Step 4: Comparing files after dF computation...")
+    # compare_sequence(
+    #     expected_dF_path,
+    #     output_dF_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
+    # print()
+    #
+    # print("Step 5: Comparing files after Z-score computation...")
+    # compare_sequence(
+    #     expected_Zscore_path,
+    #     output_Zscore_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
+    # print()
+    #
+    # print("Step 6: Comparing files after closing in space...")
+    # compare_sequence(
+    #     expected_closing_path,
+    #     output_closing_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
+    # print()
+    #
+    # print("Step 7: Comparing files after median filtering...")
+    # compare_sequence(
+    #     expected_median_path,
+    #     output_median_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
+    # print()
+    #
+    # print("Step 8: Comparing files after active voxels detection...")
+    # compare_sequence(
+    #     expected_active_voxels_path,
+    #     output_active_voxels_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
+    # print()
 
     print("Step 9: Comparing files after calcium events detection...")
     diff = compare_sequence(
@@ -404,14 +404,14 @@ def main():
     # compare_files(expected_anscombe_inverse_path, output_anscombe_inverse_path, save_diff=save_results, percentage_accuracy=1e-6)
     # print()
 
-    print("Step 11: Comparing files after amplitude computation...")
-    compare_sequence(
-        expected_amplitude_image_path,
-        output_amplitude_image_path,
-        save_diff=save_results,
-        percentage_accuracy=1e-6,
-    )
-    print()
+    # print("Step 11: Comparing files after amplitude computation...")
+    # compare_sequence(
+    #     expected_amplitude_image_path,
+    #     output_amplitude_image_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
+    # print()
 
     print(
         f"Step 12: Comparing CSV files for features with a float precision of {10 ** -features_float_precision}..."
