@@ -390,8 +390,8 @@ def background_estimation_GPU(
     for z in tqdm(
         range(Z), desc="Estimating background per Z-slice (GPU)", unit="slice"
     ):
-        x_min = int(index_xmin[z].item())
-        x_max = int(index_xmax[z].item())
+        x_min = int(index_xmin[z])
+        x_max = int(index_xmax[z])
 
         if not (0 <= x_min < x_max < X):
             continue
