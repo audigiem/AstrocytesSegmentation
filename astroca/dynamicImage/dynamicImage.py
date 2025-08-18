@@ -203,8 +203,8 @@ def compute_dynamic_image_GPU(
 def compute_image_amplitude(
     data_cropped: Union[np.ndarray, torch.Tensor],
     F0: Union[np.ndarray, torch.Tensor],
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
     param_values: dict,
 ) -> Union[np.ndarray, torch.Tensor]:
     """
@@ -302,8 +302,8 @@ def compute_image_amplitude_CPU(
 def compute_image_amplitude_GPU(
     data_cropped: torch.Tensor,
     F0: torch.Tensor,
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: torch.Tensor,
+    index_xmax: torch.Tensor,
     param_values: dict,
 ) -> torch.Tensor:
     """
@@ -326,15 +326,11 @@ def compute_image_amplitude_GPU(
     T, Z, Y, X = data_cropped.shape
     device = data_cropped.device
 
-    # Convertir les indices en tenseurs GPU
-    index_xmin_torch = torch.from_numpy(index_xmin).to(device)
-    index_xmax_torch = torch.from_numpy(index_xmax).to(device)
-
     # Créer masque vectorisé
     z_coords = torch.arange(Z, device=device)
     x_coords = torch.arange(X, device=device)
     zz, xx = torch.meshgrid(z_coords, x_coords, indexing="ij")
-    valid_mask = (xx >= index_xmin_torch[zz]) & (xx <= index_xmax_torch[zz])
+    valid_mask = (xx >= index_xmin[zz]) & (xx <= index_xmax[zz])
 
     # Initialiser le résultat
     image_amplitude = torch.zeros_like(data_cropped, dtype=torch.float32, device=device)
@@ -364,9 +360,10 @@ def compute_image_amplitude_GPU(
             raise ValueError(
                 "Output directory must be specified when save_results is True."
             )
-        os.makedirs(output_directory, exist_ok=True)
-        export_data(
-            image_amplitude.cpu().numpy(),
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        export_data_GPU(
+            image_amplitude,
             output_directory,
             export_as_single_tif=True,
             file_name="amplitude",

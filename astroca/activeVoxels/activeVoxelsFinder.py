@@ -10,7 +10,10 @@ from tqdm import tqdm
 from astroca.activeVoxels.zScore import compute_z_score
 from astroca.activeVoxels.spaceMorphology import closing_morphology_in_space
 from astroca.activeVoxels.medianFilter import unified_median_filter_3d
-from astroca.tools.exportData import export_data, export_data_GPU_with_memory_optimization as export_data_GPU
+from astroca.tools.exportData import (
+    export_data,
+    export_data_GPU_with_memory_optimization as export_data_GPU,
+)
 import torch
 
 
@@ -96,7 +99,9 @@ def find_active_voxels(
             )
         else:
             if isinstance(data, torch.Tensor):
-                raise TypeError("When GPU is not available, data must be a numpy.ndarray.")
+                raise TypeError(
+                    "When GPU is not available, data must be a numpy.ndarray."
+                )
             export_data(
                 data,
                 output_directory,
@@ -116,7 +121,9 @@ def find_active_voxels(
             )
         else:
             if isinstance(data, torch.Tensor):
-                raise TypeError("When GPU is not available, data must be a numpy.ndarray.")
+                raise TypeError(
+                    "When GPU is not available, data must be a numpy.ndarray."
+                )
             export_data(
                 data,
                 output_directory,
@@ -140,7 +147,9 @@ def find_active_voxels(
             )
         else:
             if isinstance(data, torch.Tensor):
-                raise TypeError("When GPU is not available, data must be a numpy.ndarray.")
+                raise TypeError(
+                    "When GPU is not available, data must be a numpy.ndarray."
+                )
             export_data(
                 data,
                 output_directory,
@@ -164,7 +173,9 @@ def find_active_voxels(
             )
         else:
             if isinstance(active_voxels, torch.Tensor):
-                raise TypeError("When GPU is not available, data must be a numpy.ndarray.")
+                raise TypeError(
+                    "When GPU is not available, data must be a numpy.ndarray."
+                )
             export_data(
                 active_voxels,
                 output_directory,

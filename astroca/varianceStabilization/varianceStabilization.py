@@ -189,8 +189,8 @@ def check_variance(
 
 def anscombe_inverse(
     data: Union[np.ndarray, torch.Tensor],
-    index_xmin: np.ndarray,
-    index_xmax: np.ndarray,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
     param_values: dict,
 ) -> Union[np.ndarray, torch.Tensor]:
     """
@@ -318,7 +318,6 @@ def anscombe_inverse_GPU(
             output_directory,
             export_as_single_tif=True,
             file_name="anscombe_inverse_sequence",
-            async_export=True,
         )
 
     print("=" * 60 + "\n")
