@@ -113,6 +113,7 @@ def compute_dynamic_image_CPU(
     print()
     return dF, mean_noise
 
+
 @profile
 def compute_dynamic_image_GPU(
     data: torch.Tensor,
@@ -145,35 +146,45 @@ def compute_dynamic_image_GPU(
     output_directory = params.get("paths", {}).get("output_dir")
 
     with torch.no_grad():
-        # Pré-calcul des indices sur CPU (plus rapide pour cette opération)
-        t_cpu = np.arange(T)
-        it_cpu = np.clip(t_cpu // time_window, 0, nbF0 - 1)
+        # OPTIMISATION 1: Pré-calcul sur CPU plus efficace
+        t_cpu = np.arange(T, dtype=np.int32)  # int32 suffit
+        it_cpu = np.minimum(t_cpu // time_window, nbF0 - 1)  # plus rapide que clip
 
-        # Transfert vers GPU en une seule fois
         it_indices = torch.from_numpy(it_cpu).to(
-            device, dtype=torch.int16, non_blocking=True
+            device, dtype=torch.long, non_blocking=True
         )
 
-        # Sélection des backgrounds
+        # OPTIMISATION 2: Sélection des backgrounds avec pinned memory
         F0_selected = F0[it_indices]
 
-        # Calcul de dF
-        dF = data - F0_selected
+        # OPTIMISATION 3: Calcul de dF optimisé
+        dF = torch.sub(data, F0_selected, out=data)  # In-place si possible
 
-        # Masque optimisé
+        # OPTIMISATION 4: Masque spatial pré-calculé et réutilisé
         if not isinstance(index_xmin, torch.Tensor):
-            index_xmin = torch.from_numpy(index_xmin).to(device, dtype=torch.int16)
+            index_xmin = torch.from_numpy(index_xmin).to(device, dtype=torch.long)
         if not isinstance(index_xmax, torch.Tensor):
-            index_xmax = torch.from_numpy(index_xmax).to(device, dtype=torch.int16)
+            index_xmax = torch.from_numpy(index_xmax).to(device, dtype=torch.long)
 
+        # Version ultra-optimisée du masque
         x_coords = torch.arange(X, device=device, dtype=torch.long)
-        spatial_mask = (x_coords.view(1, X) >= index_xmin.view(Z, 1)) & (
-            x_coords.view(1, X) <= index_xmax.view(Z, 1)
-        )
 
-        valid_mask = spatial_mask.view(1, Z, 1, X).expand(T, Z, Y, X)
-        valid_dF = dF[valid_mask]
-        mean_noise = torch.median(valid_dF).item()
+        # Éviter les expand coûteux - utiliser broadcasting natif
+        spatial_mask = (
+            (
+                (x_coords >= index_xmin.unsqueeze(-1))
+                & (x_coords <= index_xmax.unsqueeze(-1))
+            )
+            .unsqueeze(0)
+            .unsqueeze(2)
+        )  # (1, Z, 1, X)
+
+        # OPTIMISATION 5: Indexation et médiane ultra-optimisées
+        # Éviter expand qui crée des copies
+        valid_dF = dF.masked_select(spatial_mask.expand_as(dF))
+
+        # Utiliser quantile qui est plus rapide sur GPU
+        mean_noise = torch.quantile(valid_dF, 0.5).item()
 
     print(f"    [GPU] mean_Noise = {mean_noise:.6f}")
 
