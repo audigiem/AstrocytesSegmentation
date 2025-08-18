@@ -84,7 +84,9 @@ def convert_features_to_cpu(features: dict) -> dict:
     return features_cpu
 
 
-def precompute_event_voxel_indices_GPU(calcium_events: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+def precompute_event_voxel_indices_GPU(
+    calcium_events: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     GPU version of precompute_event_voxel_indices - EXACT match with CPU
     """
@@ -121,7 +123,9 @@ def compute_features_GPU(
     features = {}
     coords_all, event_ids_all = precompute_event_voxel_indices_GPU(calcium_events)
 
-    for event_id in tqdm(range(1, events_ids + 1), desc="Computing features per event (GPU)"):
+    for event_id in tqdm(
+        range(1, events_ids + 1), desc="Computing features per event (GPU)"
+    ):
         mask = event_ids_all == event_id
         if not torch.any(mask):
             continue
@@ -284,4 +288,3 @@ def write_csv_features_GPU(features: dict, output_directory: str) -> None:
     output_file = os.path.join(output_directory, "Features.csv")
     df.to_csv(output_file, index_label="Label", sep=";")  # Même séparateur
     print(f"Features saved to {output_file}")
-

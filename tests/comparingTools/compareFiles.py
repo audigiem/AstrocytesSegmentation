@@ -296,6 +296,12 @@ def main():
     expected_csv_path = EXPECTED_DIR_PATH + "Features.csv"
     output_csv_path = OUTPUT_DIR_PATH + "Features.csv"
 
+    expected_hotspots_path = EXPECTED_DIR_PATH + "HotSpots.csv"
+    output_hotspots_path = OUTPUT_DIR_PATH + "HotSpots.csv"
+
+    expected_coactifs_events_path = EXPECTED_DIR_PATH + "coactive.csv"
+    output_coactifs_events_path = OUTPUT_DIR_PATH + "coactive.csv"
+
     save_results = False
     features_float_precision = 3
 
@@ -304,8 +310,8 @@ def main():
 
     # compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
     compare_sequence(
-        expected_boundaries_path,
-        output_boundaries_path,
+        expected_cropped_path,
+        output_cropped_path,
         save_diff=save_results,
         percentage_accuracy=1e-6,
     )
@@ -418,6 +424,20 @@ def main():
     )
     compare_csv_files(
         expected_csv_path, output_csv_path, float_precision=features_float_precision
+    )
+    print()
+
+    compare_csv_files(
+        expected_hotspots_path,
+        output_hotspots_path,
+        float_precision=features_float_precision,
+    )
+    print()
+
+    compare_csv_files(
+        expected_coactifs_events_path,
+        output_coactifs_events_path,
+        float_precision=features_float_precision,
     )
     print()
 

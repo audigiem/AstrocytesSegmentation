@@ -27,18 +27,18 @@ def compute_dynamic_image(
     Wrapper function to compute the dynamic image (dF = F - F0) and estimate the noise level.
     """
     if params.get("GPU_AVAILABLE", 0) == 1:
-        # return compute_dynamic_image_GPU(
-        #     data, F0, index_xmin, index_xmax, time_window, params
-        # )
-        # redirect to CPU version for now (quicker)
-        data = data.cpu().numpy() if isinstance(data, torch.Tensor) else data
-        F0 = F0.cpu().numpy() if isinstance(F0, torch.Tensor) else F0
-        index_xmin = index_xmin.cpu().numpy() if isinstance(index_xmin, torch.Tensor) else index_xmin
-        index_xmax = index_xmax.cpu().numpy() if isinstance(index_xmax, torch.Tensor) else index_xmax
-        dF, mean_noise = compute_dynamic_image_CPU(
+        return compute_dynamic_image_GPU(
             data, F0, index_xmin, index_xmax, time_window, params
         )
-        return torch.from_numpy(dF), mean_noise
+        # redirect to CPU version for now (quicker)
+        # data = data.cpu().numpy() if isinstance(data, torch.Tensor) else data
+        # F0 = F0.cpu().numpy() if isinstance(F0, torch.Tensor) else F0
+        # index_xmin = index_xmin.cpu().numpy() if isinstance(index_xmin, torch.Tensor) else index_xmin
+        # index_xmax = index_xmax.cpu().numpy() if isinstance(index_xmax, torch.Tensor) else index_xmax
+        # dF, mean_noise = compute_dynamic_image_CPU(
+        #     data, F0, index_xmin, index_xmax, time_window, params
+        # )
+        # return torch.from_numpy(dF), mean_noise
     else:
         return compute_dynamic_image_CPU(
             data, F0, index_xmin, index_xmax, time_window, params
@@ -121,7 +121,6 @@ def compute_dynamic_image_CPU(
 
     print()
     return dF, mean_noise
-
 
 
 def compute_dynamic_image_GPU(
