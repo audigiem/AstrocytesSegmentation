@@ -113,6 +113,7 @@ def compute_dynamic_image_CPU(
     print()
     return dF, mean_noise
 
+
 @profile
 def compute_dynamic_image_GPU(
     data: torch.Tensor,
@@ -149,36 +150,46 @@ def compute_dynamic_image_GPU(
     save_results = int(params["save"]["save_df"]) == 1
     output_directory = params["paths"]["output_dir"]
 
+    device = data.device
     T, Z, Y, X = data.shape
     nbF0 = F0.shape[0]
 
-    dF = data.clone()
-
-    width_without_zeros = sum(
-        max(0, index_xmax[z].item() - index_xmin[z].item() + 1) for z in range(Z)
+    # Création de toutes les grilles de coordonnées
+    t_grid, z_grid, y_grid, x_grid = torch.meshgrid(
+        torch.arange(T, device=device),
+        torch.arange(Z, device=device),
+        torch.arange(Y, device=device),
+        torch.arange(X, device=device),
+        indexing="ij",
     )
-    flattened_dF = torch.empty(
-        T * Y * width_without_zeros, dtype=torch.float32, device=data.device
-    )
-    k = 0
 
-    for t in tqdm(range(T), desc="Computing ΔF over time", unit="frame"):
-        it = min(t // time_window, nbF0 - 1)
-        for z in range(Z):
-            x_min, x_max = index_xmin[z], index_xmax[z] + 1
-            if x_min >= x_max:
-                continue
-            delta = data[t, z, :, x_min:x_max] - F0[it, z, :, x_min:x_max]
-            dF[t, z, :, x_min:x_max] = delta
-            n = x_max - x_min
-            flattened_dF[k : k + Y * n] = delta.reshape(-1)
-            k += Y * n
+    # Calcul vectorisé des indices temporels
+    it_grid = torch.clamp(t_grid // time_window, 0, nbF0 - 1)  # (T, Z, Y, X)
 
-    mean_noise = float(torch.median(flattened_dF[:k]))
-    print(f"    mean_Noise = {mean_noise:.6f}")
+    # Sélection vectorisée complète des backgrounds
+    F0_expanded = F0[it_grid, z_grid, y_grid, x_grid]  # (T, Z, Y, X)
 
-    if save_results and output_directory:
-        os.makedirs(output_directory, exist_ok=True)
+    # Calcul vectorisé complet de dF
+    dF = data - F0_expanded
+
+    # Masque vectorisé des régions valides
+    xmin_grid = index_xmin[z_grid]  # (T, Z, Y, X)
+    xmax_grid = index_xmax[z_grid]  # (T, Z, Y, X)
+    valid_mask = (x_grid >= xmin_grid) & (x_grid <= xmax_grid)
+
+    # Calcul de la médiane sur les régions valides
+    valid_dF = dF[valid_mask]
+    mean_noise = float(torch.median(valid_dF))
+
+    print(f"    [GPU] mean_Noise = {mean_noise:.6f}")
+
+    if save_results:
+        if output_directory is None:
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
         export_data_GPU(
             dF,
             output_directory,

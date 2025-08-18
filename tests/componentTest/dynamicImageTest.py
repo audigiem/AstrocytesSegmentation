@@ -28,14 +28,7 @@ def test_dynamic_image_processing():
 
     T, Z, Y, X = data.shape
     params = {"save": {"save_df": 0}, "paths": {"output_dir": None}}
-    dF, mean_noise = compute_dynamic_image_GPU(
-        data,
-        F0,
-        xmin,
-        xmax,
-        T,
-        params
-    )
+    dF, mean_noise = compute_dynamic_image_GPU(data, F0, xmin, xmax, T, params)
 
 
 if __name__ == "__main__":

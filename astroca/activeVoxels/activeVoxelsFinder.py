@@ -17,7 +17,7 @@ from astroca.tools.exportData import (
 import torch
 
 
-@profile
+# @profile
 def find_active_voxels(
     dF: np.ndarray | torch.Tensor,
     std_noise: float,
