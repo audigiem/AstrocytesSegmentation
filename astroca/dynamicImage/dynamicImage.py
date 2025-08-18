@@ -113,7 +113,7 @@ def compute_dynamic_image_CPU(
     print()
     return dF, mean_noise
 
-
+@profile
 def compute_dynamic_image_GPU(
     data: torch.Tensor,
     F0: torch.Tensor,
@@ -136,7 +136,6 @@ def compute_dynamic_image_GPU(
     @return: (dF: tensor of shape (T, Z, Y, X), mean_noise: float)
     """
     print("=== [GPU] Computing dynamic image (ULTRA OPTIMIZED)... ===")
-    print(" - [GPU] Computing dynamic image...")
 
     device = data.device
     T, Z, Y, X = data.shape
@@ -167,7 +166,7 @@ def compute_dynamic_image_GPU(
         if not isinstance(index_xmax, torch.Tensor):
             index_xmax = torch.from_numpy(index_xmax).to(device, dtype=torch.int16)
 
-        x_coords = torch.arange(X, device=device, dtype=torch.int16)
+        x_coords = torch.arange(X, device=device, dtype=torch.long)
         spatial_mask = (x_coords.view(1, X) >= index_xmin.view(Z, 1)) & (
             x_coords.view(1, X) <= index_xmax.view(Z, 1)
         )
