@@ -15,6 +15,8 @@ from astroca.tools.exportData import (
     export_data_GPU_with_memory_optimization as export_data_GPU,
 )
 import torch
+from typing import Union, Tuple, List
+import threading
 
 
 # @profile
@@ -25,7 +27,7 @@ def find_active_voxels(
     index_xmin: np.ndarray | torch.Tensor,
     index_xmax: np.ndarray | torch.Tensor,
     params_values: dict,
-) -> np.ndarray | torch.Tensor:
+) -> Tuple[Union[np.ndarray, torch.Tensor], Union[None, List[threading.Thread]]]:
     """
     @brief Find active voxels in a 3D+time image sequence based on z-score
     thresholding.
@@ -83,6 +85,7 @@ def find_active_voxels(
         index_xmax,
         GPU_AVAILABLE,
     )
+    thread_zScore = None
     if save_results:
         if output_directory is None:
             raise ValueError(
@@ -92,7 +95,7 @@ def find_active_voxels(
             os.makedirs(output_directory)
         # convert data to np.ndarray if it's a torch.Tensor
         if GPU_AVAILABLE:
-            export_data_GPU(
+            thread_zScore = export_data_GPU(
                 data,
                 output_directory,
                 export_as_single_tif=True,
@@ -112,9 +115,10 @@ def find_active_voxels(
     print()
 
     data = closing_morphology_in_space(data, radius, border_condition, GPU_AVAILABLE)
+    thread_morph_closing = None
     if save_results:
         if GPU_AVAILABLE:
-            export_data_GPU(
+            thread_morph_closing = export_data_GPU(
                 data,
                 output_directory,
                 export_as_single_tif=True,
@@ -136,11 +140,12 @@ def find_active_voxels(
     data = unified_median_filter_3d(
         data, size_median_filter, border_condition, use_gpu=GPU_AVAILABLE
     )
+    thread_median_filter = None
     if save_results:
         if GPU_AVAILABLE:
             if not isinstance(data, torch.Tensor):
                 data = torch.tensor(data, dtype=torch.float32)
-            export_data_GPU(
+            thread_median_filter = export_data_GPU(
                 data,
                 output_directory,
                 export_as_single_tif=True,
@@ -162,11 +167,12 @@ def find_active_voxels(
     active_voxels = voxels_finder(
         data, dF, std_noise, index_xmin, index_xmax, GPU_AVAILABLE
     )
+    thread_AV = None
     if save_results:
         if GPU_AVAILABLE:
             if not isinstance(active_voxels, torch.Tensor):
                 active_voxels = torch.tensor(active_voxels, dtype=torch.float32)
-            export_data_GPU(
+            thread_AV = export_data_GPU(
                 active_voxels,
                 output_directory,
                 export_as_single_tif=True,
@@ -185,7 +191,12 @@ def find_active_voxels(
             )
     print(60 * "=")
     print()
-    return active_voxels
+    return active_voxels, [
+        thread_zScore,
+        thread_morph_closing,
+        thread_median_filter,
+        thread_AV,
+    ]
 
 
 def voxels_finder(

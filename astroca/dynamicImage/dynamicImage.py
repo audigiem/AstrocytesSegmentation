@@ -2,7 +2,6 @@
 @file dynamicImage.py
 @brief Module for computing the dynamic image (ΔF = F - F0) and the background F0 estimation over time.
 """
-
 from astroca.tools.exportData import (
     export_data,
     export_data_GPU_with_memory_optimization as export_data_GPU,
@@ -12,7 +11,8 @@ import numpy as np
 from astroca.varianceStabilization.varianceStabilization import anscombe_inverse
 from tqdm import tqdm
 import torch
-from typing import Union, Tuple
+from typing import Union, Tuple, List
+import threading
 
 
 def compute_dynamic_image(
@@ -22,7 +22,7 @@ def compute_dynamic_image(
     index_xmax: Union[np.ndarray, torch.Tensor],
     time_window: int,
     params: dict,
-) -> Tuple[Union[np.ndarray, torch.Tensor], float]:
+) -> Tuple[Union[np.ndarray, torch.Tensor], float, threading.Thread | None]:
     """
     Wrapper function to compute the dynamic image (dF = F - F0) and estimate the noise level.
     """
@@ -30,15 +30,6 @@ def compute_dynamic_image(
         return compute_dynamic_image_GPU(
             data, F0, index_xmin, index_xmax, time_window, params
         )
-        # redirect to CPU version for now (quicker)
-        # data = data.cpu().numpy() if isinstance(data, torch.Tensor) else data
-        # F0 = F0.cpu().numpy() if isinstance(F0, torch.Tensor) else F0
-        # index_xmin = index_xmin.cpu().numpy() if isinstance(index_xmin, torch.Tensor) else index_xmin
-        # index_xmax = index_xmax.cpu().numpy() if isinstance(index_xmax, torch.Tensor) else index_xmax
-        # dF, mean_noise = compute_dynamic_image_CPU(
-        #     data, F0, index_xmin, index_xmax, time_window, params
-        # )
-        # return torch.from_numpy(dF), mean_noise
     else:
         return compute_dynamic_image_CPU(
             data, F0, index_xmin, index_xmax, time_window, params
@@ -52,7 +43,7 @@ def compute_dynamic_image_CPU(
     index_xmax: np.ndarray,
     time_window: int,
     params: dict,
-) -> tuple[np.ndarray, float]:
+) -> Tuple[np.ndarray, float, None]:
     """
     Compute ΔF = F - F0 and estimate the noise level as the median of ΔF.
 
@@ -120,7 +111,7 @@ def compute_dynamic_image_CPU(
         )
 
     print()
-    return dF, mean_noise
+    return dF, mean_noise, None  # Pas de thread pour CPU
 
 
 def compute_dynamic_image_GPU(
@@ -130,7 +121,7 @@ def compute_dynamic_image_GPU(
     index_xmax: torch.Tensor,
     time_window: int,
     params: dict,
-) -> tuple[torch.Tensor, float]:
+) -> Tuple[torch.Tensor, float, Union[None, threading.Thread]]:
     """
     Compute ΔF = F - F0 and estimate the noise level as the median of ΔF using PyTorch on GPU.
 
@@ -204,13 +195,14 @@ def compute_dynamic_image_GPU(
     print(f"    [GPU] mean_Noise = {mean_noise:.6f}")
     print(f"    [GPU] Valid pixels: {valid_count * T * Y:,}")
 
+    thread = None
     if save_results:
         if output_directory is None:
             raise ValueError(
                 "Output directory must be specified when save_results is True."
             )
         os.makedirs(output_directory, exist_ok=True)
-        export_data_GPU(
+        thread = export_data_GPU(
             dF,
             output_directory,
             export_as_single_tif=True,
@@ -218,7 +210,7 @@ def compute_dynamic_image_GPU(
         )
 
     print("=" * 60 + "\n")
-    return dF, mean_noise
+    return dF, mean_noise, thread
 
 
 def compute_image_amplitude(
@@ -227,7 +219,7 @@ def compute_image_amplitude(
     index_xmin: np.ndarray | torch.Tensor,
     index_xmax: np.ndarray | torch.Tensor,
     param_values: dict,
-) -> Union[np.ndarray, torch.Tensor]:
+) -> Tuple[np.ndarray | torch.Tensor, None | List[threading.Thread]] | None:
     """
     Dispatcher pour le calcul d'amplitude (CPU ou GPU)
     """
@@ -260,7 +252,7 @@ def compute_image_amplitude_CPU(
     index_xmin: np.ndarray,
     index_xmax: np.ndarray,
     param_values: dict,
-) -> np.ndarray:
+) -> tuple[np.ndarray, None]:
     """
     @brief Compute the amplitude of the image using the Anscombe inverse transform.
     result -> (data_cropped - f0_inv)/f0_inv
@@ -317,7 +309,7 @@ def compute_image_amplitude_CPU(
 
     print(60 * "=")
     print()
-    return image_amplitude
+    return image_amplitude, None  # Pas de thread pour CPU
 
 
 def compute_image_amplitude_GPU(
@@ -326,7 +318,7 @@ def compute_image_amplitude_GPU(
     index_xmin: torch.Tensor,
     index_xmax: torch.Tensor,
     param_values: dict,
-) -> torch.Tensor:
+) -> tuple[torch.Tensor, List[threading.Thread]]:
     """
     GPU optimized image amplitude computation: (data_cropped - f0_inv)/f0_inv
     """
@@ -342,18 +334,18 @@ def compute_image_amplitude_GPU(
     output_directory = param_values["paths"]["output_dir"]
 
     # Calcul de f0_inv sur GPU
-    f0_inv = anscombe_inverse(F0, index_xmin, index_xmax, param_values=param_values)
+    f0_inv, thread_anscombe_inv = anscombe_inverse(
+        F0, index_xmin, index_xmax, param_values=param_values
+    )
 
     T, Z, Y, X = data_cropped.shape
     device = data_cropped.device
 
-    # CORRECTION: Masque correctement dimensionné
     z_coords = torch.arange(Z, device=device)
     x_coords = torch.arange(X, device=device)
     zz, xx = torch.meshgrid(z_coords, x_coords, indexing="ij")
     valid_mask_zx = (xx >= index_xmin[zz]) & (xx <= index_xmax[zz])  # (Z, X)
 
-    # Étendre le masque pour la dimension Y : (Z, X) -> (Z, Y, X)
     valid_mask = valid_mask_zx.unsqueeze(1).expand(Z, Y, X)
 
     # Initialiser le résultat
@@ -370,7 +362,6 @@ def compute_image_amplitude_GPU(
         # Calcul vectorisé: (data - f0) / f0_safe
         result = (data_slice - f0_slice) / f0_safe
 
-        # CORRECTION: Appliquer le masque correctement dimensionné
         result = torch.where(
             valid_mask,  # Maintenant (Z, Y, X)
             result,
@@ -379,16 +370,7 @@ def compute_image_amplitude_GPU(
 
         image_amplitude[t] = result
 
-    # CORRECTION: Vérification avant sauvegarde
-    print(f"  Amplitude computed: shape={image_amplitude.shape}")
-    print(
-        f"  Min/Max: {torch.min(image_amplitude):.6f} / {torch.max(image_amplitude):.6f}"
-    )
-    print(f"  Non-zero elements: {torch.count_nonzero(image_amplitude)}")
-
-    if torch.numel(image_amplitude) == 0:
-        raise ValueError("Image amplitude computation resulted in empty tensor!")
-
+    thread = None
     if save_results_amplitude:
         if output_directory is None:
             raise ValueError(
@@ -397,7 +379,7 @@ def compute_image_amplitude_GPU(
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
         print("shape image_amplitude:", image_amplitude.shape)
-        export_data_GPU(
+        thread = export_data_GPU(
             image_amplitude,
             output_directory,
             export_as_single_tif=True,
@@ -405,4 +387,4 @@ def compute_image_amplitude_GPU(
         )
 
     print("=" * 60 + "\n")
-    return image_amplitude
+    return image_amplitude, [thread_anscombe_inv, thread]

@@ -15,6 +15,8 @@ from numpy.lib.stride_tricks import sliding_window_view
 from tqdm import tqdm
 from numba import njit, prange
 import torch
+from typing import Union, Tuple
+import threading
 
 
 # @profile
@@ -23,7 +25,7 @@ def background_estimation_single_block(
     index_xmin: np.ndarray | torch.Tensor,
     index_xmax: np.ndarray | torch.Tensor,
     params_values: dict,
-) -> np.ndarray | torch.Tensor:
+) -> Tuple[Union[torch.Tensor, np.ndarray], Union[None, threading.Thread]]:
     """
     Estimate the background F0 using the entire time sequence as a single block.
 
@@ -203,7 +205,7 @@ def background_estimation_single_block_numba(
     index_xmin: np.ndarray,
     index_xmax: np.ndarray,
     params_values: dict,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, None]:
     """
     Version ultra-optimisée avec Numba pour l'estimation du background F0.
     Utilise les fonctions quickselect personnalisées pour des gains de performance maximaux.
@@ -301,7 +303,7 @@ def background_estimation_single_block_numba(
     print(60 * "=")
     print()
 
-    return F0
+    return F0, None  # no thread for CPU version
 
 
 def sliding_window_view_torch(
@@ -333,7 +335,7 @@ def background_estimation_GPU(
     index_xmin: torch.Tensor,
     index_xmax: torch.Tensor,
     params_values: dict,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, Union[None, threading.Thread]]:
     """
     Estimate the background F0 using the entire time sequence as a single block on GPU.
     Full GPU implementation that guarantees identical results to CPU version.
@@ -430,11 +432,12 @@ def background_estimation_GPU(
 
         F0[0, z, :, x_min : x_max + 1] = result
 
+    thread = None
     if save_results:
         if output_directory is None:
             raise ValueError("Output directory must be specified.")
         os.makedirs(output_directory, exist_ok=True)
-        export_data_GPU(
+        thread = export_data_GPU(
             F0,
             output_directory,
             export_as_single_tif=True,
@@ -443,4 +446,4 @@ def background_estimation_GPU(
 
     print("=" * 60)
     print()
-    return F0
+    return F0, thread

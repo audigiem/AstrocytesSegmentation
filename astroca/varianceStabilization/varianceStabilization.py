@@ -13,12 +13,13 @@ from astroca.tools.exportData import (
 )
 from tqdm import tqdm
 import torch
-from typing import Union
+from typing import Union, Tuple
+import threading
 
 
 def compute_variance_stabilization_CPU(
     data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, params: dict
-) -> np.ndarray:
+) -> Tuple[np.ndarray, None]:
     """
     @brief Applies the Anscombe variance stabilization transform in-place to the image sequence.
     The Anscombe transform is applied as follows:
@@ -73,12 +74,12 @@ def compute_variance_stabilization_CPU(
         )
     print(60 * "=")
     print()
-    return data
+    return data, None  # No threading for CPU version
 
 
 def compute_variance_stabilization_GPU(
     data: torch.Tensor, index_xmin: torch.Tensor, index_xmax: torch.Tensor, params: dict
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, Union[None, threading.Thread]]:
     """
     Applies Anscombe variance stabilization transform on GPU using PyTorch.
 
@@ -126,7 +127,7 @@ def compute_variance_stabilization_GPU(
         # Réassignation vectorisée
         result[valid_mask] = transformed
 
-    # Sauvegarde avec pipeline asynchrone
+    thread = None
     if int(params["save"]["save_variance_stabilization"]) == 1:
         if params["paths"]["output_dir"] is None:
             raise ValueError(
@@ -134,14 +135,14 @@ def compute_variance_stabilization_GPU(
             )
         if not os.path.exists(params["paths"]["output_dir"]):
             os.makedirs(params["paths"]["output_dir"])
-        export_data_GPU(
+        thread = export_data_GPU(
             result,
             params["paths"]["output_dir"],
             export_as_single_tif=True,
             file_name="variance_stabilized_sequence",
         )
     print("=" * 60 + "\n")
-    return result
+    return result, thread
 
 
 def compute_variance_stabilization(
@@ -149,7 +150,7 @@ def compute_variance_stabilization(
     index_xmin: np.ndarray | torch.Tensor,
     index_xmax: np.ndarray | torch.Tensor,
     params: dict,
-) -> np.ndarray | torch.Tensor:
+) -> Tuple[Union[np.ndarray, torch.Tensor], Union[None, threading.Thread]]:
     """
     Dispatcher for variance stabilization, CPU or GPU.
     """
@@ -192,7 +193,7 @@ def anscombe_inverse(
     index_xmin: np.ndarray | torch.Tensor,
     index_xmax: np.ndarray | torch.Tensor,
     param_values: dict,
-) -> Union[np.ndarray, torch.Tensor]:
+) -> Tuple[Union[np.ndarray, torch.Tensor], Union[None, threading.Thread]]:
     """
     Dispatcher pour la transformation inverse d'Anscombe (CPU ou GPU)
     """
@@ -207,7 +208,7 @@ def anscombe_inverse(
 
 def anscombe_inverse_CPU(
     data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, param_values: dict
-) -> np.ndarray:
+) -> Tuple[np.ndarray, None]:
     """
     Compute inverse of Anscombe transform to compute the amplitude of the image
         A⁻¹(x) = (x / 2)^2 - 3/8
@@ -262,7 +263,7 @@ def anscombe_inverse_CPU(
             file_name="inverse_anscombe_transformed_volume",
         )
 
-    return data_out
+    return data_out, None  # No threading for CPU version
 
 
 def anscombe_inverse_GPU(
@@ -270,7 +271,7 @@ def anscombe_inverse_GPU(
     index_xmin: torch.Tensor,
     index_xmax: torch.Tensor,
     param_values: dict,
-) -> torch.Tensor:
+) -> Tuple[torch.Tensor, Union[None, threading.Thread]]:
     """
     GPU optimized inverse Anscombe transform avec vectorisation complète
     """
@@ -306,6 +307,7 @@ def anscombe_inverse_GPU(
         # Application du masque
         result[valid_mask] = transformed[valid_mask]
 
+    thread = None
     if save_results:
         if output_directory is None:
             raise ValueError(
@@ -313,7 +315,7 @@ def anscombe_inverse_GPU(
             )
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-        export_data_GPU(
+        thread = export_data_GPU(
             result,
             output_directory,
             export_as_single_tif=True,
@@ -321,4 +323,4 @@ def anscombe_inverse_GPU(
         )
 
     print("=" * 60 + "\n")
-    return result
+    return result, thread

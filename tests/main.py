@@ -29,6 +29,7 @@ from astroca.activeVoxels.activeVoxelsFinder import find_active_voxels
 from astroca.events.eventDetector import detect_calcium_events_opti
 from astroca.features.featuresComputation import save_features_from_events
 from astroca.tools.runLogger import RunLogger
+import threading
 
 
 @dataclass
@@ -148,12 +149,22 @@ class PipelineExecutor:
         with self._step_profiler(name):
             return func(*args, **kwargs)
 
-    def _track_export_thread(self, obj: Any, step_name: str):
-        """Track export thread if object has one"""
-        if hasattr(obj, "_export_thread") and obj._export_thread:
-            self.stats.export_threads.append(obj._export_thread)
-            if not self.config.quiet_mode:
-                print(f"Added {step_name} export thread to tracking list")
+    def _track_export_thread(
+        self, threads: None | List[threading.Thread], step_name: str
+    ):
+        """Track export threads if provided"""
+        if threads is None:
+            return  # Pas de threads à tracker (CPU ou pas d'export)
+
+        if not isinstance(threads, list):
+            # Au cas où un seul thread est passé au lieu d'une liste
+            threads = [threads]
+
+        for thread in threads:
+            if thread and isinstance(thread, threading.Thread):
+                self.stats.export_threads.append(thread)
+                if not self.config.quiet_mode:
+                    print(f"Added {step_name} export thread to tracking list")
 
     def _setup_gpu_config(self, params: Dict[str, Any]) -> bool:
         """Configure GPU availability based on parameters"""
@@ -204,13 +215,15 @@ class PipelineExecutor:
     def run_pipeline(self) -> Dict[str, Any]:
         """Execute the complete pipeline"""
         start_time = time.time()
+        params = self._run_step("read_config", read_config)
 
         if not self.config.quiet_mode:
             mode = "GPU" if self.gpu_available else "CPU"
+            if params["general"]["execution_mode"] == "cpu":
+                mode = "CPU (forced by config)"
             print(f"=== Starting pipeline, using {mode} ===\n")
 
         # Load configuration
-        params = self._run_step("read_config", read_config)
         gpu_available = self._setup_gpu_config(params)
         params["GPU_AVAILABLE"] = 1 if gpu_available else 0
 
@@ -258,13 +271,13 @@ class PipelineExecutor:
         """Execute all pipeline processing steps"""
         # Crop + boundaries
         cropped_data = self._run_step("crop_boundaries", crop_boundaries, data, params)
-        index_xmin, index_xmax, _, raw_data = self._run_step(
+        index_xmin, index_xmax, _, raw_data, threads_boundaries = self._run_step(
             "compute_boundaries", compute_boundaries, cropped_data, params
         )
-        self._track_export_thread(raw_data, "raw data")
+        self._track_export_thread(threads_boundaries, "boundaries")
 
         # Variance Stabilization
-        data = self._run_step(
+        data, thread_anscombe = self._run_step(
             "variance_stabilization",
             compute_variance_stabilization,
             raw_data,
@@ -272,10 +285,10 @@ class PipelineExecutor:
             index_xmax,
             params,
         )
-        self._track_export_thread(data, "variance stabilization")
+        self._track_export_thread(thread_anscombe, "variance stabilization")
 
         # Background estimation
-        F0 = self._run_step(
+        F0, thread_F0 = self._run_step(
             "background_estimation",
             background_estimation_single_block,
             data,
@@ -283,10 +296,10 @@ class PipelineExecutor:
             index_xmax,
             params,
         )
-        self._track_export_thread(F0, "F0")
+        self._track_export_thread(thread_F0, "background estimation")
 
         # Compute dF and noise
-        dF, mean_noise = self._run_step(
+        dF, mean_noise, thread_dF = self._run_step(
             "compute_dynamic_image",
             compute_dynamic_image,
             data,
@@ -296,7 +309,7 @@ class PipelineExecutor:
             T,
             params,
         )
-        self._track_export_thread(dF, "dF")
+        self._track_export_thread(thread_dF, "dynamic image computation")
 
         std_noise = self._run_step(
             "estimate_std_noise",
@@ -306,10 +319,9 @@ class PipelineExecutor:
             index_xmax,
             gpu_available,
         )
-        self._track_export_thread(std_noise, "noise estimation")
 
         # Active voxels
-        active_voxels = self._run_step(
+        active_voxels, threads_AV = self._run_step(
             "find_active_voxels",
             find_active_voxels,
             dF,
@@ -319,7 +331,7 @@ class PipelineExecutor:
             index_xmax,
             params,
         )
-        self._track_export_thread(active_voxels, "active voxels")
+        self._track_export_thread(threads_AV, "active voxels")
 
         # Event detection (force CPU)
         if gpu_available:
@@ -335,10 +347,9 @@ class PipelineExecutor:
             active_voxels,
             params_values=params,
         )
-        self._track_export_thread(id_connections, "event detection")
 
         # Amplitude computation
-        image_amplitude = self._run_step(
+        image_amplitude, threads_amplitude = self._run_step(
             "compute_image_amplitude",
             compute_image_amplitude,
             raw_data,
@@ -347,7 +358,7 @@ class PipelineExecutor:
             index_xmax,
             params,
         )
-        self._track_export_thread(image_amplitude, "amplitude")
+        self._track_export_thread(threads_amplitude, "amplitude")
 
         # Features computation
         self._run_step(

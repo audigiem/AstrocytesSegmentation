@@ -18,11 +18,12 @@ import os
 from tqdm import tqdm
 from typing import List, Dict, Tuple, Any
 import torch
+import threading
 
 
 def compute_boundaries_CPU(
     data: np.ndarray, params: dict
-) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray]:
+) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, None]:
     """
     Compute cropping boundaries in X for each Z slice based on background values.
     Sets boundary pixels to default_value and saves results optionally.
@@ -101,12 +102,20 @@ def compute_boundaries_CPU(
 
     print(60 * "=")
     print()
-    return index_xmin, index_xmax, default_value, data
+    return (
+        index_xmin,
+        index_xmax,
+        default_value,
+        data,
+        None,
+    )  # No thread for CPU version
 
 
 def compute_boundaries_GPU(
     data: torch.Tensor, params: dict
-) -> Tuple[torch.Tensor, torch.Tensor, float, torch.Tensor]:
+) -> Tuple[
+    torch.Tensor, torch.Tensor, float, torch.Tensor, None | List[threading.Thread]
+]:
     """
     Compute cropping boundaries in X for each Z slice using PyTorch on GPU.
 
@@ -175,6 +184,9 @@ def compute_boundaries_GPU(
     print(
         f"    index_xmin = {xmin}\n     index_xmax = {xmax}\n     default_value = {default_val}"
     )
+    thread_bounded_data = None
+    thread_Xmin = None
+    thread_Xmax = None
     if save_results:
         if out_dir is None:
             raise ValueError(
@@ -182,23 +194,29 @@ def compute_boundaries_GPU(
             )
         if not os.path.exists(out_dir):
             os.makedirs(out_dir)
-        export_data_GPU(
+        thread_bounded_data = export_data_GPU(
             data,
             out_dir,
             export_as_single_tif=True,
             file_name="data",
             max_memory_usage_mb=2048,
         )
-        save_tensor_as_numpy_GPU(
+        thread_Xmin = save_tensor_as_numpy_GPU(
             xmin, out_dir, file_name="index_Xmin.npy", async_save=True
         )
-        save_tensor_as_numpy_GPU(
+        thread_Xmax = save_tensor_as_numpy_GPU(
             xmax, out_dir, file_name="index_Xmax.npy", async_save=True
         )
 
     print(60 * "=")
     print()
-    return xmin, xmax, default_val, data
+    return (
+        xmin,
+        xmax,
+        default_val,
+        data,
+        [thread_bounded_data, thread_Xmin, thread_Xmax],
+    )
 
 
 def compute_boundaries(
@@ -208,6 +226,7 @@ def compute_boundaries(
     np.ndarray | torch.Tensor,
     float,
     np.ndarray | torch.Tensor,
+    None | List[threading.Thread],
 ]:
     """
     Compute cropping boundaries in X for each Z slice based on background values.
