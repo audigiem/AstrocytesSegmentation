@@ -381,7 +381,9 @@ def compute_image_amplitude_GPU(
 
     # CORRECTION: Vérification avant sauvegarde
     print(f"  Amplitude computed: shape={image_amplitude.shape}")
-    print(f"  Min/Max: {torch.min(image_amplitude):.6f} / {torch.max(image_amplitude):.6f}")
+    print(
+        f"  Min/Max: {torch.min(image_amplitude):.6f} / {torch.max(image_amplitude):.6f}"
+    )
     print(f"  Non-zero elements: {torch.count_nonzero(image_amplitude)}")
 
     if torch.numel(image_amplitude) == 0:
