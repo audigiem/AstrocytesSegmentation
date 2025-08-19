@@ -3,10 +3,14 @@
 @brief This module provides functionality to crop boundaries of 3D image sequences with time dimension (if needed).
 """
 
-from astroca.tools.exportData import export_data
-import os
+from astroca.tools.exportData import (
+    export_data,
+    export_data_GPU_with_memory_optimization as export_data_GPU,
+)
 import numpy as np
-from typing import Tuple
+import os
+import torch
+from typing import Union, Tuple
 
 
 def detect_null_band_X_dir(data: np.ndarray) -> Tuple[int, int]:
@@ -44,7 +48,7 @@ def detect_null_band_X_dir(data: np.ndarray) -> Tuple[int, int]:
     return first_non_null_band, last_non_null_band
 
 
-def crop_boundaries(data: np.ndarray, params: dict) -> np.ndarray:
+def crop_boundaries_CPU(data: np.ndarray, params: dict) -> np.ndarray:
     """
     @brief Crop the boundaries of a 3D image sequence with time dimension.
 
@@ -115,3 +119,107 @@ def crop_boundaries(data: np.ndarray, params: dict) -> np.ndarray:
     print()
 
     return cropped_data
+
+
+def detect_null_band_X_dir_GPU(data: torch.Tensor) -> Tuple[int, int]:
+    """
+    Version GPU optimisée pour détecter les bandes nulles en direction X
+    """
+    print("     - [GPU] Detecting null bands in X direction...")
+
+    if data.ndim != 4:
+        raise ValueError(
+            f"Input data must be 4D tensor with shape (T, Z, Y, X) but got shape {data.shape}."
+        )
+
+    # Calcul vectorisé des sommes sur GPU
+    x_sums = torch.sum(data, dim=(0, 1, 2))  # Shape: (X,)
+
+    # Trouver les indices non-zéro
+    non_zero_mask = x_sums > 0
+    non_zero_indices = torch.nonzero(non_zero_mask, as_tuple=False).squeeze(-1)
+
+    if len(non_zero_indices) == 0:
+        raise ValueError("No non-null bands found in the X direction.")
+
+    first_non_null_band = int(non_zero_indices[0].item())
+    last_non_null_band = int(non_zero_indices[-1].item())
+
+    print(
+        f"        [GPU] First non-null band: {first_non_null_band}, Last non-null band: {last_non_null_band}"
+    )
+
+    return first_non_null_band, last_non_null_band
+
+
+def crop_boundaries_GPU(data: torch.Tensor, params: dict) -> torch.Tensor:
+    """
+    Version GPU ultra-optimisée avec préallocation mémoire et opérations vectorisées
+    """
+    print("=== [GPU] Cropping boundaries and compute boundaries (OPTIMIZED) ===")
+    print(" - [GPU] Cropping the boundaries of the image sequence...")
+
+    required_keys = {"preprocessing", "save", "paths"}
+    if not required_keys.issubset(params.keys()):
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params.keys()}"
+        )
+
+    device = data.device
+    T, Z, Y, X = data.shape
+
+    # Détection GPU des bandes nulles
+    x_min, x_max = detect_null_band_X_dir_GPU(data)
+    pixel_cropped = int(params["preprocessing"]["pixel_cropped"])
+    save_results = int(params["save"]["save_cropp_boundaries"]) == 1
+    output_directory = params["paths"]["output_dir"]
+
+    # Calcul des nouvelles dimensions
+    new_Y = Y - pixel_cropped
+    new_X = x_max - x_min + 1
+
+    # Pré-allocation du tensor de sortie sur GPU pour éviter les copies
+    cropped_data = torch.empty((T, Z, new_Y, new_X), dtype=data.dtype, device=device)
+
+    # Cropping vectorisé ultra-rapide avec slicing GPU
+    cropped_data = data[:, :, pixel_cropped:Y, x_min : x_max + 1].contiguous()
+
+    print(f"    [GPU] Cropped data shape: {cropped_data.shape}")
+
+    if save_results:
+        if output_directory is None:
+            raise ValueError(
+                "output_directory must be specified if save_results is True."
+            )
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+
+        export_data_GPU(
+            cropped_data,
+            output_directory,
+            export_as_single_tif=True,
+            file_name="cropped_image_sequence",
+            max_memory_usage_mb=2048,  # Use memory optimization for large tensors
+        )
+
+    print()
+    return cropped_data
+
+
+def crop_boundaries(data: Union[np.ndarray, torch.Tensor], params: dict):
+    """
+    Wrapper that dispatches to CPU or GPU version depending on GPU_AVAILABLE flag.
+    """
+    use_gpu = int(params.get("GPU_AVAILABLE", 0)) == 1
+    if use_gpu:
+        print("GPU processing requested.")
+        if not isinstance(data, torch.Tensor):
+            # Convert from numpy to torch.Tensor on GPU
+            data = torch.from_numpy(data).float().to("cuda")
+        else:
+            data = data.to("cuda")
+        return crop_boundaries_GPU(data, params)
+    else:
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
+        return crop_boundaries_CPU(data, params)

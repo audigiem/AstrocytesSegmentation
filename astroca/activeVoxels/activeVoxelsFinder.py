@@ -10,17 +10,24 @@ from tqdm import tqdm
 from astroca.activeVoxels.zScore import compute_z_score
 from astroca.activeVoxels.spaceMorphology import closing_morphology_in_space
 from astroca.activeVoxels.medianFilter import unified_median_filter_3d
-from astroca.tools.exportData import export_data
+from astroca.tools.exportData import (
+    export_data,
+    export_data_GPU_with_memory_optimization as export_data_GPU,
+)
+import torch
+from typing import Union, Tuple, List
+import threading
 
 
+# @profile
 def find_active_voxels(
-    dF: np.ndarray,
+    dF: np.ndarray | torch.Tensor,
     std_noise: float,
     gaussian_noise_mean: float,
-    index_xmin: list,
-    index_xmax: list,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
     params_values: dict,
-) -> np.ndarray:
+) -> Tuple[Union[np.ndarray, torch.Tensor], Union[None, List[threading.Thread]]]:
     """
     @brief Find active voxels in a 3D+time image sequence based on z-score
     thresholding.
@@ -57,6 +64,11 @@ def find_active_voxels(
         missing_keys = required_keys - params_values.keys()
         raise ValueError(f"Missing required parameters: {missing_keys}")
 
+    if int(params_values["GPU_AVAILABLE"]) == 1:
+        GPU_AVAILABLE = True
+    else:
+        GPU_AVAILABLE = False
+
     save_results = int(params_values["save"]["save_av"]) == 1
     output_directory = params_values["paths"]["output_dir"]
     threshold = float(params_values["active_voxels"]["threshold_zscore"])
@@ -65,8 +77,15 @@ def find_active_voxels(
     border_condition = params_values["active_voxels"]["border_condition"]
 
     data = compute_z_score(
-        dF, std_noise, gaussian_noise_mean, threshold, index_xmin, index_xmax
+        dF,
+        std_noise,
+        gaussian_noise_mean,
+        threshold,
+        index_xmin,
+        index_xmax,
+        GPU_AVAILABLE,
     )
+    thread_zScore = None
     if save_results:
         if output_directory is None:
             raise ValueError(
@@ -74,51 +93,164 @@ def find_active_voxels(
             )
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-        export_data(
-            data, output_directory, export_as_single_tif=True, file_name="zScore"
-        )
+        # convert data to np.ndarray if it's a torch.Tensor
+        if GPU_AVAILABLE:
+            thread_zScore = export_data_GPU(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="zScore",
+            )
+        else:
+            if isinstance(data, torch.Tensor):
+                raise TypeError(
+                    "When GPU is not available, data must be a numpy.ndarray."
+                )
+            export_data(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="zScore",
+            )
     print()
 
-    data = closing_morphology_in_space(data, radius, border_condition)
+    data = closing_morphology_in_space(data, radius, border_condition, GPU_AVAILABLE)
+    thread_morph_closing = None
     if save_results:
-        export_data(
-            data,
-            output_directory,
-            export_as_single_tif=True,
-            file_name="closing_in_space",
-        )
+        if GPU_AVAILABLE:
+            thread_morph_closing = export_data_GPU(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="closing_in_space",
+            )
+        else:
+            if isinstance(data, torch.Tensor):
+                raise TypeError(
+                    "When GPU is not available, data must be a numpy.ndarray."
+                )
+            export_data(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="closing_in_space",
+            )
     print()
 
-    data = unified_median_filter_3d(data, size_median_filter, border_condition)
+    data = unified_median_filter_3d(
+        data, size_median_filter, border_condition, use_gpu=GPU_AVAILABLE
+    )
+    thread_median_filter = None
     if save_results:
-        export_data(
-            data,
-            output_directory,
-            export_as_single_tif=True,
-            file_name="medianFiltered",
-        )
+        if GPU_AVAILABLE:
+            if not isinstance(data, torch.Tensor):
+                data = torch.tensor(data, dtype=torch.float32)
+            thread_median_filter = export_data_GPU(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="median_filter",
+            )
+        else:
+            if isinstance(data, torch.Tensor):
+                raise TypeError(
+                    "When GPU is not available, data must be a numpy.ndarray."
+                )
+            export_data(
+                data,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="median_filter",
+            )
     print()
 
-    active_voxels = voxels_finder(data, dF, std_noise, index_xmin, index_xmax)
+    active_voxels = voxels_finder(
+        data, dF, std_noise, index_xmin, index_xmax, GPU_AVAILABLE
+    )
+    thread_AV = None
     if save_results:
-        export_data(
-            active_voxels,
-            output_directory,
-            export_as_single_tif=True,
-            file_name="activeVoxels",
-        )
-
+        if GPU_AVAILABLE:
+            if not isinstance(active_voxels, torch.Tensor):
+                active_voxels = torch.tensor(active_voxels, dtype=torch.float32)
+            thread_AV = export_data_GPU(
+                active_voxels,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="active_voxels",
+            )
+        else:
+            if isinstance(active_voxels, torch.Tensor):
+                raise TypeError(
+                    "When GPU is not available, data must be a numpy.ndarray."
+                )
+            export_data(
+                active_voxels,
+                output_directory,
+                export_as_single_tif=True,
+                file_name="active_voxels",
+            )
     print(60 * "=")
     print()
-    return active_voxels
+    return active_voxels, [
+        thread_zScore,
+        thread_morph_closing,
+        thread_median_filter,
+        thread_AV,
+    ]
 
 
 def voxels_finder(
+    filtered_data: np.ndarray | torch.Tensor,
+    dF: np.ndarray | torch.Tensor,
+    std_noise: float,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
+    use_gpu: bool = False,
+) -> np.ndarray | torch.Tensor:
+    """
+    @brief Determine active voxels based on the value of the filtered data.
+    If data(x,t) > 0, then active_voxels(x,t) = dF(x,t);
+    if data(x,t) < 0, then active_voxels(x,t) = std_noise;
+    otherwise, active_voxels(x,t) = 0.
+
+    This version delegates to CPU or GPU based on `use_gpu`.
+    """
+    if use_gpu:
+        if not torch.cuda.is_available():
+            raise RuntimeError("GPU is not available, but use_gpu is set to True.")
+
+        device = torch.device("cuda:0")
+
+        # Convertir en tensors et transférer sur GPU si nécessaire
+        if isinstance(filtered_data, np.ndarray):
+            filtered_data = torch.tensor(
+                filtered_data, dtype=torch.float32, device=device
+            )
+        else:
+            filtered_data = filtered_data.to(device)
+
+        if isinstance(dF, np.ndarray):
+            dF = torch.tensor(dF, dtype=torch.float32, device=device)
+        else:
+            dF = dF.to(device)
+
+        return voxels_finder_GPU(filtered_data, dF, std_noise, index_xmin, index_xmax)
+    else:
+        # Convertir en numpy si nécessaire pour CPU
+        if isinstance(filtered_data, torch.Tensor):
+            filtered_data = filtered_data.cpu().numpy()
+        if isinstance(dF, torch.Tensor):
+            dF = dF.cpu().numpy()
+
+        return voxels_finder_CPU(filtered_data, dF, std_noise, index_xmin, index_xmax)
+
+
+def voxels_finder_CPU(
     filtered_data: np.ndarray,
     dF: np.ndarray,
     std_noise: float,
-    index_xmin: list,
-    index_xmax: list,
+    index_xmin: np.ndarray,
+    index_xmax: np.ndarray,
 ) -> np.ndarray:
     """
     @brief Determine active voxels based on the value of the filtered data.
@@ -155,4 +287,55 @@ def voxels_finder(
     for z in tqdm(range(Z), desc="Cropping active voxels", unit="slice"):
         active_voxels[:, z, :, : index_xmin[z]] = 0
         active_voxels[:, z, :, index_xmax[z] + 1 :] = 0
+    return active_voxels
+
+
+def voxels_finder_GPU(
+    filtered_data: torch.Tensor,
+    dF: torch.Tensor,
+    std_noise: float,
+    index_xmin: torch.Tensor,
+    index_xmax: torch.Tensor,
+) -> torch.Tensor:
+    """
+    Version GPU optimisée avec cropping vectorisé
+    """
+    print(" - [GPU] Finding active voxels (optimized)...")
+
+    if filtered_data.ndim != 4 or dF.ndim != 4:
+        raise ValueError("Input must be 4D tensors of shape (T, Z, Y, X).")
+
+    device = filtered_data.device
+    T, Z, Y, X = dF.shape
+
+    # S'assurer que dF est sur le même device
+    dF = dF.to(device)
+
+    # Créer le tensor de sortie
+    active_voxels = torch.zeros_like(dF, device=device)
+
+    # Masques logiques
+    positive_mask = (filtered_data != 0) & (dF > 0)
+    negative_mask = (filtered_data != 0) & (dF <= 0)
+
+    # Appliquer les masques
+    active_voxels[positive_mask] = dF[positive_mask]
+    active_voxels[negative_mask] = std_noise
+
+    # Cropping vectorisé - créer un masque de cropping
+    crop_mask = torch.ones_like(active_voxels, dtype=torch.bool, device=device)
+
+    # Appliquer le cropping par batch pour chaque Z
+    for z in range(Z):
+        xmin = index_xmin[z].item()
+        xmax = index_xmax[z].item()
+
+        if xmin > 0:
+            crop_mask[:, z, :, :xmin] = False
+        if xmax < X - 1:
+            crop_mask[:, z, :, xmax + 1 :] = False
+
+    # Appliquer le masque de cropping
+    active_voxels[~crop_mask] = 0
+
     return active_voxels

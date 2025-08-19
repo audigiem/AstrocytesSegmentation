@@ -4,19 +4,51 @@
 @detail Applies a moving mean or median filter to estimate the fluorescence baseline (F0) and supports min or percentile aggregation.
 """
 
-# from joblib import Parallel, delayed
-from astroca.tools.exportData import export_data
+from astroca.tools.exportData import (
+    export_data,
+    export_data_GPU_with_memory_optimization as export_data_GPU,
+)
 from astroca.tools.medianComputationTools import quickselect_median, quickselect_kth
 import os
 import numpy as np
-import time
 from numpy.lib.stride_tricks import sliding_window_view
 from tqdm import tqdm
 from numba import njit, prange
+import torch
+from typing import Union, Tuple
+import threading
 
 
 # @profile
 def background_estimation_single_block(
+    data: np.ndarray | torch.Tensor,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
+    params_values: dict,
+) -> Tuple[Union[torch.Tensor, np.ndarray], Union[None, threading.Thread]]:
+    """
+    Estimate the background F0 using the entire time sequence as a single block.
+
+    @param data: 4D image sequence (T, Z, Y, X)
+    @param index_xmin: Array of cropping bounds (left) for each Z
+    @param index_xmax: Array of cropping bounds (right) for each Z
+    @param params_values: Dictionary containing the parameters:
+        - moving_window: Size of the moving window for aggregation
+        - method: Aggregation method, either 'min' or 'percentile'
+        - method2: Secondary aggregation method, either 'Mean' or 'Med'
+        - percentile: Percentile value for 'percentile' method (default 10.0)
+    @return: Background array of shape (1, Z, Y, X)
+    """
+    if int(params_values.get("GPU_AVAILABLE", 0)) == 1:
+        return background_estimation_GPU(data, index_xmin, index_xmax, params_values)
+    else:
+        return background_estimation_single_block_numba(
+            data, index_xmin, index_xmax, params_values
+        )
+
+
+# @profile
+def background_estimation_single_block_cpu(
     data: np.ndarray,
     index_xmin: np.ndarray,
     index_xmax: np.ndarray,
@@ -173,7 +205,7 @@ def background_estimation_single_block_numba(
     index_xmin: np.ndarray,
     index_xmax: np.ndarray,
     params_values: dict,
-) -> np.ndarray:
+) -> Tuple[np.ndarray, None]:
     """
     Version ultra-optimisée avec Numba pour l'estimation du background F0.
     Utilise les fonctions quickselect personnalisées pour des gains de performance maximaux.
@@ -271,4 +303,147 @@ def background_estimation_single_block_numba(
     print(60 * "=")
     print()
 
-    return F0
+    return F0, None  # no thread for CPU version
+
+
+def sliding_window_view_torch(
+    input_tensor: torch.Tensor, window_shape: int, axis: int = 0
+) -> torch.Tensor:
+    """
+    PyTorch implementation of numpy.lib.stride_tricks.sliding_window_view
+    that produces identical results to NumPy version.
+    """
+    if axis != 0:
+        raise NotImplementedError("Only axis=0 is supported")
+
+    T = input_tensor.shape[axis]
+    if window_shape > T:
+        raise ValueError(f"window_shape {window_shape} is larger than input size {T}")
+
+    # Use unfold to create sliding windows
+    # input_tensor shape: (T, Y, X)
+    # unfold(dim, size, step) creates windows of size 'size' with step 'step' along dimension 'dim'
+    windowed = input_tensor.unfold(
+        axis, window_shape, 1
+    )  # (T-window_shape+1, Y, X, window_shape)
+
+    return windowed
+
+
+def background_estimation_GPU(
+    data: torch.Tensor,
+    index_xmin: torch.Tensor,
+    index_xmax: torch.Tensor,
+    params_values: dict,
+) -> Tuple[torch.Tensor, Union[None, threading.Thread]]:
+    """
+    Estimate the background F0 using the entire time sequence as a single block on GPU.
+    Full GPU implementation that guarantees identical results to CPU version.
+
+    @param data: 4D image sequence (T, Z, Y, X) as a PyTorch tensor
+    @param index_xmin: Array of cropping bounds (left) for each Z
+    @param index_xmax: Array of cropping bounds (right) for each Z
+    @param params_values: Dictionary containing the parameters:
+        - moving_window: Size of the moving window for aggregation
+        - method: Aggregation method, either 'min' or 'percentile'
+        - method2: Secondary aggregation method, either 'Mean' or 'Med'
+        - percentile: Percentile value for 'percentile' method (default 10.0)
+    @return: Background tensor of shape (1, Z, Y, X)
+    """
+    print("=== Fluorescence baseline F0 estimation (GPU) ===")
+
+    required_keys = {"background_estimation", "save", "paths"}
+    if not required_keys.issubset(params_values.keys()):
+        raise ValueError(
+            f"Missing required parameters: {required_keys - params_values.keys()}"
+        )
+
+    device = data.device
+    acquisition_frequency = float(
+        params_values["background_estimation"]["acquisition_frequency"]
+    )
+    amplification_factor = float(
+        params_values["background_estimation"]["amplification_factor"]
+    )
+    # moving_window = int(params_values['background_estimation']['moving_window'])
+    method = params_values["background_estimation"]["method"]
+    method2 = params_values["background_estimation"]["method2"]
+    percentile = float(params_values["background_estimation"]["percentile"])
+    save_results = int(params_values["save"]["save_background_estimation"]) == 1
+    output_directory = params_values["paths"]["output_dir"]
+
+    moving_window = int(np.ceil(acquisition_frequency * amplification_factor + 1))
+    if method not in {"min", "percentile"}:
+        raise ValueError("method must be 'min' or 'percentile'")
+    if method2 not in {"Mean", "Med"}:
+        raise ValueError("method2 must be 'Mean' or 'Med'")
+    if not (0 <= percentile <= 100):
+        raise ValueError("percentile must be between 0 and 100")
+
+    T, Z, Y, X = data.shape
+    if len(index_xmin) != Z or len(index_xmax) != Z:
+        raise ValueError("index_xmin and index_xmax must have length Z")
+    if T < moving_window:
+        raise ValueError(f"Time sequence too short: T={T}, window={moving_window}")
+
+    num_iter = T - moving_window + 1
+    F0 = torch.zeros((1, Z, Y, X), dtype=torch.float32, device=device)
+
+    for z in tqdm(
+        range(Z), desc="Estimating background per Z-slice (GPU)", unit="slice"
+    ):
+        x_min = int(index_xmin[z])
+        x_max = int(index_xmax[z])
+
+        if not (0 <= x_min < x_max < X):
+            continue
+
+        roi = data[:, z, :, x_min : x_max + 1]  # shape: (T, Y, X_roi)
+
+        # Use our custom sliding window function that mimics NumPy exactly
+        windowed = sliding_window_view_torch(
+            roi, window_shape=moving_window, axis=0
+        )  # shape: (num_iter, Y, X_roi, moving_window)
+
+        # Move the window dimension to match NumPy's moveaxis(-1, 0)
+        # NumPy: (num_iter, Y, X_roi, moving_window) -> (moving_window, num_iter, Y, X_roi)
+        windowed = windowed.permute(
+            3, 0, 1, 2
+        )  # shape: (moving_window, num_iter, Y, X_roi)
+
+        if method2 == "Mean":
+            moving_vals = torch.mean(windowed, dim=0)  # shape: (num_iter, Y, X_roi)
+        else:  # Med
+            # Use quantile for exact NumPy median behavior
+            moving_vals = torch.quantile(
+                windowed, 0.5, dim=0, interpolation="linear"
+            )  # shape: (num_iter, Y, X_roi)
+
+        if method == "min":
+            result = torch.min(moving_vals, dim=0).values  # (Y, X_roi)
+        else:  # percentile
+            # Reproduce NumPy's percentile logic exactly
+            k = int(np.ceil((percentile / 100.0) * num_iter))
+            k = max(1, min(k, num_iter))  # Equivalent to np.clip(k, 1, num_iter)
+
+            # Sort and take kth smallest (0-indexed, so k-1)
+            sorted_vals, _ = torch.sort(moving_vals, dim=0)
+            result = sorted_vals[k - 1]  # kth smallest (Y, X_roi)
+
+        F0[0, z, :, x_min : x_max + 1] = result
+
+    thread = None
+    if save_results:
+        if output_directory is None:
+            raise ValueError("Output directory must be specified.")
+        os.makedirs(output_directory, exist_ok=True)
+        thread = export_data_GPU(
+            F0,
+            output_directory,
+            export_as_single_tif=True,
+            file_name="F0",
+        )
+
+    print("=" * 60)
+    print()
+    return F0, thread

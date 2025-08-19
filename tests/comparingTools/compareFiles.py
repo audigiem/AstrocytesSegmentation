@@ -97,6 +97,9 @@ def compare_files(
         diff_file_path = os.path.join(os.path.dirname(output_file_path), diff_file_name)
         imwrite(diff_file_path, differences.astype(np.float32))
         print(f"Differences saved to {diff_file_path}")
+    if tag_differences:
+        return False
+    return True
 
 
 def compare_sequence(
@@ -114,6 +117,7 @@ def compare_sequence(
     @param save_diff: If True, saves the differences to a new .tif file containing all the differences frames.
     @raise FileNotFoundError: If either the expected sequence path or the output sequence path does not exist.
     @raise ValueError: If the shapes of the expected and output sequences do not match.
+    @return: True if the sequences are identical, False otherwise.
     """
     if not os.path.exists(expected_sequence_path):
         raise FileNotFoundError(
@@ -246,40 +250,42 @@ def show_offset_voxels_diff(
 
 def main():
     # Define paths to expected and output files
-    EXPECTED_DIR_PATH = "/home/matteo/Bureau/INRIA/codeJava/outputdirTest/"
-    OUTPUT_DIR_PATH = "/home/matteo/Bureau/INRIA/codePython/outputdir/testDir/"
+    EXPECTED_DIR_PATH = "/home/maudigie/data/outputData/testCPU/"
+    OUTPUT_DIR_PATH = "/home/maudigie/data/outputData/testGPU/"
 
     expected_f0_path = EXPECTED_DIR_PATH + "F0.tif"
     output_f0_path = OUTPUT_DIR_PATH + "F0.tif"
 
-    expected_cropped_path = EXPECTED_DIR_PATH + "data_cropped.tif"
-    output_cropped_path = OUTPUT_DIR_PATH + "cropped_image_sequence.tif"
+    expected_cropped_path = EXPECTED_DIR_PATH + "data.tif"
+    output_cropped_path = OUTPUT_DIR_PATH + "data.tif"
 
-    expected_boundaries_path = EXPECTED_DIR_PATH + "data_boundaries.tif"
-    output_boundaries_path = OUTPUT_DIR_PATH + "data.tif"
+    expected_boundaries_path = EXPECTED_DIR_PATH + "cropped_image_sequence.tif"
+    output_boundaries_path = OUTPUT_DIR_PATH + "cropped_image_sequence.tif"
 
-    expected_anscombe_path = EXPECTED_DIR_PATH + "anscombeTransform.tif"
+    expected_anscombe_path = EXPECTED_DIR_PATH + "variance_stabilized_sequence.tif"
     output_anscombe_path = OUTPUT_DIR_PATH + "variance_stabilized_sequence.tif"
 
-    expected_dF_path = EXPECTED_DIR_PATH + "dF.tif"
+    expected_dF_path = EXPECTED_DIR_PATH + "dynamic_image_dF.tif"
     output_dF_path = OUTPUT_DIR_PATH + "dynamic_image_dF.tif"
 
-    expected_Zscore_path = EXPECTED_DIR_PATH + "Zscore.tif"
+    expected_Zscore_path = EXPECTED_DIR_PATH + "zScore.tif"
     output_Zscore_path = OUTPUT_DIR_PATH + "zScore.tif"
 
-    expected_closing_path = EXPECTED_DIR_PATH + "Closing_in_space.tif"
+    expected_closing_path = EXPECTED_DIR_PATH + "closing_in_space.tif"
     output_closing_path = OUTPUT_DIR_PATH + "closing_in_space.tif"
 
-    expected_median_path = EXPECTED_DIR_PATH + "Median.tif"
+    expected_median_path = EXPECTED_DIR_PATH + "medianFiltered.tif"
     output_median_path = OUTPUT_DIR_PATH + "medianFiltered.tif"
 
-    expected_active_voxels_path = EXPECTED_DIR_PATH + "AV.tif"
+    expected_active_voxels_path = EXPECTED_DIR_PATH + "activeVoxels.tif"
     output_active_voxels_path = OUTPUT_DIR_PATH + "activeVoxels.tif"
 
     expected_ID_calcium_events_path = EXPECTED_DIR_PATH + "ID_calciumEvents.tif"
     output_ID_calcium_events_path = OUTPUT_DIR_PATH + "ID_calciumEvents.tif"
 
-    expected_anscombe_inverse_path = EXPECTED_DIR_PATH + "F0_inv.tif"
+    expected_anscombe_inverse_path = (
+        EXPECTED_DIR_PATH + "inverse_anscombe_transformed_volume.tif"
+    )
     output_anscombe_inverse_path = (
         OUTPUT_DIR_PATH + "inverse_anscombe_transformed_volume.tif"
     )
@@ -290,6 +296,12 @@ def main():
     expected_csv_path = EXPECTED_DIR_PATH + "Features.csv"
     output_csv_path = OUTPUT_DIR_PATH + "Features.csv"
 
+    expected_hotspots_path = EXPECTED_DIR_PATH + "HotSpots.csv"
+    output_hotspots_path = OUTPUT_DIR_PATH + "HotSpots.csv"
+
+    expected_coactifs_events_path = EXPECTED_DIR_PATH + "coactive.csv"
+    output_coactifs_events_path = OUTPUT_DIR_PATH + "coactive.csv"
+
     save_results = False
     features_float_precision = 3
 
@@ -298,17 +310,36 @@ def main():
 
     # compare_sequence(expected_cropped_path, output_cropped_path, save_diff=save_results, percentage_accuracy=1e-6)
     compare_sequence(
-        expected_boundaries_path,
-        output_boundaries_path,
+        expected_cropped_path,
+        output_cropped_path,
         save_diff=save_results,
         percentage_accuracy=1e-6,
     )
+    expected_XMIN = np.load(EXPECTED_DIR_PATH + "index_Xmin.npy")
+    expected_XMAX = np.load(EXPECTED_DIR_PATH + "index_Xmax.npy")
+    output_XMIN = np.load(OUTPUT_DIR_PATH + "index_Xmin.npy")
+    output_XMAX = np.load(OUTPUT_DIR_PATH + "index_Xmax.npy")
+    if np.array_equal(expected_XMIN, output_XMIN) and np.array_equal(
+        expected_XMAX, output_XMAX
+    ):
+        print("Xmin and Xmax arrays are identical.")
+    else:
+        print("Xmin and Xmax arrays differ.")
+        print(f"Expected Xmin: {expected_XMIN}")
+        print(f"Output Xmin: {output_XMIN}")
+        print(f"Expected Xmax: {expected_XMAX}")
+        print(f"Output Xmax: {output_XMAX}")
     print()
 
     # print("Step 2: Comparing files after Anscombe transform...")
-    # compare_sequence(expected_anscombe_path, output_anscombe_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # compare_sequence(
+    #     expected_anscombe_path,
+    #     output_anscombe_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
     # print()
-    #
+
     print("Step 3: Comparing files after F0 estimation...")
     compare_files(
         expected_f0_path,
@@ -319,23 +350,48 @@ def main():
     print()
 
     # print("Step 4: Comparing files after dF computation...")
-    # compare_sequence(expected_dF_path, output_dF_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # compare_sequence(
+    #     expected_dF_path,
+    #     output_dF_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
     # print()
     #
     # print("Step 5: Comparing files after Z-score computation...")
-    # compare_sequence(expected_Zscore_path, output_Zscore_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # compare_sequence(
+    #     expected_Zscore_path,
+    #     output_Zscore_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
     # print()
     #
     # print("Step 6: Comparing files after closing in space...")
-    # compare_sequence(expected_closing_path, output_closing_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # compare_sequence(
+    #     expected_closing_path,
+    #     output_closing_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
     # print()
     #
     # print("Step 7: Comparing files after median filtering...")
-    # compare_sequence(expected_median_path, output_median_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # compare_sequence(
+    #     expected_median_path,
+    #     output_median_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
     # print()
     #
     # print("Step 8: Comparing files after active voxels detection...")
-    # compare_sequence(expected_active_voxels_path, output_active_voxels_path, save_diff=save_results, percentage_accuracy=1e-6)
+    # compare_sequence(
+    #     expected_active_voxels_path,
+    #     output_active_voxels_path,
+    #     save_diff=save_results,
+    #     percentage_accuracy=1e-6,
+    # )
     # print()
 
     print("Step 9: Comparing files after calcium events detection...")
@@ -345,9 +401,9 @@ def main():
         save_diff=save_results,
         percentage_accuracy=1e-6,
     )
-    show_offset_voxels_diff(
-        diff, expected_ID_calcium_events_path, output_ID_calcium_events_path
-    )
+    # show_offset_voxels_diff(
+    #     diff, expected_ID_calcium_events_path, output_ID_calcium_events_path
+    # )
     print()
 
     # print("Step 10: Comparing files after Anscombe inverse transform...")
@@ -368,6 +424,20 @@ def main():
     )
     compare_csv_files(
         expected_csv_path, output_csv_path, float_precision=features_float_precision
+    )
+    print()
+
+    compare_csv_files(
+        expected_hotspots_path,
+        output_hotspots_path,
+        float_precision=features_float_precision,
+    )
+    print()
+
+    compare_csv_files(
+        expected_coactifs_events_path,
+        output_coactifs_events_path,
+        float_precision=features_float_precision,
     )
     print()
 

@@ -675,6 +675,7 @@ class EventDetectorOptimized:
         return stats
 
 
+# @profile
 def detect_calcium_events_opti(
     av_data: np.ndarray, params_values: dict = None
 ) -> Tuple[np.ndarray, List[int]]:

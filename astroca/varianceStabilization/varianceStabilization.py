@@ -7,13 +7,19 @@ The transform is applied only within the meaningful X-boundaries [index_xmin[z],
 
 import numpy as np
 import os
-from astroca.tools.exportData import export_data
+from astroca.tools.exportData import (
+    export_data,
+    export_data_GPU_with_memory_optimization as export_data_GPU,
+)
 from tqdm import tqdm
+import torch
+from typing import Union, Tuple
+import threading
 
 
-def compute_variance_stabilization(
+def compute_variance_stabilization_CPU(
     data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, params: dict
-) -> np.ndarray:
+) -> Tuple[np.ndarray, None]:
     """
     @brief Applies the Anscombe variance stabilization transform in-place to the image sequence.
     The Anscombe transform is applied as follows:
@@ -68,7 +74,90 @@ def compute_variance_stabilization(
         )
     print(60 * "=")
     print()
-    return data
+    return data, None  # No threading for CPU version
+
+
+def compute_variance_stabilization_GPU(
+    data: torch.Tensor, index_xmin: torch.Tensor, index_xmax: torch.Tensor, params: dict
+) -> Tuple[torch.Tensor, Union[None, threading.Thread]]:
+    """
+    Applies Anscombe variance stabilization transform on GPU using PyTorch.
+
+    @param data: torch Tensor of shape (T, Z, Y, X) where T is time, Z is depth, Y is height, and X is width.
+    @param index_xmin: 1D numpy array of shape (Z,) with left cropping bounds per z.
+    @param index_xmax: 1D numpy array of shape (Z,) with right cropping bounds per z.
+    @param params: Dictionary containing:
+        - save_results
+        - output_directory
+    @return: Variance-stabilized data as a NumPy array.
+    """
+    print("=== Applying variance stabilization on GPU using PyTorch... ===")
+
+    device = data.device
+    T, Z, Y, X = data.shape
+
+    # Création de la grille complète des coordonnées
+    coords_grid = torch.meshgrid(
+        torch.arange(T, device=device),
+        torch.arange(Z, device=device),
+        torch.arange(Y, device=device),
+        torch.arange(X, device=device),
+        indexing="ij",
+    )
+    t_grid, z_grid, y_grid, x_grid = coords_grid
+
+    # Broadcasting des limites
+    xmin_grid = index_xmin[z_grid]  # (T, Z, Y, X)
+    xmax_grid = index_xmax[z_grid]  # (T, Z, Y, X)
+
+    # Masque vectorisé complet
+    valid_mask = (x_grid >= xmin_grid) & (x_grid <= xmax_grid)
+
+    # Copie des données pour préserver l'original
+    result = data.clone()
+
+    # Application vectorisée pure de l'Anscombe transform
+    with torch.no_grad():
+        # Sélection vectorisée des voxels valides
+        valid_data = result[valid_mask]
+
+        # Transform vectorisé
+        transformed = 2.0 * torch.sqrt(valid_data + 3.0 / 8.0)
+
+        # Réassignation vectorisée
+        result[valid_mask] = transformed
+
+    thread = None
+    if int(params["save"]["save_variance_stabilization"]) == 1:
+        if params["paths"]["output_dir"] is None:
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
+        if not os.path.exists(params["paths"]["output_dir"]):
+            os.makedirs(params["paths"]["output_dir"])
+        thread = export_data_GPU(
+            result,
+            params["paths"]["output_dir"],
+            export_as_single_tif=True,
+            file_name="variance_stabilized_sequence",
+        )
+    print("=" * 60 + "\n")
+    return result, thread
+
+
+def compute_variance_stabilization(
+    data: np.ndarray | torch.Tensor,
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
+    params: dict,
+) -> Tuple[Union[np.ndarray, torch.Tensor], Union[None, threading.Thread]]:
+    """
+    Dispatcher for variance stabilization, CPU or GPU.
+    """
+    if int(params.get("GPU_AVAILABLE", 0)) == 1:
+        return compute_variance_stabilization_GPU(data, index_xmin, index_xmax, params)
+    else:
+        return compute_variance_stabilization_CPU(data, index_xmin, index_xmax, params)
 
 
 def check_variance(
@@ -100,8 +189,26 @@ def check_variance(
 
 
 def anscombe_inverse(
+    data: Union[np.ndarray, torch.Tensor],
+    index_xmin: np.ndarray | torch.Tensor,
+    index_xmax: np.ndarray | torch.Tensor,
+    param_values: dict,
+) -> Tuple[Union[np.ndarray, torch.Tensor], Union[None, threading.Thread]]:
+    """
+    Dispatcher pour la transformation inverse d'Anscombe (CPU ou GPU)
+    """
+    if param_values.get("GPU_AVAILABLE", 0) == 1:
+        return anscombe_inverse_GPU(data, index_xmin, index_xmax, param_values)
+    else:
+        # Conversion si nécessaire
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
+        return anscombe_inverse_CPU(data, index_xmin, index_xmax, param_values)
+
+
+def anscombe_inverse_CPU(
     data: np.ndarray, index_xmin: np.ndarray, index_xmax: np.ndarray, param_values: dict
-) -> np.ndarray:
+) -> Tuple[np.ndarray, None]:
     """
     Compute inverse of Anscombe transform to compute the amplitude of the image
         A⁻¹(x) = (x / 2)^2 - 3/8
@@ -156,4 +263,64 @@ def anscombe_inverse(
             file_name="inverse_anscombe_transformed_volume",
         )
 
-    return data_out
+    return data_out, None  # No threading for CPU version
+
+
+def anscombe_inverse_GPU(
+    data: torch.Tensor,
+    index_xmin: torch.Tensor,
+    index_xmax: torch.Tensor,
+    param_values: dict,
+) -> Tuple[torch.Tensor, Union[None, threading.Thread]]:
+    """
+    GPU optimized inverse Anscombe transform avec vectorisation complète
+    """
+    print(" - Applying inverse Anscombe transform on 3D volume (GPU optimized)...")
+
+    required_keys = {"save", "paths"}
+    if not required_keys.issubset(param_values.keys()):
+        raise ValueError(
+            f"Missing required parameters: {required_keys - param_values.keys()}"
+        )
+
+    save_results = int(param_values["save"]["save_anscombe_inverse"]) == 1
+    output_directory = param_values["paths"]["output_dir"]
+
+    device = data.device
+    T, Z, Y, X = data.shape
+
+    # Création du masque vectorisé
+    x_coords = torch.arange(X, device=device).view(1, 1, X)
+    xmin_broadcast = index_xmin.view(Z, 1, 1)
+    xmax_broadcast = index_xmax.view(Z, 1, 1)
+
+    valid_mask = (x_coords >= xmin_broadcast) & (x_coords <= xmax_broadcast)
+    valid_mask = valid_mask.unsqueeze(0).expand(T, Z, Y, X)
+
+    # Initialisation du résultat
+    result = torch.zeros_like(data, dtype=torch.float32, device=device)
+
+    with torch.no_grad():
+        # Application vectorisée de l'inverse : (x/2)² - 3/8
+        transformed = torch.pow(data / 2.0, 2) - 3.0 / 8.0
+
+        # Application du masque
+        result[valid_mask] = transformed[valid_mask]
+
+    thread = None
+    if save_results:
+        if output_directory is None:
+            raise ValueError(
+                "Output directory must be specified when save_results is True."
+            )
+        if not os.path.exists(output_directory):
+            os.makedirs(output_directory)
+        thread = export_data_GPU(
+            result,
+            output_directory,
+            export_as_single_tif=True,
+            file_name="anscombe_inverse_sequence",
+        )
+
+    print("=" * 60 + "\n")
+    return result, thread

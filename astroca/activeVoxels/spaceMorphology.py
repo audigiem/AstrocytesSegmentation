@@ -8,10 +8,23 @@ from skimage.morphology import ball
 from numba import njit, prange
 from concurrent.futures import ThreadPoolExecutor
 from tqdm import tqdm
-from astroca.activeVoxels.medianFilter import generate_spherical_offsets
+from astroca.tools.medianComputationTools import generate_spherical_offsets
+import torch
 
 
 def closing_morphology_in_space(
+    data: np.ndarray | torch.Tensor,
+    radius: int,
+    border_mode: str = "constant",
+    GPU_AVAILABLE: bool = False,
+) -> np.ndarray | torch.Tensor:
+    if GPU_AVAILABLE:
+        return closing_morphology_in_space_GPU(data, radius, border_mode)
+    else:
+        return closing_morphology_in_space_CPU(data, radius, border_mode)
+
+
+def closing_morphology_in_space_CPU(
     data: np.ndarray, radius: int, border_mode: str = "constant"
 ) -> np.ndarray:
     """
@@ -23,15 +36,12 @@ def closing_morphology_in_space(
     @return 4D numpy array (T, Z, Y, X) after closing
     """
     if border_mode == "ignore":
-        return closing_morphology_in_space_ignore_border(data, radius)
+        return closing_morphology_in_space_ignore_border_CPU(data, radius)
 
     print(
         f" - Apply morphological closing with radius={radius} and border mode='{border_mode}'"
     )
     struct_elem = ball(radius)
-    print(
-        f"Structuring element shape: {struct_elem.shape}, active pixels: {struct_elem.sum()}"
-    )
     result = np.zeros_like(data, dtype=np.uint8)
 
     # Ensure binary input
@@ -111,7 +121,7 @@ def morphological_dilation_ignore_border(
     return dilated
 
 
-def closing_morphology_in_space_ignore_border(
+def closing_morphology_in_space_ignore_border_CPU(
     data: np.ndarray, radius: int, n_workers: int = None
 ) -> np.ndarray:
     """
@@ -151,5 +161,157 @@ def closing_morphology_in_space_ignore_border(
                 unit="frame",
             )
         )
+
+    return result
+
+
+def closing_morphology_in_space_GPU(
+    data: torch.Tensor, radius: int, border_mode: str = "ignore"
+) -> torch.Tensor:
+    """
+    Version GPU utilisant unfold pour éviter conv3d
+    """
+    if border_mode == "ignore":
+        return closing_morphology_in_space_ignore_border_GPU(data, radius)
+
+    print(
+        f" - [GPU] Morphological closing with unfold, radius={radius}, border='{border_mode}'"
+    )
+
+    device = data.device
+    T, Z, Y, X = data.shape
+
+    # Créer l'élément structurant
+    struct_elem_np = ball(radius).astype(np.float32)
+    struct_elem = torch.from_numpy(struct_elem_np).to(device)
+    kernel_size = struct_elem.shape[0]
+
+    mode_map = {"constant": "constant"}
+    if border_mode not in mode_map:
+        raise ValueError(f"Unsupported border_mode '{border_mode}'")
+
+    result = torch.zeros_like(data, dtype=torch.uint8)
+
+    for t in tqdm(range(T), desc="[GPU] Morphological closing (unfold)", unit="frame"):
+        frame = data[t].float()  # (Z, Y, X)
+
+        # Padding
+        pad = radius
+        padded = torch.nn.functional.pad(
+            frame, (pad, pad, pad, pad, pad, pad), mode=mode_map[border_mode]
+        )
+
+        # Dilation avec unfold
+        dilated = morphology_operation_unfold(padded, struct_elem, operation="max")
+
+        # Erosion avec unfold
+        eroded = morphology_operation_unfold(dilated, struct_elem, operation="min")
+
+        result[t] = eroded.to(torch.uint8) * 255
+
+    return result
+
+
+def morphology_operation_unfold(
+    volume: torch.Tensor, kernel: torch.Tensor, operation: str = "max"
+) -> torch.Tensor:
+    """
+    Opération morphologique utilisant unfold
+    """
+    Z, Y, X = volume.shape
+    kz, ky, kx = kernel.shape
+
+    # Unfold pour créer des patches 3D
+    unfolded = volume.unfold(0, kz, 1).unfold(1, ky, 1).unfold(2, kx, 1)
+    # Shape: (Z-kz+1, Y-ky+1, X-kx+1, kz, ky, kx)
+
+    # Appliquer le masque du kernel
+    kernel_mask = kernel > 0
+    masked_patches = unfolded * kernel_mask.unsqueeze(0).unsqueeze(0).unsqueeze(0)
+
+    if operation == "max":
+        # Dilation: maximum des voisins
+        result = torch.max(
+            masked_patches.reshape(*masked_patches.shape[:3], -1), dim=-1
+        )[0]
+    elif operation == "min":
+        # Erosion: minimum des voisins (seulement sur les positions du kernel)
+        masked_flat = masked_patches.reshape(*masked_patches.shape[:3], -1)
+        kernel_flat = kernel_mask.reshape(-1)
+        # Remplacer les 0 par inf pour le min
+        masked_flat = torch.where(
+            kernel_flat.unsqueeze(0).unsqueeze(0).unsqueeze(0), masked_flat, torch.inf
+        )
+        result = torch.min(masked_flat, dim=-1)[0]
+        result = torch.where(
+            result == torch.inf, torch.tensor(0.0, device=volume.device), result
+        )
+
+    return result
+
+
+def closing_morphology_in_space_ignore_border_GPU(
+    data: torch.Tensor, radius: int
+) -> torch.Tensor:
+    """
+    Fast 3D morphological closing on a 4D binary array (T, Z, Y, X), with border_mode='ignore' using PyTorch on GPU.
+    Only neighbors within bounds are considered (no padding).
+    Parameters:
+        data: 4D numpy array (T, Z, Y, X), binary (0/255 or 0/1)
+        radius: radius of the spherical structuring element
+    Returns:
+        4D numpy array (T, Z, Y, X), uint8, values in {0, 255}
+    """
+    print(
+        f" - [GPU] Fast morphological closing with radius={radius} and border mode='ignore'"
+    )
+
+    T, Z, Y, X = data.shape
+    result = torch.empty((T, Z, Y, X), dtype=torch.uint8)
+
+    # Offsets for spherical neighborhood
+    offsets = generate_spherical_offsets(radius)
+    offsets_torch = torch.from_numpy(offsets).to(torch.int32).to("cuda")  # (N, 3)
+
+    for t in tqdm(range(T), desc="[GPU] Morph closing (ignore border)", unit="frame"):
+        frame = data[t]  # (Z, Y, X)
+        frame_padded = frame  # no padding
+
+        dilated = torch.zeros_like(frame, dtype=torch.uint8)
+        eroded = torch.ones_like(frame, dtype=torch.uint8)
+
+        # Apply dilation (max in neighborhood)
+        for offset in offsets_torch:
+            dz, dy, dx = offset.tolist()
+
+            z1, z2 = max(0, -dz), min(Z, Z - dz)
+            y1, y2 = max(0, -dy), min(Y, Y - dy)
+            x1, x2 = max(0, -dx), min(X, X - dx)
+
+            zz1, zz2 = z1 + dz, z2 + dz
+            yy1, yy2 = y1 + dy, y2 + dy
+            xx1, xx2 = x1 + dx, x2 + dx
+
+            dilated[z1:z2, y1:y2, x1:x2] = torch.maximum(
+                dilated[z1:z2, y1:y2, x1:x2], frame_padded[zz1:zz2, yy1:yy2, xx1:xx2]
+            )
+
+        # Apply erosion (min in neighborhood)
+        for offset in offsets_torch:
+            dz, dy, dx = offset.tolist()
+
+            z1, z2 = max(0, -dz), min(Z, Z - dz)
+            y1, y2 = max(0, -dy), min(Y, Y - dy)
+            x1, x2 = max(0, -dx), min(X, X - dx)
+
+            zz1, zz2 = z1 + dz, z2 + dz
+            yy1, yy2 = y1 + dy, y2 + dy
+            xx1, xx2 = x1 + dx, x2 + dx
+
+            eroded[z1:z2, y1:y2, x1:x2] = torch.minimum(
+                eroded[z1:z2, y1:y2, x1:x2], dilated[zz1:zz2, yy1:yy2, xx1:xx2]
+            )
+
+        result[t] = eroded * 255
 
     return result

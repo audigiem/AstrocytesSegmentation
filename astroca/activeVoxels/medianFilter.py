@@ -1,37 +1,67 @@
 """
 @file medianFilter.py
 @brief 3D median filter for 4D stacks (T,Z,Y,X) with spherical neighborhood and border handling
+GPU and CPU versions with identical results
 """
 import numpy as np
 from concurrent.futures import ThreadPoolExecutor
-from astroca.tools.medianComputationTools import quickselect_median
+from astroca.activeVoxels.medianFilterGPU import unified_median_filter_3d_gpu
+from astroca.tools.medianComputationTools import (
+    generate_spherical_offsets,
+    quickselect_median,
+)
 from tqdm import tqdm
 from scipy.ndimage import median_filter
 from numba import njit, prange
+import torch
 
 
 def unified_median_filter_3d(
+    data: np.ndarray | torch.Tensor,
+    radius: float = 1.5,
+    border_mode: str = "reflect",
+    n_workers: int = None,
+    use_gpu: bool = False,
+) -> torch.Tensor | np.ndarray:
+    """
+    @brief Unified 3D median filter for 4D stacks (T,Z,Y,X)
+
+    @details Applies a 3D median filter to each frame of a 4D stack using spherical neighborhood.
+    Supports both CPU (NumPy) and GPU (PyTorch) implementations with identical results.
+
+    @param data: Input 4D stack (T,Z,Y,X) - np.ndarray for CPU, torch.Tensor for GPU
+    @param radius: Radius of the spherical neighborhood (1.5 → 3×3×7 neighborhood)
+    @param border_mode: Border handling mode: 'reflect', 'nearest', 'constant', 'ignore', etc.
+    @param n_workers: Number of threads to use for CPU version (None for automatic)
+    @param use_gpu: If True, use GPU implementation, else CPU
+
+    @return Filtered 4D stack as torch.Tensor
+    """
+    if border_mode == "ignore":
+        # convert data to numpy if it's a torch tensor
+        if isinstance(data, torch.Tensor):
+            data = data.cpu().numpy()
+        return unified_median_filter_3d_cpu(data, radius, border_mode, n_workers)
+    else:
+        if use_gpu:
+            return unified_median_filter_3d_gpu(data, radius, border_mode)
+        else:
+            return unified_median_filter_3d_cpu(data, radius, border_mode, n_workers)
+
+
+def unified_median_filter_3d_cpu(
     data: np.ndarray,
     radius: float = 1.5,
     border_mode: str = "reflect",
     n_workers: int = None,
 ) -> np.ndarray:
     """
-    @brief Unified 3D median filter for 4D stacks (T,Z,Y,X)
-
-    @details Applies a 3D median filter to each frame of a 4D stack using spherical neighborhood.
-    Supports multi-threading for improved performance on large datasets.
-
-    @param data: Input 4D stack (T,Z,Y,X)
-    @param radius: Radius of the spherical neighborhood (1.5 → 3×3×7 neighborhood)
-    @param border_mode: Border handling mode: 'reflect', 'nearest', 'constant', 'ignore', etc.
-    @param n_workers: Number of threads to use (None for automatic)
-
-    @return Filtered 4D stack with same dimensions as input
+    @brief CPU version of 3D median filter (original implementation)
     """
     print(
-        f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'"
+        f" - Apply 3D median filter (CPU) with radius={radius}, border mode='{border_mode}'"
     )
+
     if border_mode == "ignore":
         T, Z, Y, X = data.shape
         data_3D = data.reshape(T * Z, Y, X)  # Reshape to treat as 3D
@@ -39,9 +69,6 @@ def unified_median_filter_3d(
         median_filtered = apply_median_filter_3d_ignore_border(data_3D, offsets)
         data_filtered_4D = median_filtered.reshape(T, Z, Y, X)
         return data_filtered_4D
-    print(
-        f" - Apply 3D median filter with radius={radius}, border mode='{border_mode}'"
-    )
     r = int(np.ceil(radius))
 
     # Create spherical mask
@@ -125,45 +152,3 @@ def apply_median_filter_3d_ignore_border(
                     result[z, y, x] = frame[z, y, x]
 
     return result
-
-
-def generate_spherical_offsets(radius: float):
-    """
-    @brief Generates offsets for spherical neighborhood of given radius
-
-    @details Uses exact algorithm from Java code with normalized ellipsoid.
-    Returns array of (dz,dy,dx) offsets where distance ≤ radius.
-
-    @param radius Filter radius (spherical)
-
-    @return Array of integer offsets defining spherical neighborhood
-    """
-    radx = rady = radz = radius  # Sphere = ellipsoid with equal radii
-
-    vx = int(np.ceil(radx))
-    vy = int(np.ceil(rady))
-    vz = int(np.ceil(radz))
-
-    # Calculate inverse squared radii (as in Java)
-    rx2 = 1.0 / (radx * radx) if radx != 0.0 else 0.0
-    ry2 = 1.0 / (rady * rady) if rady != 0.0 else 0.0
-    rz2 = 1.0 / (radz * radz) if radz != 0.0 else 0.0
-
-    offsets = []
-
-    # Loops in same order as Java: k(z), j(y), i(x)
-    for k in range(-vz, vz + 1):  # dz
-        for j in range(-vy, vy + 1):  # dy
-            for i in range(-vx, vx + 1):  # dx
-                # Normalized distance from Java
-                dist = (i * i) * rx2 + (j * j) * ry2 + (k * k) * rz2
-
-                if dist <= 1.0:  # Exact condition from Java
-                    offsets.append((k, j, i))  # (dz, dy, dx)
-
-    offsets_array = np.array(offsets, dtype=np.int32)
-    # print(f"Generated {len(offsets)} offsets for radius {radius}")
-    # print(f"Integer bounds: vx={vx}, vy={vy}, vz={vz}")
-    # print(f"Normalization factors: rx2={rx2:.6f}, ry2={ry2:.6f}, rz2={rz2:.6f}")
-    # print(f"Some offsets: {offsets_array[:10]}")  # Show first few offsets
-    return offsets_array

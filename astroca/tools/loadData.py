@@ -3,27 +3,39 @@
 @brief This module provides functionality to load and manage 3D image sequences with time dimension.
 """
 
-import numpy as np
 import os
 import tifffile as tif
 import glob
 import configparser
+from typing import Dict
+import numpy as np
+import torch
 
 
-def load_data(file_path: str) -> np.ndarray:
+# @profile
+def load_data(file_path: str, GPU_AVAILABLE: bool = False) -> torch.Tensor | np.ndarray:
     """
     Load 3D image sequence data from a .tif file or a directory containing .tif files.
 
     @param file_path: Path to the .tif file or directory containing .tif files.
-    @return: 4D numpy array of shape (T, Z, Y, X) representing the image sequence.
+    @param GPU_AVAILABLE: If True, the data is moved to GPU as a PyTorch tensor.
+    @raises ValueError: If the input path is invalid or if no .tif files are found in the directory.
+    @return: 4D array (T, Z, Y, X) either as torch.Tensor or numpy.ndarray depending on GPU_AVAILABLE.
     """
+
     if os.path.isdir(file_path):
         # Load all .tif files in the directory
         file_list = sorted(glob.glob(os.path.join(file_path, "*.tif")))
         if not file_list:
             raise ValueError(f"No .tif files found in directory: {file_path}")
         data = [tif.imread(f) for f in file_list]
-        return np.array(data)
+        if GPU_AVAILABLE:
+            data = [torch.tensor(d, dtype=torch.float32) for d in data]
+            data = torch.stack(data, dim=0)
+        else:
+            data = np.array(data, dtype=np.float32)
+        return data
+
     elif os.path.isfile(file_path) and file_path.endswith(".tif"):
         # Load single .tif file
         data = tif.imread(file_path)
@@ -34,6 +46,17 @@ def load_data(file_path: str) -> np.ndarray:
             raise ValueError(
                 f"Loaded data must be a 4D array (T, Z, Y, X) or 3D array (Z, Y, X), but got shape {data.shape}."
             )
+        if GPU_AVAILABLE:
+            data = torch.tensor(data, dtype=torch.float32)
+            if data.ndim == 3:
+                # Add time dimension if missing
+                data = data.unsqueeze(0)
+
+        else:
+            data = np.array(data, dtype=np.float32)
+            if data.ndim == 3:
+                # Add time dimension if missing
+                data = np.expand_dims(data, axis=0)
         return data
 
     else:
@@ -42,11 +65,11 @@ def load_data(file_path: str) -> np.ndarray:
         )
 
 
-def read_config(config_file: str = None) -> dict:
+def read_config(config_file: str | None = None) -> Dict[str, Dict[str, str]]:
     """
     Read configuration parameters from a .ini file.
 
-    @param config_file: Path to the configuration file. If None, default is relative to this file.
+    @param config_file: Path to the configuration file. If None, default path is used.
     @return: Dictionary containing configuration parameters.
     """
     if config_file is None:
