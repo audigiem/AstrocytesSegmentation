@@ -193,7 +193,6 @@ def compute_dynamic_image_GPU(
             print("    [GPU] Warning: No valid pixels found!")
 
     print(f"    [GPU] mean_Noise = {mean_noise:.6f}")
-    print(f"    [GPU] Valid pixels: {valid_count * T * Y:,}")
 
     thread = None
     if save_results:
@@ -274,7 +273,7 @@ def compute_image_amplitude_CPU(
     save_results_amplitude = int(param_values["save"]["save_amplitude"]) == 1
     output_directory = param_values["paths"]["output_dir"]
 
-    f0_inv = anscombe_inverse(F0, index_xmin, index_xmax, param_values=param_values)
+    f0_inv, _ = anscombe_inverse(F0, index_xmin, index_xmax, param_values=param_values)
 
     T, Z, Y, X = data_cropped.shape
     image_amplitude = np.zeros_like(data_cropped, dtype=np.float32)
@@ -378,7 +377,6 @@ def compute_image_amplitude_GPU(
             )
         if not os.path.exists(output_directory):
             os.makedirs(output_directory)
-        print("shape image_amplitude:", image_amplitude.shape)
         thread = export_data_GPU(
             image_amplitude,
             output_directory,

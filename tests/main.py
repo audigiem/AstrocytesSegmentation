@@ -194,12 +194,10 @@ class PipelineExecutor:
 
                 if thread.is_alive():
                     if not self.config.quiet_mode:
-                        print(
-                            f"  ⚠️ Warning: Thread {i + 1} still running after timeout"
-                        )
+                        print(f"   Warning: Thread {i + 1} still running after timeout")
                 else:
                     if not self.config.quiet_mode:
-                        print(f"  ✓ Thread {i + 1} completed")
+                        print(f"    Thread {i + 1} completed")
 
         if not self.config.quiet_mode:
             print("✅ All exports completed successfully")
@@ -219,8 +217,6 @@ class PipelineExecutor:
 
         if not self.config.quiet_mode:
             mode = "GPU" if self.gpu_available else "CPU"
-            if params["general"]["execution_mode"] == "cpu":
-                mode = "CPU (forced by config)"
             print(f"=== Starting pipeline, using {mode} ===\n")
 
         # Load configuration
